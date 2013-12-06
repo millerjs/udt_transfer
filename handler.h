@@ -30,6 +30,7 @@ and limitations under the License.
 #include "files.h"
 
 #define BUFFER_LEN 67108864
+#define MAX_ARGS 128
 
 typedef enum{
     XFER_DATA,

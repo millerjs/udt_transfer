@@ -492,17 +492,69 @@ int complete_xfer(){
 
 }
 
+int run_pipe(char* pipe_cmd){
+    
+    char *args[MAX_ARGS];
+    bzero(args, MAX_ARGS);
+
+    int arg_idx = 0;
+    char* token = strtok(pipe_cmd, " ");
+    while (token) {
+	args[arg_idx] = strdup(token);
+	printf("token: %s\n", args[arg_idx]);
+	arg_idx++;
+	token = strtok(NULL, " ");
+    }
+
+    int pipefd[2];
+    int pid;
+
+    // make a pipe (fds go in pipefd[0] and pipefd[1])
+
+    pipe(pipefd);
+
+    fprintf(stderr, "forking\n");
+    pid = fork();
+
+    // CHILD
+    if (pid == 0) {
+
+	fprintf(stderr, "Here in the child\n");
+	dup2(pipefd[0], 0);
+	
+	execvp(pipe_args[0], pipe_args);
+	
+    }
+
+    // PARENT
+    else {
+	// parent gets here and handles "cat scores"
+
+	// replace standard output with output part of pipe
+
+	fprintf(stderr, "Here in the parent\n");
+	dup2(pipefd[1], 1);
+
+	// close unused unput half of pipe
+
+    }
+
+
+}
 
 int main(int argc, char *argv[]){
     
     int opt;
     file_LL *fileList = NULL;
+    char pipe_cmd[MAX_PATH_LEN];
+    bzero(pipe_cmd, MAX_PATH_LEN);
 
     static struct option long_options[] =
 	{
 	    {"verbose", no_argument,       &opt_verbosity, VERB_2},
 	    {"quiet",   no_argument,       &opt_verbosity, VERB_0},
 	    {"help",    no_argument, 0, 'h'},
+	    {"pipe",    required_argument, 0, 'u'},
 	    {0, 0, 0, 0}
 	};
 
@@ -511,7 +563,7 @@ int main(int argc, char *argv[]){
     // c = getopt_long (argc, argv, "abc:d:f:",
     // 		     long_options, &option_index);
 
-    while ((opt = getopt_long(argc, argv, "lhv:np", long_options, &option_index)) != -1){
+    while ((opt = getopt_long(argc, argv, "lhv:npu:", long_options, &option_index)) != -1){
 	switch (opt){
 
 	case 'p':
@@ -521,7 +573,12 @@ int main(int argc, char *argv[]){
 	case 'l':
 	    opt_mode = MODE_RCV;
 	    break;
- 
+
+	case 'u':
+	    strcpy(pipe_cmd, optarg);
+	    fprintf(stderr, "Using pipe command: %s\n", pipe_cmd);
+	    break;
+	    
 	case 'n':
 	    opt_recurse = 0;
 	    break;
@@ -546,6 +603,11 @@ int main(int argc, char *argv[]){
 
     // If in sender mode, test the files for typing, and build a file
     // list
+
+    if (*pipe_cmd){
+	fprintf(stderr, "I should be piping my output to the pipe command\n");
+	run_pipe(pipe_cmd);
+    }
 
     if (opt_mode == MODE_SEND){
 

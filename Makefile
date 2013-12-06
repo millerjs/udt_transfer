@@ -2,6 +2,8 @@ C++ = g++
 
 DIR = $(shell pwd)
 
+CCFLAGS = -Wno-write-strings
+
 APP = ucp
 APPOUT = ucp
 
