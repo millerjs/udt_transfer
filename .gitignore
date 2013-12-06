@@ -1,0 +1,4 @@
+ucp
+testdir
+testdir/*
+*.o
