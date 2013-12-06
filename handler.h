@@ -35,7 +35,14 @@ typedef enum{
     XFER_COMPLTE
 } xfer_t;
 
+typedef enum{
+    MODE_SEND,
+    MODE_RCV
+} xfer_mode_t;
+
+
 typedef struct header{
     int data_len;
     xfer_t type;
 } header_t;
+
