@@ -82,6 +82,7 @@ int handle_files(file_LL* fileList){
 	    
 	} 
 	else {
+
 	    if (opt_verbosity)
 		fprintf(stderr, "   > SKIPPING [%s]  \%s\n", 
 			file->filetype, file->path);
