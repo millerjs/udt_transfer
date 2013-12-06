@@ -16,35 +16,96 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
-#include <getopt.h>
-#include <iostream>
-#include <unistd.h>
-#include <sys/stat.h>
+#include "handler.h"
 
 using std::cerr;
 using std::endl;
-
-#include "handler.h"
-#include "files.h"
 
 // Global settings
 int opt_verbosity = 0;
 int opt_recurse = 1;
 
+char data[BUFFER_LEN];
+
 void usage(){
     exit(1);
 }
 
-static enum{
-    SEND_DATA,
-    SEND_FILENAME,
-    SEND_DIRNAME
-} handler_commands;
+int write_header(header_t header){
+    write(fileno(stdout), &header, sizeof(header_t));
+}
 
+int write_data(char*data, int len){
+    write(fileno(stdout), data, len);
+}
+
+int send_file(file_object_t *file){
+
+    if (!file) return -1;
+
+    if (opt_verbosity)
+	fprintf(stderr, "   > Sending [%s]  %s\n", file->filetype, file->path);
+
+    header_t header;
+
+    if (file->mode == S_IFDIR){
+
+	// create a header to specify that the subsequent data is a
+	// directory name
+
+	header.type = XFER_DIRNAME;
+	header.data_len = strlen(file->path)+1;
+
+	// send header and directory name
+
+	write_header(header);
+	write_data(file->path, header.data_len);
+
+    }
+    else {
+
+	// create header to specify that subsequent data is a regular
+	// filename
+
+	header.type = XFER_FILENAME;
+	header.data_len = strlen(file->path)+1;
+
+	// send header and file path
+	write_header(header);
+	write_data(file->path, header.data_len);	
+
+	
+	// open file to cat data
+	FILE *fp = fopen(file->path, "r");
+	if (!fp){
+	    perror("ERROR: unable to open file");
+	    exit(EXIT_FAILURE);
+	}
+
+	// Get the length of the file in advance
+	fseek(fp, 0L, SEEK_END);
+	int file_size = ftell(fp);
+	fseek(fp, 0L, SEEK_SET);
+
+	// create header to specify that we are also sending file data
+	header_t data_header;
+	data_header.type = XFER_DATA;
+	data_header.data_len = file_size;
+
+	// send data header
+	write_header(data_header);
+
+	// buffer and send file
+	int rs = fread(data, sizeof(char), BUFFER_LEN, fp);
+	if (rs < 0){
+	    perror("ERROR: error reading from file");
+	    exit(EXIT_FAILURE);
+	}
+	write_data(data, rs);
+
+    }
+    
+}
 
 int handle_files(file_LL* fileList){
 
@@ -56,6 +117,9 @@ int handle_files(file_LL* fileList){
 	// While there is a directory, opt_recurse?
 	if (file->mode == S_IFDIR){
 	    
+	    // Tell desination to create a directory 
+	    send_file(file);
+
 	    // Recursively enter directory
 	    if (opt_recurse){
 
@@ -71,16 +135,22 @@ int handle_files(file_LL* fileList){
 		    handle_files(internal_fileList);
 		}
 	    }
+	    // If User chose not to recurse into directories
+	    else {
+		if (opt_verbosity)
+		    fprintf(stderr, "> SKIPPING [%s]  %s\n", 
+			    file->filetype, file->path);
+	    }
 
 	} 
+
+	// if it is a regular file, then send it
 	else if (file->mode == S_IFREG){
-
-	    if (opt_verbosity)
-		fprintf(stderr, "   > Sending [%s]  %s\n", 
-			file->filetype, file->path);
-	    
-	    
+	    send_file(file);
 	} 
+
+	// if it's neither a regular file nor a directory, leave it
+	// for now, maybe send in later version
 	else {
 
 	    if (opt_verbosity)
@@ -92,12 +162,20 @@ int handle_files(file_LL* fileList){
 	    fprintf(stderr, "ucp currently supports only regular files and directories.\n");
 
 	}
-	
-
 
 	fileList = fileList->next;
 
     }
+
+}
+
+int complete_xfer(){
+    
+    // Notify the destination that the transfer is complete
+    header_t header;
+    header.type = XFER_COMPLTE;
+    header.data_len = 0;
+    write_header(header);
 
 }
 
@@ -107,11 +185,11 @@ int main(int argc, char *argv[]){
     int opt;
     file_LL *fileList = NULL;
 
-    while ((opt = getopt (argc, argv, "lhv")) != -1){
+    while ((opt = getopt (argc, argv, "lhvn")) != -1){
 	switch (opt){
 
-	case 'r':
-	    opt_recurse = 1;
+	case 'n':
+	    opt_recurse = 0;
 	    break;
 
 	case 'v':
@@ -139,22 +217,30 @@ int main(int argc, char *argv[]){
 	    fprintf(stderr, "Running as file source\n");
 
 	// Clarify what we are passing as a file list
+	
 	int n_files = argc-optind;
 	char **path_list = argv+optind;
 
 	// Generate a linked list of file objects from path list
+	
 	fileList = build_filelist(n_files, path_list);
+	
+	// Visit all directories and send all files
+
+	handle_files(fileList);
+
+	complete_xfer();
 
     } // Otherwise, switch to receiving mode
     else {
 
 	if (opt_verbosity)
 	    fprintf(stderr, "Running as file  destination\n");
+
 	exit(1);
 
     }
 
-    handle_files(fileList);
 
   
 }
