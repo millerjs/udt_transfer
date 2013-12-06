@@ -26,6 +26,7 @@ and limitations under the License.
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "files.h"
 

@@ -26,6 +26,7 @@ int opt_verbosity = VERB_1;
 int opt_recurse = 1;
 int opt_mode = MODE_SEND;
 int opt_progress = 0;
+int pipe_pid = 0;
 
 char data[BUFFER_LEN];
 char path_buff[BUFFER_LEN];
@@ -58,6 +59,32 @@ void usage(int EXIT_STAT){
     exit(EXIT_STAT);
 }
 
+void sig_handler(int signal){
+
+    // We want to make sure that a forked pipe process isn't left
+    // hanging so we will kill it if it exists
+
+    if (signal == SIGINT){
+
+	fprintf(stderr, "\nSIGINT: ucp killed by SIGINT\n");
+
+	// Caught the SIGINT, now kill child process
+
+	if (pipe_pid){
+	    fprintf(stderr, "Killing child pipe process... ");
+	    if (kill(pipe_pid, SIGKILL)){
+		fprintf(stderr, "[FAILURE]\n");
+	    } else {
+		fprintf(stderr, "[SUCCESS]\n");
+	    }
+	}
+	
+	// ragequit
+
+	exit(EXIT_FAILURE);
+
+    }
+}
 int write_header(header_t header){
     return write(fileno(stdout), &header, sizeof(header_t));
 }
@@ -496,6 +523,8 @@ int run_pipe(char* pipe_cmd){
     
     char *args[MAX_ARGS];
     bzero(args, MAX_ARGS);
+    
+    // tokenize the pipe command into argument array
 
     int arg_idx = 0;
     char* token = strtok(pipe_cmd, " ");
@@ -507,35 +536,44 @@ int run_pipe(char* pipe_cmd){
     }
 
     int pipefd[2];
-    int pid;
 
-    // make a pipe (fds go in pipefd[0] and pipefd[1])
-
+    // Create pipe and fork
     pipe(pipefd);
-
-    fprintf(stderr, "forking\n");
-    pid = fork();
+    pipe_pid = fork();
 
     // CHILD
-    if (pid == 0) {
+    if (pipe_pid == 0) {
 
-	fprintf(stderr, "Here in the child\n");
-	dup2(pipefd[0], 0);
-	
-	execvp(pipe_args[0], pipe_args);
-	
+	// Redirect stdout to pipe's stdout
+	if (opt_mode == MODE_SEND){
+	    dup2(pipefd[0], 0);
+	} 
+
+	// Redirect stdout to pipe's stdout
+	else {
+	    dup2(pipefd[1], 1);
+	}
+
+	// Execute the pipe process
+	if (execvp(args[0], args)){
+	    fprintf(stderr, "ERROR: unable to execupte pipe process\n");
+	    exit(EXIT_FAILURE);
+	}
     }
 
     // PARENT
     else {
-	// parent gets here and handles "cat scores"
 
-	// replace standard output with output part of pipe
+	// Redirect the input from the pipe to stdin
+	if (opt_mode == MODE_SEND){
+	    dup2(pipefd[1], 1);
+	} 
 
-	fprintf(stderr, "Here in the parent\n");
-	dup2(pipefd[1], 1);
+	// Redirect the output to the pipe's stdout
+	else {
+	    dup2(pipefd[0], 0);
+	}
 
-	// close unused unput half of pipe
 
     }
 
@@ -544,6 +582,10 @@ int run_pipe(char* pipe_cmd){
 
 int main(int argc, char *argv[]){
     
+    if (signal(SIGINT, sig_handler) == SIG_ERR){
+	fprintf(stderr, "ERROR: unable to set SIGINT handler\n");
+    }
+
     int opt;
     file_LL *fileList = NULL;
     char pipe_cmd[MAX_PATH_LEN];
