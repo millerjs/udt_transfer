@@ -29,7 +29,7 @@ file_object_t* new_file_object(char*path){
     file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
     file->path = strdup(path);
     if (stat(path, &file->stats) == -1){
-	perror("error getting file stats");
+	perror("ERROR: Unable to stat file");
 	exit(EXIT_FAILURE);
     }
 
@@ -44,7 +44,7 @@ file_object_t* new_file_object(char*path){
 	file->filetype = (char*) "directory";
 	break;
     case S_IFIFO:  file->mode = S_IFIFO;     
-	file->filetype = (char*) "FIFO/pipe";
+	file->filetype = (char*) "named pipe";
 	break;
     case S_IFLNK:  file->mode = S_IFLNK;     
 	file->filetype = (char*) "symlink";
@@ -91,7 +91,6 @@ file_LL* build_filelist(int n, char *paths[]){
     file_LL *fileList = NULL;
 
     for (int i = 0; i < n ; i++){
-	fprintf(stderr, "Adding %s to fileList\n", paths[i]);
 	fileList = add_file_to_list(fileList, paths[i]);
     }
     
@@ -122,8 +121,6 @@ file_LL* lsdir(file_object_t *file){
 	    
 	    char path[MAX_PATH_LEN];
 	    sprintf(path, "%s/%s", file->path, entry->d_name);
-	    fprintf(stderr, "\tdirectory contains\t%s\n", path);
-
 	    ls_fileList = add_file_to_list(ls_fileList, path);
 	    
 	}

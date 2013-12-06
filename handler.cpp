@@ -52,7 +52,6 @@ int handle_files(file_LL* fileList){
     while (fileList){
 
 	file_object_t *file = fileList->curr;
-	fprintf(stderr, "Sending file %-30s[%s]\n", file->path, file->filetype);
 	
 	// While there is a directory, opt_recurse?
 	if (file->mode == S_IFDIR){
@@ -60,22 +59,39 @@ int handle_files(file_LL* fileList){
 	    // Recursively enter directory
 	    if (opt_recurse){
 
-		if (opt_verbosity > 0)
-		    fprintf(stderr, "Entering directory %s\n", file->path);
-		
+		if (opt_verbosity)
+		    fprintf(stderr, "> Entering [%s]  %s\n", 
+			    file->filetype, file->path);
+
+		// Get a linked list of all the files in the directory 
 		file_LL* internal_fileList = lsdir(file);
 
 		// if directory is non-empty then recurse 
 		if (internal_fileList){
-		    fprintf(stderr, "recursing...\n");
 		    handle_files(internal_fileList);
-		    
 		}
-
 	    }
 
+	} 
+	else if (file->mode == S_IFREG){
+
+	    if (opt_verbosity)
+		fprintf(stderr, "   > Sending [%s]  %s\n", 
+			file->filetype, file->path);
+	    
+	    
+	} 
+	else {
+	    if (opt_verbosity)
+		fprintf(stderr, "   > SKIPPING [%s]  \%s\n", 
+			file->filetype, file->path);
+
+	    fprintf(stderr, "WARNING: file %s is a %s, ", 
+		    file->path, file->filetype);
+	    fprintf(stderr, "ucp currently supports only regular files and directories.\n");
 
 	}
+	
 
 
 	fileList = fileList->next;
@@ -118,7 +134,8 @@ int main(int argc, char *argv[]){
 
     if (optind < argc){
 
-	fprintf(stderr, "Running as file source\n");
+	if (opt_verbosity)
+	    fprintf(stderr, "Running as file source\n");
 
 	// Clarify what we are passing as a file list
 	int n_files = argc-optind;
@@ -130,7 +147,8 @@ int main(int argc, char *argv[]){
     } // Otherwise, switch to receiving mode
     else {
 
-	fprintf(stderr, "Running as file  destination\n");
+	if (opt_verbosity)
+	    fprintf(stderr, "Running as file  destination\n");
 	exit(1);
 
     }
