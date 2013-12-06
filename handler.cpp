@@ -110,7 +110,8 @@ int send_file(file_object_t *file){
 		perror("ERROR: error reading from file");
 		exit(EXIT_FAILURE);
 	    }
-
+	    
+	    fprintf(stderr, "\n\nwriting data\n");
 	    write_data(data, rs);
 
 	}
@@ -199,11 +200,12 @@ int receive_files(char*base_path){
 		    exit(EXIT_FAILURE);
 		}
 
-		int rs, total = 0;
+		int rs, len, total = 0;
 		
-		while (total < data_header.data_len){
-		    
-		    rs = read_data(data, BUFFER_LEN);
+		while (total < header.data_len){
+
+		    len = (BUFFER_LEN < header.data_len) ? BUFFER_LEN : header.data_len;
+		    rs = read_data(data, len);
 		    
 		    if (rs < 0){
 			perror("ERROR: Unable to read file");
