@@ -38,6 +38,25 @@ typedef enum{
     XFER_COMPLTE
 } xfer_t;
 
+
+/* 
+Levels of Verbosity:
+ VERB_0: Withhold WARNING messages 
+ VERB_1: Update user on file transfers
+ VERB_2: Update user on underlying processes, i.e. directory creation 
+ VERB_3: Unassigned 
+ VERB_4: Unassigned 
+*/
+
+typedef enum{
+    VERB_0,
+    VERB_1,
+    VERB_2,
+    VERB_3,
+    VERB_4
+} verb_t;
+
+
 typedef enum{
     MODE_SEND,
     MODE_RCV

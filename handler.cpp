@@ -22,15 +22,40 @@ using std::cerr;
 using std::endl;
 
 // Global settings
-int opt_verbosity = 0;
+int opt_verbosity = VERB_1;
 int opt_recurse = 1;
 int opt_mode = MODE_SEND;
+int opt_progress = 0;
 
 char data[BUFFER_LEN];
 char path_buff[BUFFER_LEN];
 
-void usage(){
-    exit(1);
+void usage(int EXIT_STAT){
+
+    int opt_lines = 13;
+    char* options[] = {
+	"--help \t\t print this message",
+	"--verbose \t\t verbose, notify of files being sent. Same as -v2",
+	"--quiet \t\t silence all warnings. Same as -v0",
+	"",
+	"-p \t\t print the transfer progress of each file",
+	"-l [dest_dir] \t listen for file transfer and write to dest_dir [default ./]",
+	"-v verbosity level \t set the level of verbosity",
+	"\nLevels of Verbosity:",
+	"\t0: Withhold WARNING messages ",
+	"\t1: Update user on file transfers [DEFAULT]",
+	"\t2: Update user on underlying processes, i.e. directory creation ",
+	"\t3: Unassigned ",
+	"\t4: Unassigned ",
+    };
+    
+    fprintf(stderr, "Basic usage: \n\tucp source_dir | ucp -l dest_dir\n");
+    fprintf(stderr, "Options:\n");
+    
+    for (int i = 0; i < opt_lines; i++)
+	fprintf(stderr, "   %s\n", options[i]);
+    
+    exit(EXIT_STAT);
 }
 
 int write_header(header_t header){
@@ -45,7 +70,7 @@ int send_file(file_object_t *file){
 
     if (!file) return -1;
 
-    if (opt_verbosity)
+    if (opt_verbosity > VERB_1)
 	fprintf(stderr, "   > Sending [%s]  %s\n", file->filetype, file->path);
 
     header_t header;
@@ -122,16 +147,111 @@ int send_file(file_object_t *file){
 
 int read_data(void* b, int len){
 
-    int rs = 0;
+    int rs, total = 0;
     char* buffer = (char*)b;
     
-    while (rs < len){
-	rs = read(fileno(stdin), buffer+rs, len - rs);
+    while (total < len){
+	rs = read(fileno(stdin), buffer+total, len - total);
+	total += rs;
     }
 
-    return rs;
+    return total;
 
 }
+
+int print_progress(char* descrip, int read, int total){
+
+    // Get the width of the terminal
+
+    struct winsize term;
+    ioctl(fileno(stdout), TIOCGWINSZ, &term);
+
+    int progress_width = 40;
+    int path_width = term.ws_col - progress_width;
+    
+    char fmt[1024];
+    sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f MB [ %%.2f %%%% ]", path_width);
+    fprintf(stderr, fmt,
+	    descrip,
+	    read/1000000.,
+	    total/1000000., 
+	    read/(float)total*100.);
+
+}
+
+int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
+    
+    bzero(parent_dir, MAX_PATH_LEN);
+    char*cursor = path+strlen(path);
+
+    while (cursor > path && *cursor != '/')
+	cursor--;
+		    
+    if (cursor <= path){
+	fprintf(stderr, "ERROR: Unable to recognize parent directory.\n");
+	exit(EXIT_FAILURE);
+    }
+		    
+    memcpy(parent_dir, path, cursor-path);
+}
+
+int mkdir_parent(char* path){
+
+    // default permissions for creating new directories
+    int ret, err;
+    int mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
+
+    ret = mkdir(path, mode);
+
+    if ( ret ){
+	
+	// Hold onto last error
+
+	err = errno;
+	
+	// If the parents in the path name do not exist, then make them
+
+	if (err == ENOENT){
+	    
+	    if (opt_verbosity > VERB_2)
+		fprintf(stderr, "Again find parent directory and make it\n");
+
+	    char parent_dir[MAX_PATH_LEN];
+	    get_parent_dir(parent_dir, path);
+	    
+
+	    if (opt_verbosity > VERB_2)
+		fprintf(stderr, "Attempting to make %s\n", parent_dir);
+
+	    mkdir_parent(parent_dir);
+
+	}
+
+	// The directory already exists
+	else if (err = EEXIST){
+	    // Continue
+	}
+
+	// Otherwise, mkdir failed
+	else {
+	    fprintf(stderr, "ERROR: Unable to create directory [%s]: %s\n", 
+		    path, strerror(err));
+	    exit(EXIT_FAILURE);
+
+	}
+
+    } else {
+	
+	if (opt_verbosity > VERB_2)
+	    fprintf(stderr, "Built directory %s\n", path);
+
+    }
+
+
+    return ret;
+
+}
+
 
 int receive_files(char*base_path){
 
@@ -141,9 +261,6 @@ int receive_files(char*base_path){
     char data_path[MAX_PATH_LEN];
     int expecting_data = 0;
 
-    // default permissions for creating new directories
-
-    int mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
 
     // generate a base path for all destination files    
 
@@ -155,9 +272,9 @@ int receive_files(char*base_path){
 
     while (!complete){
 	
-	header_t header, data_header;
+	header_t header;
 	rs = read_data(&header, sizeof(header_t));
-	
+
 	if (rs){
 
 	    // We are receiving a directory name
@@ -166,15 +283,13 @@ int receive_files(char*base_path){
 
 		read_data(data_path+bl, header.data_len);
 		
-		if (opt_verbosity)
+		if (opt_verbosity > VERB_1)
 		    fprintf(stderr, "making directory: %s\n", data_path);
 	    
-		int r = mkdir(data_path, mode);
+		// make directory, if any parent in directory path
+		// doesnt exist, make that as well
 
-		if ( r && errno != EEXIST){
-		    perror("ERROR: Unable to create directory");
-		    exit(EXIT_FAILURE);
-		}
+		int r = mkdir_parent(data_path);
 
 		// safety reset, data block after this will fault
 		expecting_data = 0;
@@ -187,8 +302,9 @@ int receive_files(char*base_path){
 		
 		read_data(data_path+bl, header.data_len);
 
-		if (opt_verbosity)
-		    fprintf(stderr, "Initializing file receive: %s\n", data_path);
+		if (opt_verbosity > VERB_1)
+		    fprintf(stderr, "Initializing file receive: %s\n", 
+			    data_path+bl);
 
 		// the block following is expected to be data
 		expecting_data = 1;
@@ -209,26 +325,59 @@ int receive_files(char*base_path){
 		int out = open(data_path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 		
 		if (out < 0) {
-		    perror("ERROR: Unable to open file for writing");
-		    exit(EXIT_FAILURE);
+
+		    // If we can't open the file, try building a
+		    // directory tree to it
+
+		    fprintf(stderr, "WARNING: %s: %s. %s.\n",
+			    "Unable to open file for writing",
+			    "Building directory tree",
+			    data_path);
+		    
+		    // Try and get a parent directory from file
+
+		    char parent_dir[MAX_PATH_LEN];
+		    get_parent_dir(parent_dir, data_path);
+		    
+		    if (opt_verbosity > VERB_2)
+			fprintf(stderr, "Using %s as parent directory.\n", parent_dir);
+		    
+		    // Build parent directory recursively
+
+		    int ret = mkdir_parent(parent_dir);
+
 		}
-		
 		
 		while (total < header.data_len){
 
-		    len = (BUFFER_LEN < header.data_len) ? BUFFER_LEN : header.data_len;
+		    // Either look to receive a whole buffer of
+		    // however much remains in the data block
+
+		    len = (BUFFER_LEN < header.data_len - total) ? 
+			BUFFER_LEN : header.data_len - total;
+
+		    // read data buffer from stdin
+
 		    rs = read_data(data, len);
-		    
+
 		    if (rs < 0){
 			perror("ERROR: Unable to read file");
 			exit(EXIT_FAILURE);
 		    }
 
+		    // Write to file
+		    
 		    write(out, data, rs);
-
 		    total += rs;
 
+		    // Update user on progress if opt_progress set to true		    
+
+		    if (opt_progress)
+			print_progress(data_path, total, header.data_len);
+
 		}
+		
+		if (opt_progress) fprintf(stderr, "\n");
 
 		close(out);
 
@@ -240,7 +389,7 @@ int receive_files(char*base_path){
 	    // Or maybe the transfer is complete
 
 	    else if (header.type == XFER_COMPLTE){
-		if (opt_verbosity)
+		if (opt_verbosity > VERB_1)
 		    fprintf(stderr, "Receive completed.\n");
 		return 0;
 	    }
@@ -276,7 +425,7 @@ int handle_files(file_LL* fileList){
 	    // Recursively enter directory
 	    if (opt_recurse){
 
-		if (opt_verbosity)
+		if (opt_verbosity > VERB_1)
 		    fprintf(stderr, "> Entering [%s]  %s\n", 
 			    file->filetype, file->path);
 
@@ -290,7 +439,7 @@ int handle_files(file_LL* fileList){
 	    }
 	    // If User chose not to recurse into directories
 	    else {
-		if (opt_verbosity)
+		if (opt_verbosity > VERB_1)
 		    fprintf(stderr, "> SKIPPING [%s]  %s\n", 
 			    file->filetype, file->path);
 	    }
@@ -306,13 +455,15 @@ int handle_files(file_LL* fileList){
 	// for now, maybe send in later version
 	else {
 
-	    if (opt_verbosity)
+	    if (opt_verbosity > VERB_1)
 		fprintf(stderr, "   > SKIPPING [%s]  \%s\n", 
 			file->filetype, file->path);
 
-	    fprintf(stderr, "WARNING: file %s is a %s, ", 
-		    file->path, file->filetype);
-	    fprintf(stderr, "ucp currently supports only regular files and directories.\n");
+	    if (opt_verbosity > VERB_0){
+		fprintf(stderr,"WARNING: file %s is a %s, ", 
+			file->path, file->filetype);
+		fprintf(stderr,"ucp currently supports only regular files and directories.\n");
+	    }
 
 	}
 
@@ -327,6 +478,11 @@ int handle_files(file_LL* fileList){
 int complete_xfer(){
     
     // Notify the destination that the transfer is complete
+    if (opt_verbosity > VERB_1)
+	fprintf(stderr, "Signalling end of transfer.\n");
+
+    // Send completition header
+
     header_t header;
     header.type = XFER_COMPLTE;
     header.data_len = 0;
@@ -342,29 +498,48 @@ int main(int argc, char *argv[]){
     int opt;
     file_LL *fileList = NULL;
 
-    while ((opt = getopt (argc, argv, "lhvn")) != -1){
+    static struct option long_options[] =
+	{
+	    {"verbose", no_argument,       &opt_verbosity, VERB_2},
+	    {"quiet",   no_argument,       &opt_verbosity, VERB_0},
+	    {"help",    no_argument, 0, 'h'},
+	    {0, 0, 0, 0}
+	};
+
+    int option_index = 0;
+     
+    // c = getopt_long (argc, argv, "abc:d:f:",
+    // 		     long_options, &option_index);
+
+    while ((opt = getopt_long(argc, argv, "lhv:np", long_options, &option_index)) != -1){
 	switch (opt){
+
+	case 'p':
+	    opt_progress = 1;
+	    break;
 
 	case 'l':
 	    opt_mode = MODE_RCV;
 	    break;
-	    
+ 
 	case 'n':
 	    opt_recurse = 0;
 	    break;
 
 	case 'v':
-	    opt_verbosity = 1;
+	    opt_verbosity = atoi(optarg);
 	    break;
 	    
 	case 'h':
-	    usage();
+	    usage(0);
+	    break;
+
+	case '\0':
 	    break;
 
 	default:
-	    fprintf(stderr, "Unknown command line option.\n");
-	    usage();
-	    exit(1);
+	    fprintf(stderr, "Unknown command line option: [%c].\n", opt);
+	    usage(EXIT_FAILURE);
 
 	}
     }
@@ -394,12 +569,13 @@ int main(int argc, char *argv[]){
 	    handle_files(fileList);
 
 	    complete_xfer();
+
 	} 
 
 	// if No files were passed by user
 	else {
 	    fprintf(stderr, "No files specified. Did you mean to receive? [-l]\n");
-	    usage();
+	    usage(EXIT_FAILURE);
 	}
 
     } 
@@ -430,7 +606,6 @@ int main(int argc, char *argv[]){
 
 
     }
-
 
     return 0;
   

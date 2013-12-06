@@ -26,6 +26,7 @@ and limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <sys/ioctl.h>
 
 #define MAX_PATH_LEN 1024
 
