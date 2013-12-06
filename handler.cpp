@@ -111,7 +111,6 @@ int send_file(file_object_t *file){
 		exit(EXIT_FAILURE);
 	    }
 	    
-	    fprintf(stderr, "\n\nwriting data\n");
 	    write_data(data, rs);
 
 	}
@@ -159,8 +158,6 @@ int receive_files(char*base_path){
 	header_t header, data_header;
 	rs = read_data(&header, sizeof(header_t));
 	
-	fprintf(stderr, "type: %d\n", header.type);
-
 	if (rs){
 
 	    // We are receiving a directory name
@@ -172,6 +169,13 @@ int receive_files(char*base_path){
 		if (opt_verbosity)
 		    fprintf(stderr, "making directory: %s\n", data_path);
 	    
+		int r = mkdir(data_path, mode);
+
+		if ( r && errno != EEXIST){
+		    perror("ERROR: Unable to create directory");
+		    exit(EXIT_FAILURE);
+		}
+
 		// safety reset, data block after this will fault
 		expecting_data = 0;
 
@@ -194,13 +198,21 @@ int receive_files(char*base_path){
 	    // We are receiving a data chunk
 
 	    else if (header.type == XFER_DATA) {
-
-		if (data_path[0] == '\0'){
+		
+		if (!expecting_data){
 		    fprintf(stderr, "ERROR: Out of order data block.\n");
 		    exit(EXIT_FAILURE);
 		}
 
 		int rs, len, total = 0;
+
+		int out = open(data_path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+		
+		if (out < 0) {
+		    perror("ERROR: Unable to open file for writing");
+		    exit(EXIT_FAILURE);
+		}
+		
 		
 		while (total < header.data_len){
 
@@ -212,13 +224,13 @@ int receive_files(char*base_path){
 			exit(EXIT_FAILURE);
 		    }
 
-		    fprintf(stderr, "writing data: %s\n", data_path);
-		    fprintf(stderr, "        data: %s\n", data);
+		    write(out, data, rs);
 
 		    total += rs;
 
 		}
 
+		close(out);
 
 		// another data block is not expected
 		expecting_data = 0;

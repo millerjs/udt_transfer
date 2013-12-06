@@ -24,6 +24,9 @@ and limitations under the License.
 #include <iostream>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+
 #include "files.h"
 
 #define BUFFER_LEN 67108864
