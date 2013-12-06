@@ -26,8 +26,12 @@ int opt_verbosity = VERB_1;
 int opt_recurse = 1;
 int opt_mode = MODE_SEND;
 int opt_progress = 0;
+int opt_regular_files = 1;
+
+// The pid of the pipe process if forked/executed
 int pipe_pid = 0;
 
+// Buffers
 char data[BUFFER_LEN];
 char path_buff[BUFFER_LEN];
 
@@ -46,7 +50,7 @@ void usage(int EXIT_STAT){
 	"\t0: Withhold WARNING messages ",
 	"\t1: Update user on file transfers [DEFAULT]",
 	"\t2: Update user on underlying processes, i.e. directory creation ",
-	"\t3: Unassigned ",
+	"\t3: Print information on optimizations ",
 	"\t4: Unassigned ",
     };
     
@@ -84,7 +88,9 @@ void sig_handler(int signal){
 	exit(EXIT_FAILURE);
 
     }
+
 }
+
 int write_header(header_t header){
     return write(fileno(stdout), &header, sizeof(header_t));
 }
@@ -96,6 +102,7 @@ int write_data(char*data, int len){
 int send_file(file_object_t *file){
 
     if (!file) return -1;
+
 
     if (opt_verbosity > VERB_1)
 	fprintf(stderr, "   > Sending [%s]  %s\n", file->filetype, file->path);
@@ -116,6 +123,7 @@ int send_file(file_object_t *file){
 	write_data(file->path, header.data_len);
 
     }
+
     else {
 
 	// create header to specify that subsequent data is a regular
@@ -137,8 +145,15 @@ int send_file(file_object_t *file){
 	    exit(EXIT_FAILURE);
 	}
 
-	// Get the length of the file in advance
+	int adv = posix_fadvise(fileno(fp), 0, 0, 
+				POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
 
+	if (adv){
+	    if (opt_verbosity > VERB_3)
+		fprintf(stderr, "WARNING: Unable to advise file read\n");
+	}
+
+	// Get the length of the file in advance
 	fseek(fp, 0L, SEEK_END);
 	int file_size = ftell(fp);
 	fseek(fp, 0L, SEEK_SET);
@@ -478,6 +493,33 @@ int handle_files(file_LL* fileList){
 	    send_file(file);
 	} 
 
+	// If the file is a character device or a named pipe, warn user
+	else if (file->mode == S_IFCHR || file->mode == S_IFIFO){
+
+	    if (opt_regular_files){
+
+		if (opt_verbosity > VERB_0)
+		    fprintf(stderr, "WARNING: Skipping %s [%s].  %s.\n",
+			    file->path, file->filetype,
+			    // "To enable sending character devices, remove");
+			    "Sending non-regular files disabled in this version.\n");
+
+	    } else {
+
+		if (opt_verbosity > VERB_0)
+		    fprintf(stderr, "WARNING: Sending %s [%s].  %s %s.\n",
+			    file->path, file->filetype,
+			    "To prevent sending character devices, specify",
+			    "--regular-files");
+		
+		send_file(file);
+
+	    }
+
+	    
+	}
+
+
 	// if it's neither a regular file nor a directory, leave it
 	// for now, maybe send in later version
 	else {
@@ -487,9 +529,9 @@ int handle_files(file_LL* fileList){
 			file->filetype, file->path);
 
 	    if (opt_verbosity > VERB_0){
-		fprintf(stderr,"WARNING: file %s is a %s, ", 
+		fprintf(stderr,"ERROR: file %s is a %s, ", 
 			file->path, file->filetype);
-		fprintf(stderr,"ucp currently supports only regular files and directories.\n");
+		fprintf(stderr,"ucp does not currently support this filetype.\n");
 	    }
 
 	}
@@ -530,7 +572,6 @@ int run_pipe(char* pipe_cmd){
     char* token = strtok(pipe_cmd, " ");
     while (token) {
 	args[arg_idx] = strdup(token);
-	printf("token: %s\n", args[arg_idx]);
 	arg_idx++;
 	token = strtok(NULL, " ");
     }
@@ -593,17 +634,15 @@ int main(int argc, char *argv[]){
 
     static struct option long_options[] =
 	{
-	    {"verbose", no_argument,       &opt_verbosity, VERB_2},
-	    {"quiet",   no_argument,       &opt_verbosity, VERB_0},
+	    {"verbose", no_argument, &opt_verbosity, VERB_2},
+	    {"--regular-files", no_argument, &opt_regular_files, 1},
+	    {"quiet",   no_argument, &opt_verbosity, VERB_0},
 	    {"help",    no_argument, 0, 'h'},
 	    {"pipe",    required_argument, 0, 'u'},
 	    {0, 0, 0, 0}
 	};
 
     int option_index = 0;
-     
-    // c = getopt_long (argc, argv, "abc:d:f:",
-    // 		     long_options, &option_index);
 
     while ((opt = getopt_long(argc, argv, "lhv:npu:", long_options, &option_index)) != -1){
 	switch (opt){
@@ -618,7 +657,6 @@ int main(int argc, char *argv[]){
 
 	case 'u':
 	    strcpy(pipe_cmd, optarg);
-	    fprintf(stderr, "Using pipe command: %s\n", pipe_cmd);
 	    break;
 	    
 	case 'n':
@@ -647,7 +685,6 @@ int main(int argc, char *argv[]){
     // list
 
     if (*pipe_cmd){
-	fprintf(stderr, "I should be piping my output to the pipe command\n");
 	run_pipe(pipe_cmd);
     }
 
@@ -657,7 +694,7 @@ int main(int argc, char *argv[]){
 	if (optind < argc){
 
 	    if (opt_verbosity)
-		fprintf(stderr, "Running as file source\n");
+		fprintf(stderr, "Running with file source mode.\n");
 
 	    // Clarify what we are passing as a file list
 	
@@ -688,8 +725,8 @@ int main(int argc, char *argv[]){
 
     else {
 
-	if (opt_verbosity)
-	    fprintf(stderr, "Running as file destination\n");
+	if (opt_verbosity > VERB_1)
+	    fprintf(stderr, "Running with file destination mode\n");
 
 	// Destination directory was passed
 
@@ -708,9 +745,23 @@ int main(int argc, char *argv[]){
 
 	}
 
-
     }
 
+
+    if (pipe_pid){
+
+	if (opt_verbosity > VERB_1)
+	    fprintf(stderr, "Killing child pipe process... ");
+
+	sleep(END_LATENCY);
+
+	if (kill(pipe_pid, SIGKILL)){
+	    if (opt_verbosity > VERB_1) fprintf(stderr, "[FAILURE]\n");
+	} else {
+	    if (opt_verbosity > VERB_1) fprintf(stderr, "[SUCCESS]\n");
+	}
+    }
+	
     return 0;
   
 }

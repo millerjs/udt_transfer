@@ -32,6 +32,7 @@ and limitations under the License.
 
 #define BUFFER_LEN 67108864
 #define MAX_ARGS 128
+#define END_LATENCY 1
 
 typedef enum{
     XFER_DATA,
