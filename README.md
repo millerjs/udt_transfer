@@ -17,13 +17,15 @@ Options
 -------
 The following options are currently supported by ucp:
 
-    --help 		      print this message
-    --verbose 		  verbose, notify of files being sent. Same as -v2
-    --quiet 		  silence all warnings. Same as -v0
+    --help 		      	print this message
+    --verbose 		  	verbose, notify of files being sent. Same as -v2
+    --quiet 		  	silence all warnings. Same as -v0
+    --pipe "pipe cmd"   ucp will tokenize and execute specified pipe command and pipe stdout to new process
     
-    -p 		          print the transfer progress of each file
-    -l [dest_dir] 	  listen for file transfer and write to dest_dir [default ./]
-    -v level 	      set the level of verbosity
+    -u					same as --pipe
+    -p 		          	print the transfer progress of each file
+    -l [dest_dir] 	  	listen for file transfer and write to dest_dir [default ./]
+    -v level 	      	set the level of verbosity
 
 Levels of Verbosity
 -------------------
