@@ -27,15 +27,19 @@ and limitations under the License.
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <time.h>
+#include <sys/wait.h>
 
 #include "files.h"
 
 #define BUFFER_LEN 67108864
 #define MAX_ARGS 128
-#define END_LATENCY 1
+
+#define END_LATENCY 2
 
 #define RET_FAILURE -1
 #define RET_SUCCESS 0
+#define EXIT_SUCCESS 0
 
 
 typedef enum{
