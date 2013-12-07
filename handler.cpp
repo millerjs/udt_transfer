@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-This file is part of ucp
+	      This file is part of ucp by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,11 +45,11 @@ char udpipe_location[MAX_PATH_LEN];
 int timer = 0;
 long int TOTAL_XFER = 0;
 
-
 // Buffers
 char data[BUFFER_LEN];
 char path_buff[BUFFER_LEN];
 
+// print the usage
 
 void usage(int EXIT_STAT){
 
@@ -78,6 +78,8 @@ void usage(int EXIT_STAT){
     
     exit(EXIT_STAT);
 }
+
+// Helper function on exit to kill remaining processes
 
 int kill_children(int verbosity){
 
@@ -119,7 +121,9 @@ int kill_children(int verbosity){
 
 	    int stat;
 	    waitpid(ssh_kill_pid, &stat, 0);
-	    if (!stat) fprintf(stderr, "success.\n");
+	    if (!stat) 
+		if (opt_verbosity > verbosity)
+		    fprintf(stderr, "success.\n");
 	    
 	}
 
@@ -162,6 +166,8 @@ int kill_children(int verbosity){
 
 }
 
+// Print time and average trasnfer rate
+
 void print_xfer_stats(){
     
     if (opt_verbosity > VERB_1 || opt_progress){
@@ -175,6 +181,8 @@ void print_xfer_stats(){
     
 }
 
+// Wrapper for exit() with call to kill_children()
+
 int clean_exit(int status){
 
     // print_xfer_stats();
@@ -184,6 +192,8 @@ int clean_exit(int status){
 
 }
 
+// Handle SIGINT by exiting cleanly
+
 void sig_handler(int signal){
 
     // We want to make sure that a forked pipe process isn't left
@@ -191,13 +201,13 @@ void sig_handler(int signal){
 
     if (signal == SIGINT){
 
-	fprintf(stderr, "\nSIGINT: Handling signal.\n");
+	fprintf(stderr, "\nERROR: received SIGINT, cleaning up and exiting\n");
 
     }
 
     // Kill chiildren and let user know
     
-    kill_children(VERB_0);
+    kill_children(VERB_1);
 
     // ragequit
 
@@ -205,14 +215,20 @@ void sig_handler(int signal){
 
 }
 
+// write header data to out fd
+
 int write_header(header_t header){
     return write(fileno(stdout), &header, sizeof(header_t));
 }
+
+// write data block to out fd
 
 int write_data(char*data, int len){
     return write(fileno(stdout), data, len);
     TOTAL_XFER += len;
 }
+
+// display the transfer progress of the current file
 
 int print_progress(char* descrip, int read, int total){
 
@@ -240,6 +256,8 @@ int print_progress(char* descrip, int read, int total){
 
 }
 
+// sends a file to out fd by creating an appropriate header and
+// sending any data
 
 int send_file(file_object_t *file){
 
@@ -332,6 +350,8 @@ int send_file(file_object_t *file){
     
 }
 
+// wrapper for read
+
 int read_data(void* b, int len){
 
     int rs, total = 0;
@@ -347,6 +367,7 @@ int read_data(void* b, int len){
 
 }
 
+// step backwards down a given directory path
 
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
     
@@ -363,6 +384,8 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
 		    
     memcpy(parent_dir, path, cursor-path);
 }
+
+// make a new directory, but recurse through dir tree until this is possible
 
 int mkdir_parent(char* path){
 
@@ -421,6 +444,9 @@ int mkdir_parent(char* path){
 
 }
 
+
+// main loop for receiving mode, listens for headers and sorts out
+// stream into files
 
 int receive_files(char*base_path){
 
@@ -607,6 +633,8 @@ int receive_files(char*base_path){
     
 }
 
+// main loop for send mode, takes a linked list of files and streams
+// them
 
 int handle_files(file_LL* fileList){
 
@@ -701,6 +729,8 @@ int handle_files(file_LL* fileList){
 
 }
 
+// send header specifying that the sending stream is complete
+
 int complete_xfer(){
     
     // Notify the destination that the transfer is complete
@@ -717,6 +747,8 @@ int complete_xfer(){
     return RET_SUCCESS;
 
 }
+
+// create the command used to execvp a pipe i.e. udpipe
 
 int generate_pipe_cmd(char*pipe_cmd, int pipe_mode){
     
@@ -752,6 +784,8 @@ int generate_pipe_cmd(char*pipe_cmd, int pipe_mode){
     return RET_SUCCESS;
 
 }
+
+// execute a pipe process i.e. udpipe and redirect ucp output
 
 int run_pipe(char* pipe_cmd){
 
@@ -820,15 +854,12 @@ int run_pipe(char* pipe_cmd){
 	else {
 	    dup2(pipefd[0], 0);
 	}
-
-	// st = 0;
-	// waitpid(-1, &st, 0);
-	// fprintf(stderr, "Status: %d\n", st);
 	
     }
 
-
 }
+
+// run the ssh command that will create a remote ucp process
 
 int run_ssh_command(char *remote_dest){
 
@@ -922,20 +953,6 @@ int run_ssh_command(char *remote_dest){
 
 }
 
-int parse_auto_optins(char*options){
-    
-    char*cursor = options;
-    // char*
-    while (*cursor){
-
-	if (*cursor == ':')
-	
-	cursor++;
-    }
-    
-    
-}
-
 
 int main(int argc, char *argv[]){
     
@@ -975,7 +992,7 @@ int main(int argc, char *argv[]){
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:a:i:u:txlhv:np:d:", 
+    while ((opt = getopt_long(argc, argv, "n:a:i:u:txlhv:np:d:r:c:", 
 			      long_options, &option_index)) != -1){
 	switch (opt){
 
@@ -1024,10 +1041,6 @@ int main(int argc, char *argv[]){
 	    }
 	    strcpy(pipe_cmd, optarg);
 	    break;
-	    
-	// case 'n':
-	//     opt_recurse = 0;
-	//     break;
 	    
 	case 'v':
 	    opt_verbosity = atoi(optarg);
