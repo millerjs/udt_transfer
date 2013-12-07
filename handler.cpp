@@ -79,7 +79,7 @@ void usage(int EXIT_STAT){
     exit(EXIT_STAT);
 }
 
-// Helper function on exit to kill remaining processes
+// Make sure that we have killed any zombie or orphaned children
 
 int kill_children(int verbosity){
 
