@@ -99,6 +99,33 @@ int write_data(char*data, int len){
     return write(fileno(stdout), data, len);
 }
 
+int print_progress(char* descrip, int read, int total){
+
+    // Get the width of the terminal
+
+    struct winsize term;
+    int path_width;
+
+    if (ioctl(fileno(stdout), TIOCGWINSZ, &term)){
+	path_width = 60;
+    } else {
+	int progress_width = 40;
+	path_width = term.ws_col - progress_width;
+    }
+    
+    // Make transfer progress pretty
+
+    char fmt[1024];
+    sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f MB [ %%.2f %%%% ]", path_width);
+    fprintf(stderr, fmt,
+	    descrip,
+	    read/1000000.,
+	    total/1000000., 
+	    read/(float)total*100.);
+
+}
+
+
 int send_file(file_object_t *file){
 
     if (!file) return -1;
@@ -145,14 +172,14 @@ int send_file(file_object_t *file){
 	    exit(EXIT_FAILURE);
 	}
 
-	int adv = posix_fadvise(fileno(fp), 0, 0, 
+	int adv = posix_fadvise64(fileno(fp), 0, 0, 
 				POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
 
-	if (adv){
+	if (adv < 0){
 	    if (opt_verbosity > VERB_3)
-		fprintf(stderr, "WARNING: Unable to advise file read\n");
+		perror("WARNING: Unable to advise file read");
 	}
-
+ 
 	// Get the length of the file in advance
 	fseek(fp, 0L, SEEK_END);
 	int file_size = ftell(fp);
@@ -170,7 +197,7 @@ int send_file(file_object_t *file){
 
 	// buffer and send file
 
-	int rs;
+	int rs, sent = 0;
 	while (rs = fread(data, sizeof(char), BUFFER_LEN, fp)){
 
 	    if (rs < 0){
@@ -179,8 +206,13 @@ int send_file(file_object_t *file){
 	    }
 	    
 	    write_data(data, rs);
+	    sent += rs;
+	    
+	    if (opt_progress)
+		print_progress(file->path, sent, data_header.data_len);
 
 	}
+	if (opt_progress) fprintf(stderr, "\n");
 
     }
     
@@ -201,25 +233,6 @@ int read_data(void* b, int len){
 
 }
 
-int print_progress(char* descrip, int read, int total){
-
-    // Get the width of the terminal
-
-    struct winsize term;
-    ioctl(fileno(stdout), TIOCGWINSZ, &term);
-
-    int progress_width = 40;
-    int path_width = term.ws_col - progress_width;
-    
-    char fmt[1024];
-    sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f MB [ %%.2f %%%% ]", path_width);
-    fprintf(stderr, fmt,
-	    descrip,
-	    read/1000000.,
-	    total/1000000., 
-	    read/(float)total*100.);
-
-}
 
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
     
@@ -364,17 +377,18 @@ int receive_files(char*base_path){
 
 		int rs, len, total = 0;
 
-		int out = open(data_path, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-		
+		int out = open(data_path, O_CREAT, S_IRUSR | S_IWUSR);
+
 		if (out < 0) {
 
 		    // If we can't open the file, try building a
 		    // directory tree to it
 
-		    fprintf(stderr, "WARNING: %s: %s. %s.\n",
-			    "Unable to open file for writing",
-			    "Building directory tree",
-			    data_path);
+		    if (opt_verbosity > VERB_1){
+			perror("WARNING: Unable to open file for writing");
+			fprintf(stderr, "WARNING: Building directory tree: %s.\n", 
+				data_path);
+		    }
 		    
 		    // Try and get a parent directory from file
 
@@ -390,6 +404,17 @@ int receive_files(char*base_path){
 
 		}
 		
+
+		// Attempt to optimize simple sequential read
+
+		int adv = posix_fadvise64(out, 0, 0, 
+					POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
+
+		if (adv < 0){
+		    if (opt_verbosity > VERB_3)
+			perror("WARNING: Unable to advise file write");
+		}
+ 
 		while (total < header.data_len){
 
 		    // Either look to receive a whole buffer of
@@ -635,19 +660,20 @@ int main(int argc, char *argv[]){
     static struct option long_options[] =
 	{
 	    {"verbose", no_argument, &opt_verbosity, VERB_2},
-	    {"--regular-files", no_argument, &opt_regular_files, 1},
+	    {"regular-files", no_argument, &opt_regular_files, 1},
 	    {"quiet",   no_argument, &opt_verbosity, VERB_0},
+	    {"progress", no_argument, 0, 'x'},
 	    {"help",    no_argument, 0, 'h'},
-	    {"pipe",    required_argument, 0, 'u'},
+	    {"pipe",    required_argument, 0, 'p'},
 	    {0, 0, 0, 0}
 	};
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "lhv:npu:", long_options, &option_index)) != -1){
+    while ((opt = getopt_long(argc, argv, "xlhv:np:", long_options, &option_index)) != -1){
 	switch (opt){
 
-	case 'p':
+	case 'x':
 	    opt_progress = 1;
 	    break;
 
@@ -655,7 +681,7 @@ int main(int argc, char *argv[]){
 	    opt_mode = MODE_RCV;
 	    break;
 
-	case 'u':
+	case 'p':
 	    strcpy(pipe_cmd, optarg);
 	    break;
 	    
@@ -693,7 +719,7 @@ int main(int argc, char *argv[]){
 	// Did the user pass any files?
 	if (optind < argc){
 
-	    if (opt_verbosity)
+	    if (opt_verbosity > VERB_1)
 		fprintf(stderr, "Running with file source mode.\n");
 
 	    // Clarify what we are passing as a file list
@@ -716,7 +742,7 @@ int main(int argc, char *argv[]){
 	// if No files were passed by user
 	else {
 	    fprintf(stderr, "No files specified. Did you mean to receive? [-l]\n");
-	    usage(EXIT_FAILURE);
+	    exit(EXIT_FAILURE);
 	}
 
     } 
@@ -732,9 +758,27 @@ int main(int argc, char *argv[]){
 
 	if (optind < argc) {
 
-	    char* base_path = strdup(argv[optind]);
-	    receive_files(base_path);
+	    // Generate a base path for file locations
 
+	    char base_path[MAX_PATH_LEN];
+	    bzero(base_path, MAX_PATH_LEN);
+	    strcat(base_path, argv[optind++]);
+	    strcat(base_path, "/");
+
+	    // Are there any remaining command line args? Warn user
+
+	    if (optind < argc){
+		if (opt_verbosity > VERB_0){
+		    fprintf(stderr, "WARNING: Unused command line args: [");
+		    for (optind; optind < argc-1; optind++)
+			fprintf(stderr, "%s, ", argv[optind]);
+		    fprintf(stderr, "%s]\n", argv[optind]);
+		}
+	    }
+
+	    // Listen to sender for files and data
+	    receive_files(base_path);
+	    
 	}
  
 	// No destination directory was passed, default to current dir
@@ -756,9 +800,9 @@ int main(int argc, char *argv[]){
 	sleep(END_LATENCY);
 
 	if (kill(pipe_pid, SIGKILL)){
-	    if (opt_verbosity > VERB_1) fprintf(stderr, "[FAILURE]\n");
+	    if (opt_verbosity > VERB_2) fprintf(stderr, "FAIURE.\n");
 	} else {
-	    if (opt_verbosity > VERB_1) fprintf(stderr, "[SUCCESS]\n");
+	    if (opt_verbosity > VERB_2) fprintf(stderr, "success.\n");
 	}
     }
 	
