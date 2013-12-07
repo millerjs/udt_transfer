@@ -106,7 +106,7 @@ int kill_children(int verbosity){
 		fprintf(stderr, "Killing remote ucp process... ");
 
 	    char kill_cmd[MAX_PATH_LEN];
-	    sprintf(kill_cmd, "kill -s SIGINT %d 2>/dev/null", remote_pid);
+	    sprintf(kill_cmd, "kill -s SIGINT %d 2> /dev/null", remote_pid);
 	    char *args[] = {"ssh", "-A", pipe_host, kill_cmd, NULL};
 
 	    // Execute the pipe process
@@ -490,8 +490,9 @@ int receive_files(char*base_path){
 		}
 
 		int rs, len, total = 0;
-
-		int out = open(data_path, O_CREAT, S_IRUSR | S_IWUSR);
+		
+		int f_mode = O_CREAT| O_WRONLY;
+		int out = open(data_path, f_mode, 0666);
 
 		if (out < 0) {
 
@@ -517,7 +518,14 @@ int receive_files(char*base_path){
 		    int ret = mkdir_parent(parent_dir);
 
 		}
-		
+
+		if (out < 0) 
+		    out = open(data_path, f_mode, 0666);
+
+		if (out < 0) {
+		    perror("file open");
+		    clean_exit(EXIT_FAILURE);
+		}
 
 		// Attempt to optimize simple sequential read
 
@@ -527,7 +535,7 @@ int receive_files(char*base_path){
 		if (adv < 0){
 		    if (opt_verbosity > VERB_3)
 			perror("WARNING: Unable to advise file write");
-		}
+		}		
  
 		while (total < header.data_len){
 
@@ -542,13 +550,17 @@ int receive_files(char*base_path){
 		    rs = read_data(data, len);
 
 		    if (rs < 0){
-			perror("ERROR: Unable to read file");
+			perror("ERROR: Unable to read stdin");
 			clean_exit(EXIT_FAILURE);
 		    }
 
 		    // Write to file
-		    
-		    write(out, data, rs);
+
+		    if (write(out, data, rs) < 0){
+			perror("ERROR: unable to write to file");
+			// clean_exit(EXIT_FAILURE);
+		    }
+
 		    total += rs;
 
 		    // Update user on progress if opt_progress set to true		    
@@ -557,8 +569,14 @@ int receive_files(char*base_path){
 			print_progress(data_path, total, header.data_len);
 
 		}
-		
+
 		if (opt_progress) fprintf(stderr, "\n");
+
+
+		// Truncate the file in case it already exists and remove extra data
+		
+		ftruncate(out, header.data_len);
+
 
 		close(out);
 
@@ -721,10 +739,10 @@ int generate_pipe_cmd(char*pipe_cmd, int pipe_mode){
 	char *default_args = "";
 
 	if (pipe_mode == MODE_SEND){
-	    sprintf(pipe_cmd, "up %s %s %s -t 15", default_args, pipe_host, pipe_port);
+	    sprintf(pipe_cmd, "up %s %s %s", default_args, pipe_host, pipe_port);
 
 	} else {
-	    sprintf(pipe_cmd, "up %s -l %s -t 15", default_args, pipe_port);
+	    sprintf(pipe_cmd, "up %s -l %s", default_args, pipe_port);
 	}
 
     } else {
@@ -840,7 +858,8 @@ int run_ssh_command(char *remote_dest){
 	    // Generate remote ucp command to RECEIVE DATA
 	    // generate_pipe_cmd(remote_pipe_cmd, MODE_RCV);
 	    
-	    sprintf(remote_pipe_cmd, "%s -l -v4 --udpipe -l %s 2>/dev/null & %s", 
+	    sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2> /dev/null & %s", 
+	    // sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2>/dev/null & %s", 
 		    udpipe_location, remote_dest, "echo $!");
 	    
 	    // Redirect output from ssh process to ssh_fd
@@ -854,11 +873,11 @@ int run_ssh_command(char *remote_dest){
 		fprintf(stderr, "\n\n");
 	    }
 
-	    // dup2(ssh_fd[0], 0);
+	    dup2(ssh_fd[2], 2);
 	    dup2(ssh_fd[1], 1);
 
 	    if (execvp(args[0], args)){
-	    	fprintf(stderr, "ERROR: unable to execupte ssh process\n");
+	    	fprintf(stderr, "ERROR: unable to execute ssh process\n");
 	    	clean_exit(EXIT_FAILURE);
 	    } else {
 	    	fprintf(stderr, "ERROR: premature ssh process exit\n");
@@ -1138,7 +1157,7 @@ int main(int argc, char *argv[]){
 
     sleep(END_LATENCY);
 
-    clean_exit(EXIT_SUCCESS);
+    kill_children(VERB_3);
     
     return RET_SUCCESS;
   
