@@ -34,6 +34,10 @@ and limitations under the License.
 #define MAX_ARGS 128
 #define END_LATENCY 1
 
+#define RET_FAILURE -1
+#define RET_SUCCESS 0
+
+
 typedef enum{
     XFER_DATA,
     XFER_FILENAME,

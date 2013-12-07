@@ -28,11 +28,15 @@ int opt_mode = MODE_SEND;
 int opt_progress = 0;
 int opt_regular_files = 1;
 int opt_default_udpipe = 0;
+int opt_auto = 0;
 
-// The pid of the pipe process if forked/executed
+// The global variables for remote connection
 int pipe_pid = 0;
+int ssh_pid = 0;
+int remote_pid = 0;
 char pipe_port[MAX_PATH_LEN];
 char pipe_host[MAX_PATH_LEN];
+
 
 // Buffers
 char data[BUFFER_LEN];
@@ -66,6 +70,48 @@ void usage(int EXIT_STAT){
     exit(EXIT_STAT);
 }
 
+int kill_children(int verbosity){
+
+    // Caught the SIGINT, now kill child process
+
+    if (pipe_pid){
+
+	if (opt_verbosity > verbosity) fprintf(stderr, "Killing child pipe process... ");
+
+	if (kill(pipe_pid, SIGKILL)){
+	    if (opt_verbosity > verbosity) fprintf(stderr, "FAILURE.\n");
+	} else {
+	    if (opt_verbosity > verbosity) fprintf(stderr, "success.\n");
+	}
+
+    }
+
+    // Clean up the ssh process
+
+    if (ssh_pid){
+
+	if (opt_verbosity > verbosity) fprintf(stderr, "Killing child ssh process... ");
+
+	
+
+	// if (kill(ssh_pid, SIGKILL)){
+	//     if (opt_verbosity > verbosity) fprintf(stderr, "failure.\n");
+	// } else {
+	//     if (opt_verbosity > verbosity) fprintf(stderr, "success.\n");
+	// }
+
+    }
+    return RET_SUCCESS;
+
+}
+
+int clean_exit(int status){
+    
+    kill_children(VERB_2);
+    exit(status);
+
+}
+
 void sig_handler(int signal){
 
     // We want to make sure that a forked pipe process isn't left
@@ -73,24 +119,17 @@ void sig_handler(int signal){
 
     if (signal == SIGINT){
 
-	fprintf(stderr, "\nSIGINT: ucp killed by SIGINT\n");
-
-	// Caught the SIGINT, now kill child process
-
-	if (pipe_pid){
-	    fprintf(stderr, "Killing child pipe process... ");
-	    if (kill(pipe_pid, SIGKILL)){
-		fprintf(stderr, "[FAILURE]\n");
-	    } else {
-		fprintf(stderr, "[SUCCESS]\n");
-	    }
-	}
-	
-	// ragequit
-
-	exit(EXIT_FAILURE);
+	fprintf(stderr, "\nSIGINT: Handling SIGINT!\n");
 
     }
+
+    // Kill chiildren and let user know
+    
+    kill_children(VERB_0);
+
+    // ragequit
+
+    clean_exit(EXIT_FAILURE);
 
 }
 
@@ -133,7 +172,6 @@ int send_file(file_object_t *file){
 
     if (!file) return -1;
 
-
     if (opt_verbosity > VERB_1)
 	fprintf(stderr, "   > Sending [%s]  %s\n", file->filetype, file->path);
 
@@ -172,7 +210,7 @@ int send_file(file_object_t *file){
 	FILE *fp = fopen(file->path, "r");
 	if (!fp){
 	    perror("ERROR: unable to open file");
-	    exit(EXIT_FAILURE);
+	    clean_exit(EXIT_FAILURE);
 	}
 
 	int adv = posix_fadvise64(fileno(fp), 0, 0, 
@@ -205,7 +243,7 @@ int send_file(file_object_t *file){
 
 	    if (rs < 0){
 		perror("ERROR: error reading from file");
-		exit(EXIT_FAILURE);
+		clean_exit(EXIT_FAILURE);
 	    }
 	    
 	    write_data(data, rs);
@@ -247,7 +285,7 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
 		    
     if (cursor <= path){
 	fprintf(stderr, "ERROR: Unable to recognize parent directory.\n");
-	exit(EXIT_FAILURE);
+	clean_exit(EXIT_FAILURE);
     }
 		    
     memcpy(parent_dir, path, cursor-path);
@@ -294,7 +332,7 @@ int mkdir_parent(char* path){
 	else {
 	    fprintf(stderr, "ERROR: Unable to create directory [%s]: %s\n", 
 		    path, strerror(err));
-	    exit(EXIT_FAILURE);
+	    clean_exit(EXIT_FAILURE);
 
 	}
 
@@ -375,7 +413,7 @@ int receive_files(char*base_path){
 		
 		if (!expecting_data){
 		    fprintf(stderr, "ERROR: Out of order data block.\n");
-		    exit(EXIT_FAILURE);
+		    clean_exit(EXIT_FAILURE);
 		}
 
 		int rs, len, total = 0;
@@ -432,7 +470,7 @@ int receive_files(char*base_path){
 
 		    if (rs < 0){
 			perror("ERROR: Unable to read file");
-			exit(EXIT_FAILURE);
+			clean_exit(EXIT_FAILURE);
 		    }
 
 		    // Write to file
@@ -461,13 +499,13 @@ int receive_files(char*base_path){
 	    else if (header.type == XFER_COMPLTE){
 		if (opt_verbosity > VERB_1)
 		    fprintf(stderr, "Receive completed.\n");
-		return 0;
+		return RET_SUCCESS;
 	    }
 
 	    // Catch corrupted headers
 	    else {
 		fprintf(stderr, "ERROR: Corrupt header.\n");
-		exit(EXIT_FAILURE);
+		clean_exit(EXIT_FAILURE);
 	    }
 
 
@@ -568,7 +606,7 @@ int handle_files(file_LL* fileList){
 
     }
 
-    return 0;
+    return RET_SUCCESS;
 
 }
 
@@ -585,12 +623,57 @@ int complete_xfer(){
     header.data_len = 0;
     write_header(header);
     
-    return 0;
+    return RET_SUCCESS;
+
+}
+
+int generate_pipe_cmd(char*pipe_cmd, int pipe_mode){
+    
+    if (*pipe_cmd){
+
+	// Run user specified pipe process
+
+	if (opt_verbosity > VERB_1)
+	    fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
+
+    } else if (opt_default_udpipe){
+
+	// Make sure the user supplied a host ip 
+
+	if (!*pipe_host){
+	    fprintf(stderr, "Please specify ip: [-i host]\n");
+	    clean_exit(EXIT_FAILURE);
+	}
+
+	// Assume udpipe binary is in PATH and run
+
+	char *default_args = "";
+
+	if (pipe_mode == MODE_SEND){
+	    sprintf(pipe_cmd, "up %s %s %s", default_args, pipe_host, pipe_port);
+
+	} else {
+	    sprintf(pipe_cmd, "up %s -l %s", default_args, pipe_port);
+	}
+
+    } else {
+	return RET_FAILURE;
+    }
+
+    return RET_SUCCESS;
 
 }
 
 int run_pipe(char* pipe_cmd){
-    
+
+    // Create/verfiy the command that will be used to execute the pipe
+
+    if (generate_pipe_cmd(pipe_cmd, opt_mode))
+	return RET_FAILURE;
+
+    if (opt_verbosity > VERB_1)
+	fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
+
     char *args[MAX_ARGS];
     bzero(args, MAX_ARGS);
     
@@ -626,7 +709,7 @@ int run_pipe(char* pipe_cmd){
 	// Execute the pipe process
 	if (execvp(args[0], args)){
 	    fprintf(stderr, "ERROR: unable to execupte pipe process\n");
-	    exit(EXIT_FAILURE);
+	    clean_exit(EXIT_FAILURE);
 	}
     }
 
@@ -649,21 +732,108 @@ int run_pipe(char* pipe_cmd){
 
 }
 
+int run_ssh_command(char *remote_dest){
+
+    if (!remote_dest) 
+	return RET_FAILURE;
+    
+    if (opt_verbosity > VERB_1)
+	fprintf(stderr, "Attempting to run remote command to %s:%s\n", 
+		pipe_host, pipe_port);
+
+
+    int ssh_fd[2];
+    // Create pipe and fork
+    pipe(ssh_fd);
+
+    ssh_pid = fork();
+
+    // CHILD
+    if (ssh_pid == 0) {
+
+	char remote_pipe_cmd[MAX_PATH_LEN];	
+	bzero(remote_pipe_cmd, MAX_PATH_LEN);
+
+	if (opt_mode == MODE_SEND){
+
+	    // Generate remote ucp command to RECEIVE DATA
+	    // generate_pipe_cmd(remote_pipe_cmd, MODE_RCV);
+	    
+	    sprintf(remote_pipe_cmd, "ucp/ucp -l --udpipe -l %s > /dev/null& %s", 
+		    remote_dest, "echo $!");
+
+	    // Redirect output from ssh process to ssh_fd
+
+	    char *args[] = {"ssh", "-A", pipe_host, remote_pipe_cmd, NULL};
+
+	    if (opt_verbosity > VERB_1){
+		fprintf(stderr, "ssh command: ");
+		for (int i = 0; args[i]; i++)
+		    fprintf(stderr, "\"%s\" ", args[i]);
+		fprintf(stderr, "\n\n");
+	    }
+
+	    dup2(ssh_fd[0], 0);
+	    dup2(ssh_fd[1], 1);
+
+	    if (execvp(args[0], args)){
+	    	fprintf(stderr, "ERROR: unable to execupte ssh process\n");
+	    	clean_exit(EXIT_FAILURE);
+	    } else {
+	    	fprintf(stderr, "ERROR: premature ssh process exit\n");
+	    	clean_exit(EXIT_FAILURE);
+	    }
+
+	} else if (opt_mode == MODE_RCV){
+	    
+	    // TODO
+
+	    fprintf(stderr, "ERROR: Remote -> Local transfers not currently supported\n");
+	    clean_exit(EXIT_FAILURE);
+
+	}
+
+    }
+
+    // PARENT
+    else {
+	
+	char ssh_pid_str[MAX_PATH_LEN];
+	if (read(ssh_fd[0], ssh_pid_str, MAX_PATH_LEN) < 0){
+	    fprintf(stderr, "WARNING: Unable to read pid from remote process\n");
+	}
+
+	remote_pid = atoi(ssh_pid_str);
+	fprintf(stderr, "THIS IS THE PID: %s [%d]\n", ssh_pid_str, remote_pid);
+	
+	// Do your thing, ucp, moving on.
+	
+    }
+
+}
+
+
+
 int main(int argc, char *argv[]){
     
     if (signal(SIGINT, sig_handler) == SIG_ERR){
 	fprintf(stderr, "ERROR: unable to set SIGINT handler\n");
     }
 
+    // Set defaults
+
     int opt;
     file_LL *fileList = NULL;
     char pipe_cmd[MAX_PATH_LEN];
+    char * remote_dest = NULL;
+
     bzero(pipe_cmd, MAX_PATH_LEN);
     bzero(pipe_host, MAX_PATH_LEN);
     bzero(pipe_port, MAX_PATH_LEN);
 
-    sprintf(pipe_host, "127.0.0.1");
     sprintf(pipe_port, "9000");
+
+    // Read in options
 
     static struct option long_options[] =
 	{
@@ -672,16 +842,22 @@ int main(int argc, char *argv[]){
 	    {"quiet",   no_argument, &opt_verbosity, VERB_0},
 	    {"progress", no_argument, 0, 'x'},
 	    {"help",    no_argument, 0, 'h'},
-	    {"udpipe",    no_argument, 0, 'u'},
+	    {"udpipe",    required_argument, 0, 'u'},
 	    {"pipe",    required_argument, 0, 'c'},
+	    {"auto",    required_argument, 0, 'a'},
 	    {0, 0, 0, 0}
 	};
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "i:u:txlhv:np:", 
+    while ((opt = getopt_long(argc, argv, "a:i:u:txlhv:np:", 
 			      long_options, &option_index)) != -1){
 	switch (opt){
+
+	case 'a':
+	    opt_auto = 1;
+	    remote_dest = strdup(optarg);
+	    break;
 
 	case 'x':
 	    opt_progress = 1;
@@ -702,15 +878,16 @@ int main(int argc, char *argv[]){
 	case 'u':
 	    if (*pipe_cmd){
 		fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
-		exit(EXIT_FAILURE);
+		clean_exit(EXIT_FAILURE);
 	    }
+	    sprintf(pipe_host, "%s", optarg);
 	    opt_default_udpipe = 1;
 	    break;
 		
 	case 'c':
 	    if (opt_default_udpipe){
 		fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
-		exit(EXIT_FAILURE);
+		clean_exit(EXIT_FAILURE);
 	    }
 	    strcpy(pipe_cmd, optarg);
 	    break;
@@ -737,27 +914,15 @@ int main(int argc, char *argv[]){
 	}
     }
     
-    // If in sender mode, test the files for typing, and build a file
-    // list
+    if (opt_auto){
+	run_ssh_command(remote_dest);
+    }
+
+    // If in sender mode, test the files for typing, and build a file list
     
     if (opt_mode == MODE_SEND){
 
-	if (*pipe_cmd){
-
-	    // Run user specified pipe process
-	    run_pipe(pipe_cmd);
-
-	} else if (opt_default_udpipe){
-
-	    // Assume udpipe binary is in PATH and run
-	    sprintf(pipe_cmd, "up %s %s", pipe_host, pipe_port);
-
-	    if (opt_verbosity > VERB_1)
-		fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
-
-	    run_pipe(pipe_cmd);
-
-	}
+	run_pipe(pipe_cmd);
 
 	
 	// Did the user pass any files?
@@ -786,40 +951,22 @@ int main(int argc, char *argv[]){
 	// if No files were passed by user
 	else {
 	    fprintf(stderr, "No files specified. Did you mean to receive? [-l]\n");
-	    exit(EXIT_FAILURE);
+	    clean_exit(EXIT_FAILURE);
 	}
 	
     } 
     
     // Otherwise, switch to receiving mode
     
-    else {
-	
-	if (*pipe_cmd){
-
-	    // Run user specified pipe process
-
-	    if (opt_verbosity > VERB_1)
-		fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
-
-	    run_pipe(pipe_cmd);
-
-	} else if (opt_default_udpipe){
-
-	    // Assume udpipe binary is in PATH and run
-
-	    sprintf(pipe_cmd, "up -l %s", pipe_port);
-
-	    if (opt_verbosity > VERB_1)
-		fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
-
-	    run_pipe(pipe_cmd);
-
-	}
+    else if (opt_mode == MODE_RCV) {
 
 	if (opt_verbosity > VERB_1)
 	    fprintf(stderr, "Running with file destination mode\n");
 	
+	// Check to see if user specified a pipe, if so, run it
+
+	run_pipe(pipe_cmd);
+
 	// Destination directory was passed
 	
 	if (optind < argc) {
@@ -851,27 +998,14 @@ int main(int argc, char *argv[]){
 	
 	else {
 	    
-	    receive_files((char*)"");
+	    receive_files("");
 	    
 	}
 	
     }
 
-
-    if (pipe_pid){
-
-	if (opt_verbosity > VERB_1)
-	    fprintf(stderr, "Killing child pipe process... ");
-
-	sleep(END_LATENCY);
-
-	if (kill(pipe_pid, SIGKILL)){
-	    if (opt_verbosity > VERB_2) fprintf(stderr, "FAIURE.\n");
-	} else {
-	    if (opt_verbosity > VERB_2) fprintf(stderr, "success.\n");
-	}
-    }
-	
-    return 0;
+    kill_children(VERB_2);
+    
+    return RET_SUCCESS;
   
 }
