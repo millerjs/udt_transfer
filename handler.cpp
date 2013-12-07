@@ -15,6 +15,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
+// #define _LARGE_FILES
+// #define _FILE_OFFSET_BITS  64
 
 #include "handler.h"
 #include "timer.h"
@@ -43,7 +45,7 @@ char udpipe_location[MAX_PATH_LEN];
 
 // Statistics globals
 int timer = 0;
-long int TOTAL_XFER = 0;
+off_t TOTAL_XFER = 0;
 
 // Buffers
 char data[BUFFER_LEN];
@@ -175,8 +177,11 @@ void print_xfer_stats(){
 	double elapsed = timer_elapsed(timer);
 
 	char fmt[1024];
+
 	fprintf(stderr, "\t\t\tSTAT: %.2f GB transfered in %.2f s [ %.2f Gb/s ] \n", 
-		TOTAL_XFER/1.e9, elapsed, TOTAL_XFER/elapsed/1e9*8.0);
+		TOTAL_XFER/(double)SIZE_GB,
+		elapsed, 
+		TOTAL_XFER/elapsed/(double)SIZE_GB*SIZE_B);
     }
     
 }
@@ -185,7 +190,7 @@ void print_xfer_stats(){
 
 int clean_exit(int status){
 
-    // print_xfer_stats();
+    print_xfer_stats();
 
     kill_children(VERB_2);
     exit(status);
@@ -219,41 +224,87 @@ void sig_handler(int signal){
 
 int write_header(header_t header){
     return write(fileno(stdout), &header, sizeof(header_t));
+    return write(fileno(stdout), &header, SIZEOF_OFF_T);
 }
 
 // write data block to out fd
 
-int write_data(char*data, int len){
-    return write(fileno(stdout), data, len);
+off_t write_data(header_t header, char*data, off_t len){
+    write_header(header);
     TOTAL_XFER += len;
+    return write(fileno(stdout), data, len);
+}
+
+off_t get_scale(off_t size, char*label){
+    
+     if (size < SIZE_KB){
+	sprintf(label, "B");
+	return SIZE_B;
+    } else if (size < SIZE_MB){
+	sprintf(label, "KB");
+	return SIZE_KB;
+    } else if (size < SIZE_GB){
+	sprintf(label, "MB");
+	return SIZE_MB;
+    } else if (size < SIZE_TB){
+	sprintf(label, "GB");
+	return SIZE_GB;
+    } else {
+	sprintf(label, "TB");
+	return SIZE_TB;
+    } 
+
+    label = "-";
+    return 1;
+
 }
 
 // display the transfer progress of the current file
 
-int print_progress(char* descrip, int read, int total){
+int print_progress(char* descrip, off_t read, off_t total){
+
+    char label[8];
+    char fmt[1024];
 
     // Get the width of the terminal
-
     struct winsize term;
     int path_width;
 
     if (ioctl(fileno(stdout), TIOCGWINSZ, &term)){
-	path_width = 60;
+	path_width = 65;
     } else {
-	int progress_width = 40;
+	int progress_width = 35;
 	path_width = term.ws_col - progress_width;
     }
     
-    // Make transfer progress pretty
+    // Scale the amount read and generate label 
+    off_t scale = get_scale(total, label);
 
-    char fmt[1024];
-    sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f MB [ %%.2f %%%% ]", path_width);
+    sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
+
     fprintf(stderr, fmt,
-	    descrip,
-	    read/1000000.,
-	    total/1000000., 
-	    read/(float)total*100.);
+    	    descrip,
+    	    read/(double)scale,
+    	    total/(double)scale,
+    	    label,
+    	    read/(double)total*100);
+}
 
+
+off_t fsize(int fd) {
+
+    off_t size;
+    size = lseek64(fd, 0L, SEEK_END);
+    lseek64(fd, 0L, SEEK_SET);
+
+    return size;
+}
+
+header_t nheader(xfer_t type, off_t size){
+    header_t header;
+    header.type = type;
+    header.data_len = size;
+    return header;
 }
 
 // sends a file to out fd by creating an appropriate header and
@@ -271,80 +322,76 @@ int send_file(file_object_t *file){
     if (file->mode == S_IFDIR){
 
 	// create a header to specify that the subsequent data is a
-	// directory name
-
-	header.type = XFER_DIRNAME;
-	header.data_len = strlen(file->path)+1;
-
-	// send header and directory name
-
-	write_header(header);
-	write_data(file->path, header.data_len);
+	// directory name and send
+	header = nheader(XFER_DIRNAME, strlen(file->path)+1);
+	write_data(header, file->path, header.data_len);
 
     }
 
     else {
 
+	int fd;
+	off_t f_size;
+	int o_mode = O_LARGEFILE | O_RDONLY;
+
 	// create header to specify that subsequent data is a regular
-	// filename
+	// filename and send
 
-	header.type = XFER_FILENAME;
-	header.data_len = strlen(file->path)+1;
+	header = nheader(XFER_FILENAME, strlen(file->path)+1);
+	write_data(header, file->path, header.data_len);
 
-	// send header and file path
+	// open file to send data blocks
 
-	write_header(header);
-	write_data(file->path, header.data_len);	
-	
-	// open file to cat data
-
-	FILE *fp = fopen(file->path, "r");
-	if (!fp){
+	if (!( fd = open(file->path, o_mode))){
 	    perror("ERROR: unable to open file");
 	    clean_exit(EXIT_FAILURE);
 	}
 
-	int adv = posix_fadvise64(fileno(fp), 0, 0, 
-				POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
+	// Attempt to advise system of our intentions
 
-	if (adv < 0){
+	if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE) < 0){
 	    if (opt_verbosity > VERB_3)
 		perror("WARNING: Unable to advise file read");
 	}
  
 	// Get the length of the file in advance
-	fseek(fp, 0L, SEEK_END);
-	int file_size = ftell(fp);
-	fseek(fp, 0L, SEEK_SET);
-
-	// create header to specify that we are also sending file data
-
-	header_t data_header;
-	data_header.type = XFER_DATA;
-	data_header.data_len = file_size;
-
-	// send data header
-
-	write_header(data_header);
+	if ((f_size = fsize(fd)) < 0){
+	    perror("ERROR: unable to determine size of file");
+	    clean_exit(EXIT_FAILURE); 
+	}
 
 	// buffer and send file
-
-	int rs, sent = 0;
-	while (rs = fread(data, sizeof(char), BUFFER_LEN, fp)){
+	
+	off_t rs;
+	off_t sent = 0;
+	while (rs = read(fd, data, BUFFER_LEN)){
+	    
+	    // Check for file read error
 
 	    if (rs < 0){
 		perror("ERROR: error reading from file");
 		clean_exit(EXIT_FAILURE);
 	    }
-	    
-	    write_data(data, rs);
-	    sent += rs;
+
+	    // create header to specify that we are also sending file data
+
+	    header = nheader(XFER_DATA, f_size);
+	    sent += write_data(header, data, rs);
+
+	    // Print progress
 	    
 	    if (opt_progress)
-		print_progress(file->path, sent, data_header.data_len);
+		print_progress(file->path, sent, header.data_len);
 
 	}
+
+	// Carriage return for  progress printing
+
 	if (opt_progress) fprintf(stderr, "\n");
+
+	// Done with fd
+
+	close(fd);
 
     }
     
@@ -352,9 +399,9 @@ int send_file(file_object_t *file){
 
 // wrapper for read
 
-int read_data(void* b, int len){
+off_t read_data(void* b, int len){
 
-    int rs, total = 0;
+    off_t rs, total = 0;
     char* buffer = (char*)b;
     
     while (total < len){
@@ -365,6 +412,11 @@ int read_data(void* b, int len){
 
     return total;
 
+}
+
+int read_header(header_t *header){
+    // return read_data(header, sizeof(header));
+    return read_data(header, SIZEOF_OFF_T);
 }
 
 // step backwards down a given directory path
@@ -450,12 +502,14 @@ int mkdir_parent(char* path){
 
 int receive_files(char*base_path){
 
+    int fout;
+    off_t rs, ds;
     int complete = 0;
-    int rs, ds;
-    
-    char data_path[MAX_PATH_LEN];
     int expecting_data = 0;
+    int read_new_header = 1;
+    char data_path[MAX_PATH_LEN];
 
+    header_t header;
 
     // generate a base path for all destination files    
 
@@ -466,9 +520,12 @@ int receive_files(char*base_path){
     // Read in headers and data until signalled completion
 
     while (!complete){
-	
-	header_t header;
-	rs = read_data(&header, sizeof(header_t));
+
+	if (read_new_header){
+	    fprintf(stderr, "Reading header\n");
+	    rs = read_header(&header);
+	    fprintf(stderr, "Read header %d\n", header.type);
+	}
 
 	if (rs){
 
@@ -476,8 +533,12 @@ int receive_files(char*base_path){
 
 	    if (header.type == XFER_DIRNAME){
 
-		read_data(data_path+bl, header.data_len);
+		fprintf(stderr, "Received directory header\n");
 		
+		// Read directory name from stream
+
+		read_data(data_path+bl, header.data_len);
+
 		if (opt_verbosity > VERB_1)
 		    fprintf(stderr, "making directory: %s\n", data_path);
 	    
@@ -486,14 +547,23 @@ int receive_files(char*base_path){
 
 		int r = mkdir_parent(data_path);
 
-		// safety reset, data block after this will fault
+		// safety reset, data block after this will fault, expect a header
+
 		expecting_data = 0;
+		read_new_header = 1;
 
 	    } 
 
 	    // We are receiving a file name
 
 	    else if (header.type == XFER_FILENAME) {
+
+		fprintf(stderr, "Received file header\n");
+		
+		int f_mode = O_CREAT| O_WRONLY;
+		int f_perm = 0666;
+
+		// Read filename from stream
 		
 		read_data(data_path+bl, header.data_len);
 
@@ -501,26 +571,9 @@ int receive_files(char*base_path){
 		    fprintf(stderr, "Initializing file receive: %s\n", 
 			    data_path+bl);
 
-		// the block following is expected to be data
-		expecting_data = 1;
+		fout = open(data_path, f_mode, f_perm);
 
-	    }
-
-	    // We are receiving a data chunk
-
-	    else if (header.type == XFER_DATA) {
-		
-		if (!expecting_data){
-		    fprintf(stderr, "ERROR: Out of order data block.\n");
-		    clean_exit(EXIT_FAILURE);
-		}
-
-		int rs, len, total = 0;
-		
-		int f_mode = O_CREAT| O_WRONLY;
-		int out = open(data_path, f_mode, 0666);
-
-		if (out < 0) {
+		if (fout < 0) {
 
 		    // If we can't open the file, try building a
 		    // directory tree to it
@@ -541,29 +594,46 @@ int receive_files(char*base_path){
 		    
 		    // Build parent directory recursively
 
-		    int ret = mkdir_parent(parent_dir);
+		    if (mkdir_parent(parent_dir) < 0)
+			perror("ERROR: recursive directory build failed");
 
 		}
 
-		if (out < 0) 
-		    out = open(data_path, f_mode, 0666);
+		// If we had to build the directory path then retry file open
 
-		if (out < 0) {
+		if (fout < 0) 
+		    fout = open(data_path, f_mode, 0666);
+
+		if (fout < 0) {
 		    perror("file open");
 		    clean_exit(EXIT_FAILURE);
 		}
 
-		// Attempt to optimize simple sequential read
+		// Attempt to optimize simple sequential write
 
-		int adv = posix_fadvise64(out, 0, 0, 
-					POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
-
-		if (adv < 0){
+		if (posix_fadvise64(fout, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE)){
 		    if (opt_verbosity > VERB_3)
 			perror("WARNING: Unable to advise file write");
 		}		
- 
-		while (total < header.data_len){
+
+		// the block following is expected to be data
+
+		expecting_data = 1;
+
+	    }
+
+	    // We are receiving a data chunk
+
+	    else if (header.type == XFER_DATA) {
+
+		off_t rs, len, total = 0;
+
+		if (!expecting_data){
+		    fprintf(stderr, "ERROR: Out of order data block.\n");
+		    clean_exit(EXIT_FAILURE);
+		}
+
+		while (header.type == XFER_DATA){
 
 		    // Either look to receive a whole buffer of
 		    // however much remains in the data block
@@ -573,21 +643,22 @@ int receive_files(char*base_path){
 
 		    // read data buffer from stdin
 
-		    rs = read_data(data, len);
-
-		    if (rs < 0){
+		    if (read_data(data, len) < 0){
 			perror("ERROR: Unable to read stdin");
 			clean_exit(EXIT_FAILURE);
 		    }
 
 		    // Write to file
 
-		    if (write(out, data, rs) < 0){
+		    if (write(fout, data, rs) < 0){
 			perror("ERROR: unable to write to file");
-			// clean_exit(EXIT_FAILURE);
+			clean_exit(EXIT_FAILURE);
 		    }
 
 		    total += rs;
+
+		    read_header(&header);
+		    fprintf(stderr, "\nIn data read: %d header\n", header.type);
 
 		    // Update user on progress if opt_progress set to true		    
 
@@ -596,18 +667,19 @@ int receive_files(char*base_path){
 
 		}
 
+		// Formatting
 		if (opt_progress) fprintf(stderr, "\n");
 
+		// On the next loop, use the header that was just read in
+
+		read_new_header = 0;
+		expecting_data = 0;
 
 		// Truncate the file in case it already exists and remove extra data
 		
-		ftruncate(out, header.data_len);
+		ftruncate64(fout, header.data_len);
 
-
-		close(out);
-
-		// another data block is not expected
-		expecting_data = 0;
+		close(fout);
 
 	    }
 
@@ -703,7 +775,6 @@ int handle_files(file_LL* fileList){
 
 	    
 	}
-
 
 	// if it's neither a regular file nor a directory, leave it
 	// for now, maybe send in later version
@@ -889,7 +960,7 @@ int run_ssh_command(char *remote_dest){
 	    // Generate remote ucp command to RECEIVE DATA
 	    // generate_pipe_cmd(remote_pipe_cmd, MODE_RCV);
 	    
-	    sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2> /dev/null & %s", 
+	    sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2> ~/ucp.log & %s", 
 	    // sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2>/dev/null & %s", 
 		    udpipe_location, remote_dest, "echo $!");
 	    

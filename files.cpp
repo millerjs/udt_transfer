@@ -16,6 +16,8 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
+#define _FILE_OFFSET_BITS 64
+
 #include "files.h"
 
 int print_file_LL(file_LL *list){

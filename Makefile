@@ -2,8 +2,8 @@ C++ = g++
 
 DIR = $(shell pwd)
 
-CCFLAGS = -Wno-write-strings
-LDFLAGS = -lrt
+CCFLAGS = -Wno-write-strings -g
+LDFLAGS = -lrt -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE 
 
 APP = ucp
 APPOUT = ucp

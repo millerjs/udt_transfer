@@ -16,6 +16,9 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
+/* #define _LARGE_FILES */
+#define _FILE_OFFSET_BITS  64
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -41,6 +44,19 @@ and limitations under the License.
 #define RET_SUCCESS 0
 #define EXIT_SUCCESS 0
 
+#define SIZE_B  8LL
+#define SIZE_KB 1024LL
+#define SIZE_MB 1048576LL
+#define SIZE_GB 1073741824LL
+#define SIZE_TB 1099511627776LL
+
+#define LABEL_B  "B"
+#define LABEL_KB "KB"
+#define LABEL_MB "MB"
+#define LABEL_GB "GB"
+#define LABEL_TB "TB"
+
+#define SIZEOF_OFF_T 16
 
 typedef enum{
     XFER_DATA,
@@ -48,7 +64,6 @@ typedef enum{
     XFER_DIRNAME,
     XFER_COMPLTE
 } xfer_t;
-
 
 /* 
 Levels of Verbosity:
@@ -75,7 +90,7 @@ typedef enum{
 
 
 typedef struct header{
-    int data_len;
+    off_t data_len;
     xfer_t type;
 } header_t;
 
