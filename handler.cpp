@@ -27,9 +27,12 @@ int opt_recurse = 1;
 int opt_mode = MODE_SEND;
 int opt_progress = 0;
 int opt_regular_files = 1;
+int opt_default_udpipe = 0;
 
 // The pid of the pipe process if forked/executed
 int pipe_pid = 0;
+char pipe_port[MAX_PATH_LEN];
+char pipe_host[MAX_PATH_LEN];
 
 // Buffers
 char data[BUFFER_LEN];
@@ -656,6 +659,11 @@ int main(int argc, char *argv[]){
     file_LL *fileList = NULL;
     char pipe_cmd[MAX_PATH_LEN];
     bzero(pipe_cmd, MAX_PATH_LEN);
+    bzero(pipe_host, MAX_PATH_LEN);
+    bzero(pipe_port, MAX_PATH_LEN);
+
+    sprintf(pipe_host, "127.0.0.1");
+    sprintf(pipe_port, "9000");
 
     static struct option long_options[] =
 	{
@@ -664,13 +672,15 @@ int main(int argc, char *argv[]){
 	    {"quiet",   no_argument, &opt_verbosity, VERB_0},
 	    {"progress", no_argument, 0, 'x'},
 	    {"help",    no_argument, 0, 'h'},
-	    {"pipe",    required_argument, 0, 'p'},
+	    {"udpipe",    no_argument, 0, 'u'},
+	    {"pipe",    required_argument, 0, 'c'},
 	    {0, 0, 0, 0}
 	};
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "xlhv:np:", long_options, &option_index)) != -1){
+    while ((opt = getopt_long(argc, argv, "i:u:txlhv:np:", 
+			      long_options, &option_index)) != -1){
 	switch (opt){
 
 	case 'x':
@@ -682,13 +692,33 @@ int main(int argc, char *argv[]){
 	    break;
 
 	case 'p':
+	    sprintf(pipe_port, "%s", optarg);
+	    break;
+
+	case 'i':
+	    sprintf(pipe_host, "%s", optarg);
+	    break;
+
+	case 'u':
+	    if (*pipe_cmd){
+		fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
+		exit(EXIT_FAILURE);
+	    }
+	    opt_default_udpipe = 1;
+	    break;
+		
+	case 'c':
+	    if (opt_default_udpipe){
+		fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
+		exit(EXIT_FAILURE);
+	    }
 	    strcpy(pipe_cmd, optarg);
 	    break;
 	    
 	case 'n':
 	    opt_recurse = 0;
 	    break;
-
+	    
 	case 'v':
 	    opt_verbosity = atoi(optarg);
 	    break;
@@ -696,77 +726,113 @@ int main(int argc, char *argv[]){
 	case 'h':
 	    usage(0);
 	    break;
-
+	    
 	case '\0':
 	    break;
-
+	    
 	default:
 	    fprintf(stderr, "Unknown command line option: [%c].\n", opt);
 	    usage(EXIT_FAILURE);
-
+	    
 	}
     }
-
+    
     // If in sender mode, test the files for typing, and build a file
     // list
-
-    if (*pipe_cmd){
-	run_pipe(pipe_cmd);
-    }
-
+    
     if (opt_mode == MODE_SEND){
 
-	// Did the user pass any files?
-	if (optind < argc){
+	if (*pipe_cmd){
+
+	    // Run user specified pipe process
+	    run_pipe(pipe_cmd);
+
+	} else if (opt_default_udpipe){
+
+	    // Assume udpipe binary is in PATH and run
+	    sprintf(pipe_cmd, "up %s %s", pipe_host, pipe_port);
 
 	    if (opt_verbosity > VERB_1)
-		fprintf(stderr, "Running with file source mode.\n");
+		fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
 
-	    // Clarify what we are passing as a file list
+	    run_pipe(pipe_cmd);
+
+	}
+
 	
+	// Did the user pass any files?
+	if (optind < argc){
+	    
+	    if (opt_verbosity > VERB_1)
+		fprintf(stderr, "Running with file source mode.\n");
+	    
+	    // Clarify what we are passing as a file list
+	    
 	    int n_files = argc-optind;
 	    char **path_list = argv+optind;
-
+	    
 	    // Generate a linked list of file objects from path list
-	
+	    
 	    fileList = build_filelist(n_files, path_list);
-	
+	    
 	    // Visit all directories and send all files
-
+	    
 	    handle_files(fileList);
-
+	    
 	    complete_xfer();
-
+	    
 	} 
-
+	
 	// if No files were passed by user
 	else {
 	    fprintf(stderr, "No files specified. Did you mean to receive? [-l]\n");
 	    exit(EXIT_FAILURE);
 	}
-
+	
     } 
-
+    
     // Otherwise, switch to receiving mode
-
+    
     else {
+	
+	if (*pipe_cmd){
+
+	    // Run user specified pipe process
+
+	    if (opt_verbosity > VERB_1)
+		fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
+
+	    run_pipe(pipe_cmd);
+
+	} else if (opt_default_udpipe){
+
+	    // Assume udpipe binary is in PATH and run
+
+	    sprintf(pipe_cmd, "up -l %s", pipe_port);
+
+	    if (opt_verbosity > VERB_1)
+		fprintf(stderr, "Attempting to use udpipe: [%s]\n", pipe_cmd);
+
+	    run_pipe(pipe_cmd);
+
+	}
 
 	if (opt_verbosity > VERB_1)
 	    fprintf(stderr, "Running with file destination mode\n");
-
+	
 	// Destination directory was passed
-
+	
 	if (optind < argc) {
-
+	    
 	    // Generate a base path for file locations
-
+	    
 	    char base_path[MAX_PATH_LEN];
 	    bzero(base_path, MAX_PATH_LEN);
 	    strcat(base_path, argv[optind++]);
 	    strcat(base_path, "/");
-
+	    
 	    // Are there any remaining command line args? Warn user
-
+	    
 	    if (optind < argc){
 		if (opt_verbosity > VERB_0){
 		    fprintf(stderr, "WARNING: Unused command line args: [");
@@ -775,20 +841,20 @@ int main(int argc, char *argv[]){
 		    fprintf(stderr, "%s]\n", argv[optind]);
 		}
 	    }
-
+	    
 	    // Listen to sender for files and data
 	    receive_files(base_path);
 	    
 	}
- 
+	
 	// No destination directory was passed, default to current dir
-
+	
 	else {
-
+	    
 	    receive_files((char*)"");
-
+	    
 	}
-
+	
     }
 
 
