@@ -144,11 +144,11 @@ int kill_children(int verbosity){
 
     if (ssh_pid && remote_pid){
 
-	if (opt_verbosity > verbosity) 
+	if (opt_verbosity >= verbosity) 
 	    fprintf(stderr, "Killing child ssh process. ");
 
 	if (kill(ssh_pid, SIGINT)){
-	    if (opt_verbosity > verbosity) 
+	    if (opt_verbosity >= verbosity) 
 		perror("FAILURE");
 	} else {
 	    verb(verbosity, "Success.");
@@ -160,7 +160,7 @@ int kill_children(int verbosity){
 	// CHILD
 	if (ssh_kill_pid == 0) {
 
-	    if (opt_verbosity > verbosity) 
+	    if (opt_verbosity >= VERB_1) 
 		fprintf(stderr, "Killing remote ucp process... ");
 
 	    char kill_cmd[MAX_PATH_LEN];
@@ -188,21 +188,23 @@ int kill_children(int verbosity){
 
     if (pipe_pid){
 
-	verb(verbosity, "Killing child pipe process... ");
+	if (opt_verbosity >= verbosity)
+	    fprintf(stderr, "Killing child pipe process... ");
 
 	if (kill(pipe_pid, SIGINT)){
-	    if (opt_verbosity > verbosity) perror("FAILURE");
+	    if (opt_verbosity >= verbosity) perror("FAILURE");
 	} else {
 	    verb(verbosity, "Success.");
 	}
 
-	verb(verbosity, "Reaping child pipe process... ");	
+	if (opt_verbosity >= verbosity)
+	    fprintf(stderr, "Reaping child pipe process... ");	
 
 	// Reap the child pipe process
 
 	int status;
 	if ((wait(&status)) == -1){
-	    if (opt_verbosity > verbosity) 
+	    if (opt_verbosity >= verbosity) 
 		perror("FAILURE");
 
 	} else { 
@@ -288,7 +290,7 @@ void sig_handler(int signal){
 
     // Kill chiildren and let user know
     
-    kill_children(VERB_1);
+    kill_children(VERB_2);
 
     // ragequit
 
@@ -846,7 +848,7 @@ int main(int argc, char *argv[]){
 
     sleep(END_LATENCY);
 
-    kill_children(VERB_3);
+    kill_children(VERB_2);
     
     return RET_SUCCESS;
   
