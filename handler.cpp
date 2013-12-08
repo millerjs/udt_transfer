@@ -223,8 +223,9 @@ void sig_handler(int signal){
 // write header data to out fd
 
 int write_header(header_t header){
+    fprintf(stderr, "WRiting header %d\n", header.type);
     return write(fileno(stdout), &header, sizeof(header_t));
-    return write(fileno(stdout), &header, SIZEOF_OFF_T);
+    // return write(fileno(stdout), &header, SIZEOF_OFF_T);
 }
 
 // write data block to out fd
@@ -415,8 +416,10 @@ off_t read_data(void* b, int len){
 }
 
 int read_header(header_t *header){
-    // return read_data(header, sizeof(header));
-    return read_data(header, SIZEOF_OFF_T);
+    int ret = read_data(header, sizeof(header));
+    // int ret = read_data(header, SIZEOF_OFF_T);
+    fprintf(stderr, "Got header %d\n", header->type);
+    return ret;
 }
 
 // step backwards down a given directory path
@@ -523,7 +526,11 @@ int receive_files(char*base_path){
 
 	if (read_new_header){
 	    fprintf(stderr, "Reading header\n");
-	    rs = read_header(&header);
+	    if ((rs = read_header(&header)) <= 0){
+		perror("Bad header read");
+		clean_exit(EXIT_FAILURE);
+	    }
+		
 	    fprintf(stderr, "Read header %d\n", header.type);
 	}
 
@@ -605,6 +612,7 @@ int receive_files(char*base_path){
 		    fout = open(data_path, f_mode, 0666);
 
 		if (fout < 0) {
+		    fprintf(stderr, "ERROR: %s ", data_path);
 		    perror("file open");
 		    clean_exit(EXIT_FAILURE);
 		}
@@ -618,6 +626,7 @@ int receive_files(char*base_path){
 
 		// the block following is expected to be data
 
+		read_new_header = 1;
 		expecting_data = 1;
 
 	    }
@@ -681,7 +690,7 @@ int receive_files(char*base_path){
 
 		close(fout);
 
-	    }
+	    } 
 
 	    // Or maybe the transfer is complete
 
@@ -960,8 +969,8 @@ int run_ssh_command(char *remote_dest){
 	    // Generate remote ucp command to RECEIVE DATA
 	    // generate_pipe_cmd(remote_pipe_cmd, MODE_RCV);
 	    
-	    sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2> ~/ucp.log & %s", 
-	    // sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2>/dev/null & %s", 
+	    // sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2> /dev/null & %s", 
+	    sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2>~/ucp.log & %s", 
 		    udpipe_location, remote_dest, "echo $!");
 	    
 	    // Redirect output from ssh process to ssh_fd
@@ -1238,6 +1247,8 @@ int main(int argc, char *argv[]){
 	}
 	
     }
+
+    print_xfer_stats();    
 
     sleep(END_LATENCY);
 

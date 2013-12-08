@@ -56,7 +56,6 @@ and limitations under the License.
 #define LABEL_GB "GB"
 #define LABEL_TB "TB"
 
-#define SIZEOF_OFF_T 16
 
 typedef enum{
     XFER_DATA,
@@ -90,7 +89,10 @@ typedef enum{
 
 
 typedef struct header{
-    off_t data_len;
+    int data_len;
     xfer_t type;
 } header_t;
+
+#define SIZEOF_OFF_T 8
+
 
