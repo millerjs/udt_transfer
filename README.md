@@ -1,7 +1,7 @@
 ucp
 ===
 
-Recursive directory concatenation for use with udpipe.  High performance 'cat'-ing of directories.
+Recursive directory concatenation for use with udpipe.  High performance file transfer with checkpoint logging and restarts.  A high performance scp.
 
 ******
 _WARNING: In early stages of development._
