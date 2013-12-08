@@ -94,8 +94,7 @@ int close_log_file(){
 	return RET_SUCCESS;
     
     if(close(flogfd)){
-	warn("Unable to close log file [%s].", log_path);
-	perror(" ");
+	verb(VERB_3, "Unable to close log file [%s].", log_path);
     }
 
     return RET_SUCCESS;
