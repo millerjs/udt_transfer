@@ -20,6 +20,104 @@ and limitations under the License.
 
 #include "ucp.h"
 
+int flogfd = 0;
+char log_path[MAX_PATH_LEN];
+
+file_LL *checkpoint = NULL;
+
+int is_in_checkpoint(file_object_t *file){
+
+    if (!opt_restart || !file)
+	return 0;
+
+    file_LL *comp = checkpoint;
+
+    while (comp){
+
+	if (!strcmp(comp->curr->path, file->path))
+	    return 1;
+	
+	comp = comp->next;
+    }
+
+    return 0;
+
+}
+
+int read_checkpoint(char *path){
+
+    
+    char c;
+    FILE* rstrtf;
+    char linebuf[MAX_PATH_LEN];
+    bzero(linebuf, MAX_PATH_LEN);
+
+    if(!(rstrtf = fopen(path, "r")))
+	error("Unable to open restart file [%s]", path);
+
+    int pos = 0;
+    while ((c = fgetc(rstrtf)) > 0){
+	if (c == '\n'){
+	    pos = 0;
+	    checkpoint = add_file_to_list(checkpoint, linebuf);
+	    verb(VERB_2, "Previously completed: %s", linebuf);
+	} else {
+	    linebuf[pos] = c;
+	    linebuf[pos+1] = '\0';
+	    pos++;
+	}
+    }
+
+    return RET_SUCCESS;
+
+}    
+
+
+int open_log_file(){
+   
+    if (!opt_log)
+	return RET_FAILURE;
+
+    int f_mode = O_CREAT | O_WRONLY | O_APPEND;
+    int f_perm = 0666;
+
+    if((flogfd = open(log_path, f_mode, f_perm)) < 0)
+	error("Unable to open log file [%s]", log_path);
+
+    return RET_SUCCESS;
+
+}
+
+int close_log_file(){
+
+    if (!opt_log)
+	return RET_SUCCESS;
+    
+    if(close(flogfd)){
+	warn("Unable to close log file [%s].", log_path);
+	perror(" ");
+    }
+
+    return RET_SUCCESS;
+
+}
+
+
+int log_completed_file(file_object_t *file){
+
+    if (!opt_log)
+	return RET_SUCCESS;
+
+    char path[MAX_PATH_LEN];
+
+    sprintf(path, "%s\n", file->path);
+    write(flogfd, path, strlen(path));
+
+    return RET_SUCCESS;
+
+}
+
+
 // step backwards down a given directory path
 
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
@@ -80,7 +178,6 @@ file_object_t* new_file_object(char*path){
     default:       
 	fprintf(stderr, "Filetype uknown: %s", file->path);
     }
-
 
     return file;
 }
@@ -234,9 +331,15 @@ int generate_base_path(char* prelim, char *data_path){
 
     int bl = strlen(prelim);
 
-    if (prelim[bl-1] != '/') bl++;
+    if (bl == 0){
+	sprintf(data_path, "%s/", prelim);
 
-    sprintf(data_path, "%s/", prelim);
+    } else {	
+
+	if (prelim[bl-1] != '/') bl++;
+	sprintf(data_path, "%s/", prelim);
+
+    }
 
     return bl;
 

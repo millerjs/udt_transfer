@@ -51,6 +51,21 @@ struct file_LL{
     file_LL *next;
 };
 
+extern int flogfd;
+extern char log_path[MAX_PATH_LEN];
+
+int print_file_LL(file_LL *list);
+
+int is_in_checkpoint(file_object_t *file);
+
+int read_checkpoint(char *path);
+
+int open_log_file();
+
+int log_completed_file(file_object_t *file);
+
+int close_log_file();
+
 /* Creates a new file_object_t given a path and stores the file
    stats */
 

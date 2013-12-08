@@ -116,7 +116,6 @@ void error(char* fmt, ...);
 
 void print_bytes(const void *object, size_t size);
 
-
 // Make sure that we have killed any zombie or orphaned children
 
 int kill_children(int verbosity);
@@ -181,11 +180,15 @@ extern int opt_regular_files;
 extern int opt_default_udpipe;
 extern int opt_auto;
 extern int opt_delay;
+extern int opt_log;
+extern int opt_restart;
 
 // The global variables for remote connection
 extern int pipe_pid;
 extern int ssh_pid;
 extern int remote_pid;
+
+/* Global path variables */
 extern char remote_dest[MAX_PATH_LEN];
 extern char pipe_port[MAX_PATH_LEN];
 extern char pipe_host[MAX_PATH_LEN];

@@ -37,7 +37,6 @@ int complete_xfer(){
 
 }
 
-
 // sends a file to out fd by creating an appropriate header and
 // sending any data
 
@@ -133,11 +132,51 @@ int send_file(file_object_t *file){
 }
 
 
+int dump_fileList(int fd, file_LL* fileList){
+
+    char path[MAX_PATH_LEN];
+    while (fileList){
+
+	file_object_t *file = fileList->curr;
+
+	sprintf(path, "%s\n", file->path);
+	write(fd, path, strlen(path));
+	
+	// While there is a directory, opt_recurse?
+
+	if (file->mode == S_IFDIR){
+	    
+	    // Recursively enter directory
+	    if (opt_recurse){
+
+		// Get a linked list of all the files in the directory 
+		file_LL* internal_fileList = lsdir(file);
+
+		// if directory is non-empty then recurse 
+		if (internal_fileList){
+		    dump_fileList(fd, internal_fileList);
+		}
+
+	    }
+
+	} 
+
+	fileList = fileList->next;
+
+    }
+
+    return RET_SUCCESS;
+
+
+}
+
 
 // main loop for send mode, takes a linked list of files and streams
 // them
 
 int handle_files(file_LL* fileList){
+
+    open_log_file();
 
     // Send each file or directory
     while (fileList){
@@ -153,7 +192,7 @@ int handle_files(file_LL* fileList){
 	    // Recursively enter directory
 	    if (opt_recurse){
 
-		verb(VERB_1, "> Entering [%s]  %s", file->filetype, file->path);
+		verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
 
 		// Get a linked list of all the files in the directory 
 		file_LL* internal_fileList = lsdir(file);
@@ -163,7 +202,8 @@ int handle_files(file_LL* fileList){
 		    handle_files(internal_fileList);
 		}
 	    }
-	    // If User chose not to recurse into directories
+
+	    // If user chose not to recurse into directories
 	    else {
 		verb(VERB_1, " --- SKIPPING [%s]  %s", file->filetype, file->path);
 	    }
@@ -172,7 +212,16 @@ int handle_files(file_LL* fileList){
 
 	// if it is a regular file, then send it
 	else if (file->mode == S_IFREG){
-	    send_file(file);
+
+	    if (is_in_checkpoint(file)){
+		verb(VERB_1, "Logged: %s", file->path);
+	    } else {
+
+		send_file(file);
+
+	    }
+
+
 	} 
 
 	// If the file is a character device or a named pipe, warn user
@@ -192,7 +241,6 @@ int handle_files(file_LL* fileList){
 		send_file(file);
 
 	    }
-
 	    
 	}
 
@@ -209,9 +257,13 @@ int handle_files(file_LL* fileList){
 
 	}
 
+	log_completed_file(file);
+
 	fileList = fileList->next;
 
     }
+
+    close_log_file();
 
     return RET_SUCCESS;
 

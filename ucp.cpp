@@ -30,11 +30,15 @@ int opt_regular_files = 1;
 int opt_default_udpipe = 0;
 int opt_auto = 0;
 int opt_delay = 0;
+int opt_log = 0;
+int opt_restart = 0;
 
 // The global variables for remote connection
 int pipe_pid = 0;
 int ssh_pid = 0;
 int remote_pid = 0;
+
+// Gloval path variables
 char remote_dest[MAX_PATH_LEN];
 char pipe_port[MAX_PATH_LEN];
 char pipe_host[MAX_PATH_LEN];
@@ -122,7 +126,7 @@ void error(char* fmt, ... ){
     va_list args; va_start(args, fmt);
     fprintf(stderr, "ERROR: ");
     vfprintf(stderr, fmt, args);
-    perror("");
+    perror(" ");
     fprintf(stderr, "\n");
     va_end(args);
     clean_exit(EXIT_FAILURE);
@@ -206,7 +210,6 @@ int kill_children(int verbosity){
 
     }
 
-
     return RET_SUCCESS;
 
 }
@@ -262,8 +265,8 @@ void print_xfer_stats(){
 
 void clean_exit(int status){
 
+    close_log_file();
     print_xfer_stats();
-
     kill_children(VERB_2);
     exit(status);
 }
@@ -606,6 +609,7 @@ int main(int argc, char *argv[]){
     file_LL *fileList = NULL;
     char pipe_cmd[MAX_PATH_LEN];
     char xfer_cmd[MAX_PATH_LEN];
+    char restart_path[MAX_PATH_LEN];
 
     bzero(pipe_cmd, MAX_PATH_LEN);
     bzero(xfer_cmd, MAX_PATH_LEN);
@@ -613,8 +617,9 @@ int main(int argc, char *argv[]){
     bzero(pipe_port, MAX_PATH_LEN);
     bzero(remote_dest, MAX_PATH_LEN);
 
-    sprintf(udpipe_location, "ucp");
+    // Set Defaults
 
+    sprintf(udpipe_location, "ucp");
     sprintf(pipe_port, "9000");
 
     // Read in options
@@ -622,26 +627,39 @@ int main(int argc, char *argv[]){
     static struct option long_options[] =
 	{
 	    {"verbose", no_argument, &opt_verbosity, VERB_2},
+	    {"v", no_argument, &opt_verbosity, VERB_2},
 	    {"all-files", no_argument, &opt_regular_files, 0},
 	    {"quiet",   no_argument, &opt_verbosity, VERB_0},
 	    {"progress", no_argument, 0, 'x'},
 	    {"help",    no_argument, 0, 'h'},
 	    {"udpipe",    required_argument, 0, 'u'},
 	    {"pipe",    required_argument, 0, 'n'},
-	    {"remote",    required_argument, 0, 'r'},
+	    {"remote",    required_argument, 0, 'o'},
+	    {"log",    required_argument, 0, 'g'},
+	    {"restart",    required_argument, 0, 'k'},
+	    {"checkpoint",    required_argument, 0, 'k'},
 	    {0, 0, 0, 0}
 	};
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:a:i:u:txlhv:np:d:r:c:", 
+    while ((opt = getopt_long(argc, argv, "n:a:i:u:txlhv:np:d:c:o:g:k:", 
 			      long_options, &option_index)) != -1){
 	switch (opt){
+
+	case 'k':
+	    opt_restart = 1;
+	    sprintf(restart_path, "%s", optarg);
+	    break;
+
+	case 'g':
+	    opt_log = 1;
+	    sprintf(log_path, "%s", optarg);
+	    break;
 	    
-	case 'r':
+	case 'o':
 	    opt_auto = 1;
 	    sprintf(xfer_cmd, "%s", optarg);
-	    // sprintf(remote_dest, "%s", optarg);
 	    break;
 
 	case 'c':
@@ -702,7 +720,16 @@ int main(int argc, char *argv[]){
 	    
 	}
     }
-    
+
+    if (opt_restart){
+
+	verb(VERB_2, "Loading restart checkpoint [%s].", restart_path);
+
+	read_checkpoint(restart_path);
+
+    }
+
+
     if (opt_auto){
 
 	parse_xfer_cmd(xfer_cmd);
