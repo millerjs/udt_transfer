@@ -13,7 +13,7 @@ all: $(APP)
 %.o: %.cpp 
 	$(C++) $(CCFLAGS) $< -c
 
-ucp: handler.o files.o 
+ucp: ucp.o sender.o receiver.o files.o timer.o
 	$(C++) $^ -o $(APPOUT) $(LDFLAGS)
 
 clean:

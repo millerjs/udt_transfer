@@ -18,6 +18,9 @@ and limitations under the License.
 /* #define _LARGE_FILES */
 /* #define _FILE_OFFSET_BITS  64 */
 
+#ifndef FILES_H
+#define FILES_H
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -65,5 +68,15 @@ file_LL* build_filelist(int n, char* paths[]);
 /* Buils a linked list of file_object_t given directory file object */
 
 file_LL* lsdir(file_object_t *file);
-
     
+/* make a new directory, but recurse through dir tree until this is possible */
+
+int mkdir_parent(char* path);
+
+int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
+
+off_t fsize(int fd);
+
+int generate_base_path(char *perlim_path, char *data_path);
+
+#endif

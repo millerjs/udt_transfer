@@ -18,7 +18,27 @@ and limitations under the License.
 
 #define _FILE_OFFSET_BITS 64
 
-#include "files.h"
+#include "ucp.h"
+
+// step backwards down a given directory path
+
+int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
+    
+    bzero(parent_dir, MAX_PATH_LEN);
+    char*cursor = path+strlen(path);
+
+    while (cursor > path && *cursor != '/')
+	cursor--;
+		    
+    if (cursor <= path){
+	error("Unable to recognize parent directory: %s", path);
+
+    }
+		    
+    memcpy(parent_dir, path, cursor-path);
+}
+
+
 
 int print_file_LL(file_LL *list){
     while (list){
@@ -134,5 +154,90 @@ file_LL* lsdir(file_object_t *file){
 
     return ls_fileList;
 
+
+}
+
+
+// make a new directory, but recurse through dir tree until this is possible
+
+int mkdir_parent(char* path){
+
+    // default permissions for creating new directories
+    int ret, err;
+    int mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
+
+    ret = mkdir(path, mode);
+
+    if ( ret ){
+	
+	// Hold onto last error
+
+	err = errno;
+	
+	// If the parents in the path name do not exist, then make them
+
+	if (err == ENOENT){
+	    
+	    if (opt_verbosity > VERB_2)
+		fprintf(stderr, "Again find parent directory and make it\n");
+
+	    char parent_dir[MAX_PATH_LEN];
+	    get_parent_dir(parent_dir, path);
+	    
+	    if (opt_verbosity > VERB_2)
+		fprintf(stderr, "Attempting to make %s\n", parent_dir);
+
+	    mkdir_parent(parent_dir);
+
+	}
+
+	// The directory already exists
+	else if (err = EEXIST){
+	    // Continue
+	}
+
+	// Otherwise, mkdir failed
+	else {
+	    fprintf(stderr, "ERROR: Unable to create directory [%s]: %s\n", 
+		    path, strerror(err));
+	    clean_exit(EXIT_FAILURE);
+
+	}
+
+    } else {
+	
+	if (opt_verbosity > VERB_2)
+	    fprintf(stderr, "Built directory %s\n", path);
+
+    }
+
+
+    return ret;
+
+}
+
+// Get the size of a file, should handle large files as well
+
+off_t fsize(int fd) {
+
+    off_t size;
+    size = lseek64(fd, 0L, SEEK_END);
+    lseek64(fd, 0L, SEEK_SET);
+
+    return size;
+}
+
+
+int generate_base_path(char* prelim, char *data_path){
+
+    // generate a base path for all destination files    
+
+    int bl = strlen(prelim);
+
+    if (prelim[bl-1] != '/') bl++;
+
+    sprintf(data_path, "%s/", prelim);
+
+    return bl;
 
 }

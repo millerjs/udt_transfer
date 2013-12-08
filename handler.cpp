@@ -20,11 +20,8 @@ and limitations under the License.
 
 #include "handler.h"
 #include "timer.h"
+#include "files.h"
 
-using std::cerr;
-using std::endl;
-
-// Global settings
 int opt_verbosity = VERB_1;
 int opt_recurse = 1;
 int opt_mode = MODE_SEND;
@@ -50,6 +47,10 @@ off_t TOTAL_XFER = 0;
 // Buffers
 char data[BUFFER_LEN];
 char path_buff[BUFFER_LEN];
+
+
+using std::cerr;
+using std::endl;
 
 // print the usage
 
@@ -168,33 +169,60 @@ int kill_children(int verbosity){
 
 }
 
+
+off_t get_scale(off_t size, char*label){
+    
+     if (size < SIZE_KB){
+	sprintf(label, "B");
+	return SIZE_B;
+    } else if (size < SIZE_MB){
+	sprintf(label, "KB");
+	return SIZE_KB;
+    } else if (size < SIZE_GB){
+	sprintf(label, "MB");
+	return SIZE_MB;
+    } else if (size < SIZE_TB){
+	sprintf(label, "GB");
+	return SIZE_GB;
+    } else {
+	sprintf(label, "TB");
+	return SIZE_TB;
+    } 
+
+    label = "-";
+    return 1;
+
+}
+
 // Print time and average trasnfer rate
 
 void print_xfer_stats(){
+
+    char label[8];
     
     if (opt_verbosity > VERB_1 || opt_progress){
 	stop_timer(timer);
 	double elapsed = timer_elapsed(timer);
 
-	char fmt[1024];
+	off_t scale = get_scale(TOTAL_XFER, label);
 
-	fprintf(stderr, "\t\t\tSTAT: %.2f GB transfered in %.2f s [ %.2f Gb/s ] \n", 
-		TOTAL_XFER/(double)SIZE_GB,
+	fprintf(stderr, "\t\t\tSTAT: %.2f %s transfered in %.2f s [ %.2f Gb/s ] \n", 
+		((double)TOTAL_XFER)/scale,
+		label,
 		elapsed, 
-		TOTAL_XFER/elapsed/(double)SIZE_GB*SIZE_B);
+		TOTAL_XFER/elapsed/scale*SIZE_B);
     }
     
 }
 
 // Wrapper for exit() with call to kill_children()
 
-int clean_exit(int status){
+void clean_exit(int status){
 
     print_xfer_stats();
 
     kill_children(VERB_2);
     exit(status);
-
 }
 
 // Handle SIGINT by exiting cleanly
@@ -223,9 +251,8 @@ void sig_handler(int signal){
 // write header data to out fd
 
 int write_header(header_t header){
-    fprintf(stderr, "WRiting header %d\n", header.type);
+    fprintf(stderr, "Writing header %d\n", header.type);
     return write(fileno(stdout), &header, sizeof(header_t));
-    // return write(fileno(stdout), &header, SIZEOF_OFF_T);
 }
 
 // write data block to out fd
@@ -234,30 +261,6 @@ off_t write_data(header_t header, char*data, off_t len){
     write_header(header);
     TOTAL_XFER += len;
     return write(fileno(stdout), data, len);
-}
-
-off_t get_scale(off_t size, char*label){
-    
-     if (size < SIZE_KB){
-	sprintf(label, "B");
-	return SIZE_B;
-    } else if (size < SIZE_MB){
-	sprintf(label, "KB");
-	return SIZE_KB;
-    } else if (size < SIZE_GB){
-	sprintf(label, "MB");
-	return SIZE_MB;
-    } else if (size < SIZE_TB){
-	sprintf(label, "GB");
-	return SIZE_GB;
-    } else {
-	sprintf(label, "TB");
-	return SIZE_TB;
-    } 
-
-    label = "-";
-    return 1;
-
 }
 
 // display the transfer progress of the current file
@@ -438,65 +441,6 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
     }
 		    
     memcpy(parent_dir, path, cursor-path);
-}
-
-// make a new directory, but recurse through dir tree until this is possible
-
-int mkdir_parent(char* path){
-
-    // default permissions for creating new directories
-    int ret, err;
-    int mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
-
-    ret = mkdir(path, mode);
-
-    if ( ret ){
-	
-	// Hold onto last error
-
-	err = errno;
-	
-	// If the parents in the path name do not exist, then make them
-
-	if (err == ENOENT){
-	    
-	    if (opt_verbosity > VERB_2)
-		fprintf(stderr, "Again find parent directory and make it\n");
-
-	    char parent_dir[MAX_PATH_LEN];
-	    get_parent_dir(parent_dir, path);
-	    
-
-	    if (opt_verbosity > VERB_2)
-		fprintf(stderr, "Attempting to make %s\n", parent_dir);
-
-	    mkdir_parent(parent_dir);
-
-	}
-
-	// The directory already exists
-	else if (err = EEXIST){
-	    // Continue
-	}
-
-	// Otherwise, mkdir failed
-	else {
-	    fprintf(stderr, "ERROR: Unable to create directory [%s]: %s\n", 
-		    path, strerror(err));
-	    clean_exit(EXIT_FAILURE);
-
-	}
-
-    } else {
-	
-	if (opt_verbosity > VERB_2)
-	    fprintf(stderr, "Built directory %s\n", path);
-
-    }
-
-
-    return ret;
-
 }
 
 
@@ -1026,7 +970,6 @@ int run_ssh_command(char *remote_dest){
 
 	}
 
-
 	// Do your thing, ucp, moving on.
 	
     }
@@ -1078,7 +1021,7 @@ int main(int argc, char *argv[]){
 
 	case 'r':
 	    opt_auto = 1;
-	    sprintf(remote_dest, optarg);
+	    sprintf(remote_dest, "%s", optarg);
 	    break;
 
 	case 'c':
