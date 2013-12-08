@@ -140,13 +140,13 @@ int kill_children(int verbosity){
 
     if (ssh_pid && remote_pid){
 
-	verb(verbosity, "Killing child ssh process... ");
+	verb(verbosity, "Killing child ssh process. ");
 
 	if (kill(ssh_pid, SIGINT)){
 	    if (opt_verbosity > verbosity) 
-		perror("failure");
+		perror("FAILURE");
 	} else {
-	    verb(verbosity, "success.\n");
+	    verb(verbosity, "Success.");
 	}
 
 	int ssh_kill_pid;
@@ -163,7 +163,7 @@ int kill_children(int verbosity){
 
 	    // Execute the pipe process
 	    if (execvp(args[0], args)){
-		fprintf(stderr, "WARNING: unable to kill remote process.\n");
+		fprintf(stderr, "WARNING: unable to kill remote process.");
 		exit(EXIT_FAILURE);
 	    }
 
@@ -172,7 +172,7 @@ int kill_children(int verbosity){
 	    int stat;
 	    waitpid(ssh_kill_pid, &stat, 0);
 	    if (!stat) 
-		verb(verbosity, "success.\n");
+		verb(verbosity, "Success.");
 	    
 	}
 	
@@ -185,9 +185,9 @@ int kill_children(int verbosity){
 	verb(verbosity, "Killing child pipe process... ");
 
 	if (kill(pipe_pid, SIGINT)){
-	    if (opt_verbosity > verbosity) perror("failure");
+	    if (opt_verbosity > verbosity) perror("FAILURE");
 	} else {
-	    verb(verbosity, "success.\n");
+	    verb(verbosity, "Success.");
 	}
 
 	verb(verbosity, "Reaping child pipe process... ");	
@@ -197,10 +197,10 @@ int kill_children(int verbosity){
 	int status;
 	if ((wait(&status)) == -1){
 	    if (opt_verbosity > verbosity) 
-		perror("failure");
+		perror("FAILURE");
 
 	} else { 
-	    verb(verbosity, "success.\n");
+	    verb(verbosity, "Success.");
 	}
 
 
@@ -212,7 +212,7 @@ int kill_children(int verbosity){
 }
 
 
-off_t get_scale(off_t size, char*label){
+double get_scale(off_t size, char*label){
     
      if (size < SIZE_KB){
 	sprintf(label, "B");
@@ -226,13 +226,16 @@ off_t get_scale(off_t size, char*label){
     } else if (size < SIZE_TB){
 	sprintf(label, "GB");
 	return SIZE_GB;
-    } else {
+    } else if (size < SIZE_PB){
 	sprintf(label, "TB");
 	return SIZE_TB;
+    } else {
+	sprintf(label, "PB");
+	return SIZE_PB;
     } 
 
-    label = "-";
-    return 1;
+    label = "[?]";
+    return 1.0;
 
 }
 
@@ -246,12 +249,10 @@ void print_xfer_stats(){
 	stop_timer(timer);
 	double elapsed = timer_elapsed(timer);
 
-	off_t scale = get_scale(TOTAL_XFER, label);
+	double scale = get_scale(TOTAL_XFER, label);
 
 	fprintf(stderr, "\t\t\tSTAT: %.2f %s transfered in %.2f s [ %.2f Gb/s ] \n", 
-		((double)TOTAL_XFER)/scale,
-		label,
-		elapsed, 
+		TOTAL_XFER/scale, label, elapsed, 
 		TOTAL_XFER/elapsed/scale*SIZE_B);
     }
     
@@ -300,26 +301,22 @@ int print_progress(char* descrip, off_t read, off_t total){
     int path_width = 60;
 
     // Get the width of the terminal
-    // struct winsize term;
+    struct winsize term;
 
-    // if (ioctl(fileno(stdout), TIOCGWINSZ, &term)){
-    // 	path_width = 60;
-    // } else {
-    // 	int progress_width = 35;
-    // 	path_width = term.ws_col - progress_width;
-    // }
+    if (!ioctl(fileno(stdout), TIOCGWINSZ, &term)){
+    	int progress_width = 35;
+    	path_width = term.ws_col - progress_width;
+    }
     
-    // Scale the amount read and generate label 
-    off_t scale = get_scale(total, label);
+    // Scale the amount read and generate label
+    off_t ref = (total > read) ? total : read;
+    double scale = get_scale(ref, label);
+
+    double percent = total ? read/(double)total*100 : 0;
 
     sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
+    fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
 
-    fprintf(stderr, fmt,
-    	    descrip,
-    	    read/(double)scale,
-    	    total/(double)scale,
-    	    label,
-    	    read/(double)total*100);
 }
 
 

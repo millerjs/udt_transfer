@@ -31,7 +31,6 @@ int send_file(file_object_t *file);
 
 int handle_files(file_LL* fileList);
 
-
 // send header specifying that the sending stream is complete
 
 int complete_xfer();

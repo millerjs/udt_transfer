@@ -51,17 +51,19 @@ and limitations under the License.
 #define RET_SUCCESS 0
 #define EXIT_SUCCESS 0
 
-#define SIZE_B  8LL
-#define SIZE_KB 1024LL
-#define SIZE_MB 1048576LL
-#define SIZE_GB 1073741824LL
-#define SIZE_TB 1099511627776LL
+#define SIZE_B  8e0
+#define SIZE_KB 1024.
+#define SIZE_MB 1.0e6
+#define SIZE_GB 1.0e9
+#define SIZE_TB 1.0e12
+#define SIZE_PB 1.0e15
 
 #define LABEL_B  "B"
 #define LABEL_KB "KB"
 #define LABEL_MB "MB"
 #define LABEL_GB "GB"
 #define LABEL_TB "TB"
+#define LABEL_PB "PB"
 
 typedef enum{
     XFER_DATA,
@@ -119,7 +121,7 @@ void print_bytes(const void *object, size_t size);
 
 int kill_children(int verbosity);
 
-off_t get_scale(off_t size, char*label);
+double get_scale(off_t size, char*label);
 
 // Print time and average trasnfer rate
 
