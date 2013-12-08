@@ -176,8 +176,6 @@ int dump_fileList(int fd, file_LL* fileList){
 
 int handle_files(file_LL* fileList){
 
-    open_log_file();
-
     // Send each file or directory
     while (fileList){
 

@@ -144,7 +144,8 @@ int kill_children(int verbosity){
 
     if (ssh_pid && remote_pid){
 
-	verb(verbosity, "Killing child ssh process. ");
+	if (opt_verbosity > verbosity) 
+	    fprintf(stderr, "Killing child ssh process. ");
 
 	if (kill(ssh_pid, SIGINT)){
 	    if (opt_verbosity > verbosity) 
@@ -159,7 +160,8 @@ int kill_children(int verbosity){
 	// CHILD
 	if (ssh_kill_pid == 0) {
 
-	    verb(verbosity, "Killing remote ucp process... ");
+	    if (opt_verbosity > verbosity) 
+		fprintf(stderr, "Killing remote ucp process... ");
 
 	    char kill_cmd[MAX_PATH_LEN];
 	    sprintf(kill_cmd, "kill -s SIGINT %d 2> /dev/null", remote_pid);
@@ -720,6 +722,8 @@ int main(int argc, char *argv[]){
 	    
 	}
     }
+
+    open_log_file();
 
     if (opt_restart){
 
