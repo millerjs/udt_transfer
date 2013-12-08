@@ -160,7 +160,7 @@ int kill_children(int verbosity){
 	// CHILD
 	if (ssh_kill_pid == 0) {
 
-	    if (opt_verbosity >= VERB_1) 
+	    if (opt_verbosity >= verbosity) 
 		fprintf(stderr, "Killing remote ucp process... ");
 
 	    char kill_cmd[MAX_PATH_LEN];
