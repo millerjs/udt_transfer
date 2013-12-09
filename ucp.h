@@ -42,7 +42,14 @@ and limitations under the License.
 #include "files.h"
 
 
-#define BUFFER_LEN 67108864
+
+/* The buffer len is calculated as the optimal udt block - block
+   header len = 67108864 - 16 */
+
+#define BUFFER_LEN   67108848
+#define BUFFER_ALLOC 67108864
+#define HEADER_LEN   16
+
 #define MAX_ARGS 128
 
 #define END_LATENCY 2
@@ -182,6 +189,7 @@ extern int opt_auto;
 extern int opt_delay;
 extern int opt_log;
 extern int opt_restart;
+extern int opt_mmap;
 
 // The global variables for remote connection
 extern int pipe_pid;
@@ -199,7 +207,6 @@ extern int timer;
 extern off_t TOTAL_XFER;
 
 // Buffers
-extern char data[BUFFER_LEN];
-extern char path_buff[BUFFER_LEN];
+extern char _data[BUFFER_ALLOC];
 
 #endif

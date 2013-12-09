@@ -18,20 +18,22 @@ and limitations under the License.
 
 #include "ucp.h"
 #include "files.h"
+#include "receiver.h"
 
 // main loop for receiving mode, listens for headers and sorts out
 // stream into files
 
+int fout;
+off_t total, rs, ds, f_size = 0;
+int complete = 0;
+int expecting_data = 0;
+int read_new_header = 1;
+char data_path[MAX_PATH_LEN];
+
 int receive_files(char*base_path){
 
-    int fout;
-    off_t total, rs, ds, f_size = 0;
-    int complete = 0;
-    int expecting_data = 0;
-    int read_new_header = 1;
-    char data_path[MAX_PATH_LEN];
-
     header_t header;
+    char* data = _data;
 
     // generate a base path for all destination files and get the
     // length
@@ -83,7 +85,8 @@ int receive_files(char*base_path){
 
 		verb(VERB_4, "Received file header");
 		
-		int f_mode = O_CREAT| O_WRONLY;
+		// int f_mode = O_CREAT| O_WRONLY;
+		int f_mode = O_CREAT| O_RDWR;
 		int f_perm = 0666;
 
 		// Read filename from stream
@@ -151,9 +154,14 @@ int receive_files(char*base_path){
 	    else if (header.type == XFER_F_SIZE) {
 	
 		// read in the size of the file
-		
+
 		read_data(&f_size, header.data_len);
 
+		// Memory map attempt
+
+		if (opt_mmap)
+		    map_fd(fout, f_size);
+		
 	    }
 
 	    // We are receiving a data chunk
@@ -176,14 +184,27 @@ int receive_files(char*base_path){
 
 		    // read data buffer from stdin
 
-		    if ((rs = read_data(data, len)) < 0)
-			error("Unable to read stdin");
+		    // use the memory map
 
-		    // Write to file
+		    if (opt_mmap){
 
-		    if ((write(fout, data, rs) < 0)){
-			perror("ERROR: unable to write to file");
-			clean_exit(EXIT_FAILURE);
+			// char* p = f_map + total;
+
+			if ((rs = read_data(f_map+total, len)) < 0)
+			    error("Unable to read stdin");
+
+		    } else {
+
+			if ((rs = read_data(data, len)) < 0)
+			    error("Unable to read stdin");
+
+			// Write to file
+
+			if ((write(fout, data, rs) < 0)){
+			    perror("ERROR: unable to write to file");
+			    clean_exit(EXIT_FAILURE);
+			}
+
 		    }
 
 		    total += rs;
@@ -215,7 +236,10 @@ int receive_files(char*base_path){
 
 		// Truncate the file in case it already exists and remove extra data
 		
-		ftruncate64(fout, header.data_len);
+		ftruncate64(fout, f_size);
+
+		if (opt_mmap)
+		    unmap_fd(fout, f_size);
 
 		close(fout);
 

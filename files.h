@@ -32,6 +32,7 @@ and limitations under the License.
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 
 #define MAX_PATH_LEN 1024
 
@@ -43,7 +44,6 @@ typedef struct file_object_t{
     int length;
 } file_object_t;
 
-
 typedef struct file_LL file_LL;
 
 struct file_LL{
@@ -51,6 +51,7 @@ struct file_LL{
     file_LL *next;
 };
 
+extern char *f_map;
 extern int flogfd;
 extern char log_path[MAX_PATH_LEN];
 
@@ -93,5 +94,17 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 off_t fsize(int fd);
 
 int generate_base_path(char *perlim_path, char *data_path);
+
+
+
+int map_fd(int fd, off_t size);
+
+
+int unmap_fd(int fd, off_t size);
+
+int mwrite(char* buff, off_t pos, int len);
+
+
+
 
 #endif

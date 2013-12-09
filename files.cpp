@@ -25,6 +25,63 @@ char log_path[MAX_PATH_LEN];
 
 file_LL *checkpoint = NULL;
 
+char *f_map = NULL;
+
+int map_fd(int fd, off_t size){
+    
+    if (fd < 0){
+	close(fd);
+	error("bad file descriptor");
+    }
+    
+    if (lseek(fd, size-1, SEEK_SET) < 0){
+	close(fd);
+	error("Error setting file length");
+    }
+
+    if (write(fd, "", 1) < 0){
+	close(fd);
+	error("Error verifying file length");
+    }
+
+    int prot = PROT_READ | PROT_WRITE;
+    // int prot = 0;
+
+    f_map = (char*) mmap64(0, size, prot, MAP_SHARED, fd, 0);
+
+    int advice = POSIX_MADV_SEQUENTIAL;
+
+    madvise(f_map, size, advice);
+
+
+    if (f_map == MAP_FAILED) {
+	close(fd);
+	error("unable to map file");
+    }
+
+    return RET_SUCCESS;
+
+}
+
+
+int unmap_fd(int fd, off_t size){
+
+    if (munmap(f_map, size) < 0) {
+	error("unble to un-mmapping the file");
+    }
+    
+    return RET_SUCCESS;
+
+}
+
+int mwrite(char* buff, off_t pos, int len){
+
+    memcpy(f_map+pos, buff, len);
+
+}
+
+
+
 int is_in_checkpoint(file_object_t *file){
 
     if (!opt_restart || !file)
@@ -322,7 +379,6 @@ off_t fsize(int fd) {
 
     return size;
 }
-
 
 int generate_base_path(char* prelim, char *data_path){
 

@@ -2,7 +2,8 @@ C++ = g++
 
 DIR = $(shell pwd)
 
-CCFLAGS = -Wno-write-strings -g
+CCFLAGS = -Wno-write-strings -g -O3 
+CCLFAGS = $(CCFLAGS) -fsel-sched-pipelining -fselective-scheduling
 LDFLAGS = -lrt -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE 
 
 APP = ucp

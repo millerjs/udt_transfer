@@ -32,6 +32,7 @@ int opt_auto = 0;
 int opt_delay = 0;
 int opt_log = 0;
 int opt_restart = 0;
+int opt_mmap = 1;
 
 // The global variables for remote connection
 int pipe_pid = 0;
@@ -49,8 +50,7 @@ int timer = 0;
 off_t TOTAL_XFER = 0;
 
 // Buffers
-char data[BUFFER_LEN];
-char path_buff[BUFFER_LEN];
+char _data[BUFFER_ALLOC];
 
 using std::cerr;
 using std::endl;
@@ -126,7 +126,7 @@ void error(char* fmt, ... ){
     va_list args; va_start(args, fmt);
     fprintf(stderr, "ERROR: ");
     vfprintf(stderr, fmt, args);
-    perror(" ");
+    if (errno) perror(" ");
     fprintf(stderr, "\n");
     va_end(args);
     clean_exit(EXIT_FAILURE);
@@ -145,13 +145,13 @@ int kill_children(int verbosity){
     if (ssh_pid && remote_pid){
 
 	if (opt_verbosity >= verbosity) 
-	    fprintf(stderr, "Killing child ssh process. ");
+	    fprintf(stderr, "Killing child ssh process... ");
 
 	if (kill(ssh_pid, SIGINT)){
 	    if (opt_verbosity >= verbosity) 
 		perror("FAILURE");
 	} else {
-	    verb(verbosity, "Success.");
+	    verb(verbosity, "success.");
 	}
 
 	int ssh_kill_pid;
@@ -178,7 +178,7 @@ int kill_children(int verbosity){
 	    int stat;
 	    waitpid(ssh_kill_pid, &stat, 0);
 	    if (!stat) 
-		verb(verbosity, "Success.");
+		verb(verbosity, "success.");
 	    
 	}
 	
@@ -194,7 +194,7 @@ int kill_children(int verbosity){
 	if (kill(pipe_pid, SIGINT)){
 	    if (opt_verbosity >= verbosity) perror("FAILURE");
 	} else {
-	    verb(verbosity, "Success.");
+	    verb(verbosity, "success.");
 	}
 
 	if (opt_verbosity >= verbosity)
@@ -208,7 +208,7 @@ int kill_children(int verbosity){
 		perror("FAILURE");
 
 	} else { 
-	    verb(verbosity, "Success.");
+	    verb(verbosity, "success.");
 	}
 
 
@@ -284,7 +284,7 @@ void sig_handler(int signal){
 
     if (signal == SIGINT){
 
-	fprintf(stderr, "\nERROR: received SIGINT, cleaning up and exiting\n");
+	verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
 
     }
 
@@ -331,7 +331,11 @@ int print_progress(char* descrip, off_t read, off_t total){
 
 int write_header(header_t header){
 
-    return write(fileno(stdout), &header, sizeof(header_t));
+    int ret = write(fileno(stdout), &header, sizeof(header_t));
+
+    // DEPRECATED
+
+    return ret;
 
 }
 
@@ -345,13 +349,21 @@ int read_header(header_t *header){
 
 // write data block to out fd
 
-off_t write_data(header_t header, void *data, int len){
+off_t write_data(header_t header, void *_data_, int len){
+
+    char*data = (char*) _data_ - sizeof(header_t);
 
     verb(VERB_4, "Writing %d bytes", len);
-    write_header(header);
 
-    TOTAL_XFER += len;
-    return write(fileno(stdout), data, len);
+    memcpy(data, &header, sizeof(header_t));
+
+    int send_len = len + HEADER_LEN;
+
+    int ret =  write(fileno(stdout), data, send_len);
+
+    TOTAL_XFER += ret;
+
+    return ret; 
 
 }
 
@@ -449,6 +461,9 @@ int run_pipe(char* pipe_cmd){
     // Create pipe and fork
     pipe(pipefd);
     pipe(empty_fd);
+ 
+    pid_t parent_pid = getpid();
+
     pipe_pid = fork();
 
     // CHILD
@@ -469,9 +484,22 @@ int run_pipe(char* pipe_cmd){
 
 	// Execute the pipe process
 	if (execvp(args[0], args)){
-	    fprintf(stderr, "ERROR: unable to execute pipe process\n");
+	    verb(VERB_0, "ERROR: unable to execute pipe process");
+	    perror(args[0]);
+
+	    if (opt_verbosity >= VERB_2) 
+		fprintf(stderr, "Killing parent process... ");
+
+	    if (kill(parent_pid, SIGINT)){
+		if (opt_verbosity >= VERB_2) 
+		    perror("FAILURE");
+	    } else {
+		verb(VERB_2, "success.");
+	    }
 	    clean_exit(EXIT_FAILURE);
+	    
 	}
+	
     }
 
     // PARENT
@@ -634,24 +662,32 @@ int main(int argc, char *argv[]){
 	    {"v", no_argument, &opt_verbosity, VERB_2},
 	    {"all-files", no_argument, &opt_regular_files, 0},
 	    {"quiet",   no_argument, &opt_verbosity, VERB_0},
+	    {"no-mmap",   no_argument, &opt_mmap, 1},
 	    {"progress", no_argument, 0, 'x'},
 	    {"help",    no_argument, 0, 'h'},
 	    {"udpipe",    required_argument, 0, 'u'},
 	    {"pipe",    required_argument, 0, 'n'},
 	    {"remote",    required_argument, 0, 'o'},
 	    {"log",    required_argument, 0, 'g'},
-	    {"restart",    required_argument, 0, 'k'},
+	    {"restart",    required_argument, 0, 'r'},
 	    {"checkpoint",    required_argument, 0, 'k'},
 	    {0, 0, 0, 0}
 	};
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:a:i:u:txlhv:np:d:c:o:g:k:", 
+    while ((opt = getopt_long(argc, argv, "n:a:i:u:txlhv:np:d:c:o:g:k:r:", 
 			      long_options, &option_index)) != -1){
 	switch (opt){
 
 	case 'k':
+	    opt_restart = 1;
+	    opt_log = 1;
+	    sprintf(log_path, "%s", optarg);
+	    sprintf(restart_path, "%s", optarg);
+	    break;
+
+	case 'r':
 	    opt_restart = 1;
 	    sprintf(restart_path, "%s", optarg);
 	    break;

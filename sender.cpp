@@ -42,6 +42,8 @@ int complete_xfer(){
 
 int send_file(file_object_t *file){
 
+    char* data = _data + HEADER_LEN;
+
     if (!file) return -1;
 
     verb(VERB_2, " --- sending [%s] %s", file->filetype, file->path);
@@ -53,7 +55,8 @@ int send_file(file_object_t *file){
 	// create a header to specify that the subsequent data is a
 	// directory name and send
 	header = nheader(XFER_DIRNAME, strlen(file->path)+1);
-	write_data(header, file->path, header.data_len);
+	memcpy(data, file->path, header.data_len);
+	write_data(header, data, header.data_len);
 
     }
 
@@ -67,7 +70,9 @@ int send_file(file_object_t *file){
 	// filename and send
 
 	header = nheader(XFER_FILENAME, strlen(file->path)+1);
-	write_data(header, file->path, header.data_len);
+	memcpy(data, file->path, header.data_len);
+	write_data(header, data, header.data_len);	
+	// write_data(header, file->path, header.data_len);
 
 	// open file to send data blocks
 
@@ -98,8 +103,9 @@ int send_file(file_object_t *file){
 	off_t sent = 0;
 	
 	while ((rs = read(fd, data, BUFFER_LEN))){
+	// while ((rs = read(fd, data, BUFFER_LEN))){
 
-	    verb(VERB_4, "Read in %d bytes", rs);
+	    verb(VERB_3, "Read in %d bytes", rs);
 
 	    // Check for file read error
 
@@ -212,7 +218,8 @@ int handle_files(file_LL* fileList){
 	else if (file->mode == S_IFREG){
 
 	    if (is_in_checkpoint(file)){
-		verb(VERB_1, "Logged: %s", file->path);
+		char*status = "completed";
+		verb(VERB_1, "Logged: %s [%s]", file->path, status);
 	    } else {
 
 		send_file(file);

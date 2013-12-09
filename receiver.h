@@ -19,6 +19,7 @@ and limitations under the License.
 #ifndef RECEIVER_H
 #define RECEIVER_H
 
+#include <sys/mman.h>
 
 // main loop for receiving mode, listens for headers and sorts out
 // stream into files
