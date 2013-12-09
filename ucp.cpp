@@ -283,10 +283,15 @@ void sig_handler(int signal){
     // hanging so we will kill it if it exists
 
     if (signal == SIGINT){
-
 	verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
-
+    
     }
+
+    if (signal == SIGSEGV){
+	verb(VERB_0, "\nERROR: [%d] received SIGSEV, cleaning up and exiting...", getpid());
+	perror("SEGFAULT");
+    }
+
 
     // Kill chiildren and let user know
     
@@ -633,6 +638,10 @@ int main(int argc, char *argv[]){
     
     if (signal(SIGINT, sig_handler) == SIG_ERR){
 	fprintf(stderr, "ERROR: unable to set SIGINT handler\n");
+    }
+
+    if (signal(SIGSEGV, sig_handler) == SIG_ERR){
+	fprintf(stderr, "ERROR: unable to set SIGSEGV handler\n");
     }
 
     // Set defaults

@@ -48,7 +48,6 @@ int receive_files(char*base_path){
 
 	    if ((rs = read_header(&header)) <= 0)
 		error("Bad header read");
-
 		
 	}
 
