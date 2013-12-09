@@ -50,7 +50,7 @@ int timer = 0;
 off_t TOTAL_XFER = 0;
 
 // Buffers
-char _data[BUFFER_ALLOC];
+char *_data = NULL;
 
 using std::cerr;
 using std::endl;
@@ -289,7 +289,7 @@ void sig_handler(int signal){
 
     if (signal == SIGSEGV){
 	verb(VERB_0, "\nERROR: [%d] received SIGSEV, cleaning up and exiting...", getpid());
-	perror("SEGFAULT");
+	perror("Catching SEGFAULT");
     }
 
 
@@ -356,15 +356,19 @@ int read_header(header_t *header){
 
 off_t write_data(header_t header, void *_data_, int len){
 
-    char*data = (char*) _data_ - sizeof(header_t);
+    char*data = (char*) _data_;
 
     verb(VERB_4, "Writing %d bytes", len);
 
     memcpy(data, &header, sizeof(header_t));
 
-    int send_len = len + HEADER_LEN;
+    int send_len = len + sizeof(header_t);
 
     int ret =  write(fileno(stdout), data, send_len);
+
+    if (ret < 0){
+	error("unable to write to stdout");
+    }
 
     TOTAL_XFER += ret;
 
@@ -635,13 +639,18 @@ int parse_xfer_cmd(char*xfer_cmd){
 
 
 int main(int argc, char *argv[]){
+
+    int alloc_len = BUFFER_LEN - sizeof(header_t);
+    _data = (char*) malloc( alloc_len * sizeof(char));
+
+    fprintf(stderr, "There's %d bytes available\n", alloc_len);
     
     if (signal(SIGINT, sig_handler) == SIG_ERR){
 	fprintf(stderr, "ERROR: unable to set SIGINT handler\n");
     }
 
     if (signal(SIGSEGV, sig_handler) == SIG_ERR){
-	fprintf(stderr, "ERROR: unable to set SIGSEGV handler\n");
+    	fprintf(stderr, "ERROR: unable to set SIGSEGV handler\n");
     }
 
     // Set defaults
@@ -888,7 +897,7 @@ int main(int argc, char *argv[]){
 	}
 	
     }
-
+    
     print_xfer_stats();    
 
     sleep(END_LATENCY);

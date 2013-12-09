@@ -41,14 +41,10 @@ and limitations under the License.
 
 #include "files.h"
 
-
-
 /* The buffer len is calculated as the optimal udt block - block
    header len = 67108864 - 16 */
 
-#define BUFFER_LEN   67108848
-#define BUFFER_ALLOC 67108864
-#define HEADER_LEN   16
+#define BUFFER_LEN 67108848
 
 #define MAX_ARGS 128
 
@@ -207,6 +203,6 @@ extern int timer;
 extern off_t TOTAL_XFER;
 
 // Buffers
-extern char _data[BUFFER_ALLOC];
+extern char* _data;
 
 #endif

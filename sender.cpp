@@ -42,7 +42,7 @@ int complete_xfer(){
 
 int send_file(file_object_t *file){
 
-    char* data = _data + HEADER_LEN;
+    char* data = _data + sizeof(header_t);
 
     if (!file) return -1;
 
@@ -65,6 +65,7 @@ int send_file(file_object_t *file){
 	int fd;
 	off_t f_size;
 	int o_mode = O_LARGEFILE | O_RDONLY;
+	// int o_mode = O_RDONLY;
 
 	// create header to specify that subsequent data is a regular
 	// filename and send
@@ -72,7 +73,6 @@ int send_file(file_object_t *file){
 	header = nheader(XFER_FILENAME, strlen(file->path)+1);
 	memcpy(data, file->path, header.data_len);
 	write_data(header, data, header.data_len);	
-	// write_data(header, file->path, header.data_len);
 
 	// open file to send data blocks
 
@@ -103,7 +103,6 @@ int send_file(file_object_t *file){
 	off_t sent = 0;
 	
 	while ((rs = read(fd, data, BUFFER_LEN))){
-	// while ((rs = read(fd, data, BUFFER_LEN))){
 
 	    verb(VERB_3, "Read in %d bytes", rs);
 
