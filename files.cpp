@@ -67,7 +67,7 @@ int map_fd(int fd, off_t size){
 int unmap_fd(int fd, off_t size){
 
     if (munmap(f_map, size) < 0) {
-	error("unble to un-mmapping the file");
+	verb(VERB_3, "WARNING: unble to un-mmap the file");
     }
     
     return RET_SUCCESS;

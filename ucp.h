@@ -104,6 +104,11 @@ typedef struct header{
     off_t data_len;
 } header_t;
 
+typedef struct ucp_block{
+    char*buffer;
+    char*data;
+    int dlen;
+} ucp_block;
 
 void usage(int EXIT_STAT);
 
@@ -141,9 +146,12 @@ void sig_handler(int signal);
 
 int write_header(header_t header);
 
+
+int fill_data(void* data, size_t len);
+
 // write data block to out fd
 
-off_t write_data(header_t header, void *data, int len);
+off_t write_block(header_t header, int len);
 
 // display the transfer progress of the current file
 
@@ -203,6 +211,6 @@ extern int timer;
 extern off_t TOTAL_XFER;
 
 // Buffers
-extern char* _data;
+extern ucp_block block;
 
 #endif

@@ -42,8 +42,6 @@ int complete_xfer(){
 
 int send_file(file_object_t *file){
 
-    char* data = _data + sizeof(header_t);
-
     if (!file) return -1;
 
     verb(VERB_2, " --- sending [%s] %s", file->filetype, file->path);
@@ -51,12 +49,12 @@ int send_file(file_object_t *file){
     header_t header;
 
     if (file->mode == S_IFDIR){
-
+	
 	// create a header to specify that the subsequent data is a
 	// directory name and send
 	header = nheader(XFER_DIRNAME, strlen(file->path)+1);
-	memcpy(data, file->path, header.data_len);
-	write_data(header, data, header.data_len);
+	memcpy(block.data, file->path, header.data_len);
+	write_block(header, header.data_len);
 
     }
 
@@ -71,9 +69,9 @@ int send_file(file_object_t *file){
 	// filename and send
 
 	header = nheader(XFER_FILENAME, strlen(file->path)+1);
-	memcpy(data, file->path, header.data_len);
-	write_data(header, data, header.data_len);	
-
+	fill_data(file->path, header.data_len);
+	write_block(header, header.data_len);	
+	
 	// open file to send data blocks
 
 	if (!( fd = open(file->path, o_mode))){
@@ -89,20 +87,21 @@ int send_file(file_object_t *file){
  
 	// Get the length of the file in advance
 	if ((f_size = fsize(fd)) < 0){
-	    error("Unable to determine size of file");
+	    fprintf(stderr, "Unable to determine size of file");
 	}
 
 	// Send length of file
-
-	header = nheader(XFER_F_SIZE, sizeof(f_size));
-	write_data(header, &f_size, header.data_len);
+	
+	header = nheader(XFER_F_SIZE, sizeof(off_t));
+	fill_data(&f_size, header.data_len);
+	write_block(header, header.data_len);
 
 	// buffer and send file
 	
 	int rs;
 	off_t sent = 0;
 	
-	while ((rs = read(fd, data, BUFFER_LEN))){
+	while ((rs = read(fd, block.data, BUFFER_LEN))){
 
 	    verb(VERB_3, "Read in %d bytes", rs);
 
@@ -114,7 +113,7 @@ int send_file(file_object_t *file){
 	    // create header to specify that we are also sending file data
 
 	    header = nheader(XFER_DATA, rs);
-	    sent += write_data(header, data, rs);
+	    sent += write_block(header, rs);
 
 	    // Print progress
 	    
@@ -181,6 +180,7 @@ int dump_fileList(int fd, file_LL* fileList){
 
 int handle_files(file_LL* fileList){
 
+        
     // Send each file or directory
     while (fileList){
 
@@ -191,12 +191,12 @@ int handle_files(file_LL* fileList){
 	    
 	    // Tell desination to create a directory 
 	    send_file(file);
-
+	    
 	    // Recursively enter directory
 	    if (opt_recurse){
 
 		verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
-
+		
 		// Get a linked list of all the files in the directory 
 		file_LL* internal_fileList = lsdir(file);
 

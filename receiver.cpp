@@ -33,7 +33,9 @@ char data_path[MAX_PATH_LEN];
 int receive_files(char*base_path){
 
     header_t header;
-    char* data = _data;
+
+    int alloc_len = BUFFER_LEN - sizeof(header_t);
+    char* data = (char*) malloc( alloc_len * sizeof(char));
 
     // generate a base path for all destination files and get the
     // length
@@ -222,16 +224,21 @@ int receive_files(char*base_path){
 
 		// Check to see if we received full file
 
-		if (total == f_size)
-		    verb(VERB_3, "Received full file [%li B]", total);
-		else
-		    warn("Did not receive full file: %s", data_path);
+		if (f_size){
+		    if (total == f_size)
+			verb(VERB_3, "Received full file [%li B]", total);
+		    else
+			warn("Did not receive full file: %s", data_path);
 
+		} else {
+		    warn("Completed stream of known size");
+		}
 
 		// On the next loop, use the header that was just read in
 
 		read_new_header = 0;
 		expecting_data = 0;
+		f_size = 0;
 
 		// Truncate the file in case it already exists and remove extra data
 		
@@ -263,5 +270,5 @@ int receive_files(char*base_path){
 	}
 	
     }
-    
+
 }

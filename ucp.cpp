@@ -49,11 +49,10 @@ char udpipe_location[MAX_PATH_LEN];
 int timer = 0;
 off_t TOTAL_XFER = 0;
 
-// Buffers
-char *_data = NULL;
-
 using std::cerr;
 using std::endl;
+
+ucp_block block;
 
 // print the usage
 
@@ -94,6 +93,7 @@ void usage(int EXIT_STAT){
 	fprintf(stderr, "   %s\n", options[i]);
     
     exit(EXIT_STAT);
+
 }
 
 
@@ -269,6 +269,8 @@ void print_xfer_stats(){
 
 void clean_exit(int status){
 
+    if (block.buffer) free(block.buffer);
+
     close_log_file();
     print_xfer_stats();
     kill_children(VERB_2);
@@ -324,10 +326,20 @@ int print_progress(char* descrip, off_t read, off_t total){
     off_t ref = (total > read) ? total : read;
     double scale = get_scale(ref, label);
 
-    double percent = total ? read/(double)total*100 : 0;
+    if (total){
+    
+	double percent = total ? read/(double)total*100 : 0;
 
-    sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
-    fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+	sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
+	fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+
+    } else {
+
+	sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
+	fprintf(stderr, fmt, descrip, read/scale,label);
+
+    }
+
 
 }
 
@@ -351,20 +363,28 @@ int read_header(header_t *header){
 
 }
 
+int fill_data(void* data, size_t len){
+    
+    // Copy a small amount of data into the buffer, this is not used
+    // for data blocks
+    
+    return (!!memcpy(block.data, data, len));
+    
+}
+
 
 // write data block to out fd
 
-off_t write_data(header_t header, void *_data_, int len){
+off_t write_block(header_t header, int len){
 
-    char*data = (char*) _data_;
+    memcpy(block.buffer, &header, sizeof(header_t));
 
-    verb(VERB_4, "Writing %d bytes", len);
-
-    memcpy(data, &header, sizeof(header_t));
+    if (len > BUFFER_LEN)
+	error("data out of bounds");
 
     int send_len = len + sizeof(header_t);
 
-    int ret =  write(fileno(stdout), data, send_len);
+    int ret = write(fileno(stdout), block.buffer, send_len);
 
     if (ret < 0){
 	error("unable to write to stdout");
@@ -639,12 +659,22 @@ int parse_xfer_cmd(char*xfer_cmd){
 
 
 int main(int argc, char *argv[]){
-
-    int alloc_len = BUFFER_LEN - sizeof(header_t);
-    _data = (char*) malloc( alloc_len * sizeof(char));
-
-    fprintf(stderr, "There's %d bytes available\n", alloc_len);
     
+    // Allocate a buffer for all of the data we will ever use
+    // Format of buffer:
+    //      [header -> sizeof(header_t)] [data BUFFER_LEN]
+
+    int alloc_len = BUFFER_LEN + sizeof(header_t);
+    block.buffer = (char*) malloc( alloc_len * sizeof(char));
+    if (!block.buffer)
+	error("unable to allocate data");
+    block.dlen = BUFFER_LEN;
+    block.data = block.buffer + sizeof(header_t);
+
+
+
+    // Catch interupt signals
+
     if (signal(SIGINT, sig_handler) == SIG_ERR){
 	fprintf(stderr, "ERROR: unable to set SIGINT handler\n");
     }
@@ -668,7 +698,7 @@ int main(int argc, char *argv[]){
     bzero(remote_dest, MAX_PATH_LEN);
 
     // Set Defaults
-
+    
     sprintf(udpipe_location, "ucp");
     sprintf(pipe_port, "9000");
 
