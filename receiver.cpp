@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-	      This ofile is part of ucp by Joshua Miller
+	      This file is part of ucp by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,35 @@ int complete = 0;
 int expecting_data = 0;
 int read_new_header = 1;
 char data_path[MAX_PATH_LEN];
+
+
+int read_header(header_t *header){
+
+    return read(fileno(stdin), header, sizeof(header_t));
+
+}
+
+
+
+// wrapper for read
+
+off_t read_data(void* b, int len){
+
+    off_t rs, total = 0;
+    char* buffer = (char*)b;
+    
+    while (total < len){
+	rs = read(fileno(stdin), buffer+total, len - total);
+	total += rs;
+	TOTAL_XFER += rs;
+    }
+
+    verb(VERB_4, "Read %d bytes from stream", total);
+
+    return total;
+
+}
+
 
 int receive_files(char*base_path){
 
@@ -65,7 +94,7 @@ int receive_files(char*base_path){
 
 		read_data(data_path+bl, header.data_len);
 
-		if (opt_verbosity > VERB_1)
+		if (opts.verbosity > VERB_1)
 		    fprintf(stderr, "making directory: %s\n", data_path);
 	    
 		// make directory, if any parent in directory path
@@ -94,7 +123,7 @@ int receive_files(char*base_path){
 		
 		read_data(data_path+bl, header.data_len);
 
-		if (opt_verbosity > VERB_1)
+		if (opts.verbosity > VERB_1)
 		    fprintf(stderr, "Initializing file receive: %s\n", 
 			    data_path+bl);
 
@@ -104,19 +133,13 @@ int receive_files(char*base_path){
 
 		    // If we can't open the file, try building a
 		    // directory tree to it
-
-		    if (opt_verbosity > VERB_1){
-			perror("WARNING: Unable to open file for writing");
-			fprintf(stderr, "WARNING: Building directory tree: %s.\n", 
-				data_path);
-		    }
 		    
 		    // Try and get a parent directory from file
 
 		    char parent_dir[MAX_PATH_LEN];
 		    get_parent_dir(parent_dir, data_path);
 		    
-		    if (opt_verbosity > VERB_2)
+		    if (opts.verbosity > VERB_2)
 			fprintf(stderr, "Using %s as parent directory.\n", parent_dir);
 		    
 		    // Build parent directory recursively
@@ -140,7 +163,7 @@ int receive_files(char*base_path){
 		// Attempt to optimize simple sequential write
 
 		if (posix_fadvise64(fout, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE)){
-		    if (opt_verbosity > VERB_3)
+		    if (opts.verbosity > VERB_3)
 			perror("WARNING: Unable to advise file write");
 		}		
 
@@ -160,7 +183,7 @@ int receive_files(char*base_path){
 
 		// Memory map attempt
 
-		if (opt_mmap)
+		if (opts.mmap)
 		    map_fd(fout, f_size);
 		
 	    }
@@ -187,9 +210,8 @@ int receive_files(char*base_path){
 
 		    // use the memory map
 
-		    if (opt_mmap){
+		    if (opts.mmap){
 
-			// char* p = f_map + total;
 
 			if ((rs = read_data(f_map+total, len)) < 0)
 			    error("Unable to read stdin");
@@ -212,18 +234,18 @@ int receive_files(char*base_path){
 
 		    read_header(&header);
 
-		    // Update user on progress if opt_progress set to true		    
+		    // Update user on progress if opts.progress set to true		    
 
-		    if (opt_progress)
+		    if (opts.progress)
 			print_progress(data_path, total, f_size);
 
 		}
 
 		// Formatting
-		if (opt_progress) fprintf(stderr, "\n");
+		if (opts.progress) fprintf(stderr, "\n");
 
 		// Check to see if we received full file
-
+		
 		if (f_size){
 		    if (total == f_size)
 			verb(VERB_3, "Received full file [%li B]", total);
@@ -234,6 +256,8 @@ int receive_files(char*base_path){
 		    warn("Completed stream of known size");
 		}
 
+		ftruncate64(fout, f_size);
+
 		// On the next loop, use the header that was just read in
 
 		read_new_header = 0;
@@ -242,9 +266,8 @@ int receive_files(char*base_path){
 
 		// Truncate the file in case it already exists and remove extra data
 		
-		ftruncate64(fout, f_size);
 
-		if (opt_mmap)
+		if (opts.mmap)
 		    unmap_fd(fout, f_size);
 
 		close(fout);
@@ -254,7 +277,7 @@ int receive_files(char*base_path){
 	    // Or maybe the transfer is complete
 
 	    else if (header.type == XFER_COMPLTE){
-		if (opt_verbosity > VERB_1)
+		if (opts.verbosity > VERB_1)
 		    fprintf(stderr, "Receive completed.\n");
 		return RET_SUCCESS;
 	    }

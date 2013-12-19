@@ -21,6 +21,79 @@ and limitations under the License.
 
 // send header specifying that the sending stream is complete
 
+ucp_block block;
+
+// Allocate a buffer for all of the data we will ever use
+
+// Format of buffer:
+//      [header -> sizeof(header_t)] [data BUFFER_LEN]
+
+int allocate_block(ucp_block *block){
+
+    // Calculate length of block based on optimal buffer size and
+    // header length
+
+    int alloc_len = BUFFER_LEN + sizeof(header_t);
+
+    // allocate block
+
+    if (!(block->buffer = (char*) malloc( alloc_len * sizeof(char))))
+	error("unable to allocate data");
+
+    // record parameters in block
+
+    block->dlen = BUFFER_LEN;
+    block->data = block->buffer + sizeof(header_t);
+
+    return RET_SUCCESS;
+}
+
+
+int fill_data(void* data, size_t len){
+    
+    // Copy a small amount of data into the buffer, this is not used
+    // for data blocks
+    
+    return (!!memcpy(block.data, data, len));
+    
+}
+
+// write header data to out fd
+
+int write_header(header_t header){
+
+    // should you be using write block?
+
+    int ret = write(fileno(stdout), &header, sizeof(header_t));
+
+    return ret;
+
+}
+
+// write data block to out fd
+
+off_t write_block(header_t header, int len){
+
+    memcpy(block.buffer, &header, sizeof(header_t));
+
+    if (len > BUFFER_LEN)
+	error("data out of bounds");
+
+    int send_len = len + sizeof(header_t);
+
+    int ret = write(fileno(stdout), block.buffer, send_len);
+
+    if (ret < 0){
+	error("unable to write to stdout");
+    }
+
+    TOTAL_XFER += ret;
+
+    return ret; 
+
+}
+
+
 int complete_xfer(){
     
     // Notify the destination that the transfer is complete
@@ -36,6 +109,7 @@ int complete_xfer(){
     return RET_SUCCESS;
 
 }
+
 
 // sends a file to out fd by creating an appropriate header and
 // sending any data
@@ -69,7 +143,24 @@ int send_file(file_object_t *file){
 	// filename and send
 
 	header = nheader(XFER_FILENAME, strlen(file->path)+1);
-	fill_data(file->path, header.data_len);
+
+	// remove the root directory from the destination path
+
+	char destination[MAX_PATH_LEN];
+	int root_len = strlen(file->root);
+	
+	if (opts.full_root || !root_len || strncmp(file->path, file->root, root_len)){
+
+	    sprintf(destination, "%s", file->path);
+
+	} else {
+	    memcpy(destination, file->path+root_len+1, 
+		   strlen(file->path)-root_len);
+	}
+
+
+	fill_data(destination, header.data_len);
+
 	write_block(header, header.data_len);	
 	
 	// open file to send data blocks
@@ -89,7 +180,7 @@ int send_file(file_object_t *file){
 	if ((f_size = fsize(fd)) < 0){
 	    fprintf(stderr, "Unable to determine size of file");
 	}
-
+	
 	// Send length of file
 	
 	header = nheader(XFER_F_SIZE, sizeof(off_t));
@@ -101,6 +192,7 @@ int send_file(file_object_t *file){
 	int rs;
 	off_t sent = 0;
 	
+
 	while ((rs = read(fd, block.data, BUFFER_LEN))){
 
 	    verb(VERB_3, "Read in %d bytes", rs);
@@ -117,14 +209,14 @@ int send_file(file_object_t *file){
 
 	    // Print progress
 	    
-	    if (opt_progress)
+	    if (opts.progress)
 		print_progress(file->path, sent, f_size);
 
 	}
 
 	// Carriage return for  progress printing
 
-	if (opt_progress) 
+	if (opts.progress) 
 	    fprintf(stderr, "\n");
 
 	// Done with fd
@@ -136,64 +228,29 @@ int send_file(file_object_t *file){
 }
 
 
-int dump_fileList(int fd, file_LL* fileList){
-
-    char path[MAX_PATH_LEN];
-    while (fileList){
-
-	file_object_t *file = fileList->curr;
-
-	sprintf(path, "%s\n", file->path);
-	write(fd, path, strlen(path));
-	
-	// While there is a directory, opt_recurse?
-
-	if (file->mode == S_IFDIR){
-	    
-	    // Recursively enter directory
-	    if (opt_recurse){
-
-		// Get a linked list of all the files in the directory 
-		file_LL* internal_fileList = lsdir(file);
-
-		// if directory is non-empty then recurse 
-		if (internal_fileList){
-		    dump_fileList(fd, internal_fileList);
-		}
-
-	    }
-
-	} 
-
-	fileList = fileList->next;
-
-    }
-
-    return RET_SUCCESS;
-
-
-}
-
-
 // main loop for send mode, takes a linked list of files and streams
 // them
 
 int handle_files(file_LL* fileList){
 
+    allocate_block(&block);
         
     // Send each file or directory
     while (fileList){
 
 	file_object_t *file = fileList->curr;
-	
-	// While there is a directory, opt_recurse?
+
+	// While there is a directory, opts.recurse?
 	if (file->mode == S_IFDIR){
-	    
+
+
 	    // Tell desination to create a directory 
-	    send_file(file);
-	    
+
+	    if (opts.full_root)
+		send_file(file);
+
 	    // Recursively enter directory
-	    if (opt_recurse){
+	    if (opts.recurse){
 
 		verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
 		
@@ -231,7 +288,7 @@ int handle_files(file_LL* fileList){
 	// If the file is a character device or a named pipe, warn user
 	else if (file->mode == S_IFCHR || file->mode == S_IFIFO){
 
-	    if (opt_regular_files){
+	    if (opts.regular_files){
 
 		warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
 		     "To enable sending character devices, use --all-files");
@@ -254,7 +311,7 @@ int handle_files(file_LL* fileList){
 
 	    verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
 
-	    if (opt_verbosity > VERB_0){
+	    if (opts.verbosity > VERB_0){
 		warn("File %s is a %s", file->path, file->filetype);
 		error("This filetype is not currently supported.");
 	    }

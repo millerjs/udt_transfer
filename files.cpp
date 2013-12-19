@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-This file is part of ucp
+	      This file is part of ucp by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,43 +21,56 @@ and limitations under the License.
 #include "ucp.h"
 
 int flogfd = 0;
+char *f_map = NULL;
 char log_path[MAX_PATH_LEN];
+
+// Initialize 
 
 file_LL *checkpoint = NULL;
 
-char *f_map = NULL;
+// map the file pointed to by a file descriptor to memory
 
 int map_fd(int fd, off_t size){
+
+    // file protections and advice
+
+    int prot	= PROT_READ | PROT_WRITE;
+    int advice	= POSIX_MADV_SEQUENTIAL;
+
+    // bad file descriptor?
     
     if (fd < 0){
 	close(fd);
 	error("bad file descriptor");
     }
+
+    // seek to end of file
     
     if (lseek(fd, size-1, SEEK_SET) < 0){
 	close(fd);
 	error("Error setting file length");
     }
 
+     // and write bit to actually set file size
+
     if (write(fd, "", 1) < 0){
 	close(fd);
 	error("Error verifying file length");
     }
 
-    int prot = PROT_READ | PROT_WRITE;
-    // int prot = 0;
+    // Map the file to memory
 
     f_map = (char*) mmap64(0, size, prot, MAP_SHARED, fd, 0);
-
-    int advice = POSIX_MADV_SEQUENTIAL;
-
-    madvise(f_map, size, advice);
-
 
     if (f_map == MAP_FAILED) {
 	close(fd);
 	error("unable to map file");
     }
+
+    // Tell the system our intent with the file, no error check, if it
+    // doesn't work, it doesn't work
+
+    madvise(f_map, size, advice);
 
     return RET_SUCCESS;
 
@@ -67,7 +80,7 @@ int map_fd(int fd, off_t size){
 int unmap_fd(int fd, off_t size){
 
     if (munmap(f_map, size) < 0) {
-	verb(VERB_3, "WARNING: unble to un-mmap the file");
+	error("unable to un-mmap the file");
     }
     
     return RET_SUCCESS;
@@ -84,7 +97,7 @@ int mwrite(char* buff, off_t pos, int len){
 
 int is_in_checkpoint(file_object_t *file){
 
-    if (!opt_restart || !file)
+    if (!opts.restart || !file)
 	return 0;
 
     file_LL *comp = checkpoint;
@@ -103,7 +116,6 @@ int is_in_checkpoint(file_object_t *file){
 
 int read_checkpoint(char *path){
 
-    
     char c;
     FILE* rstrtf;
     char linebuf[MAX_PATH_LEN];
@@ -116,7 +128,7 @@ int read_checkpoint(char *path){
     while ((c = fgetc(rstrtf)) > 0){
 	if (c == '\n'){
 	    pos = 0;
-	    checkpoint = add_file_to_list(checkpoint, linebuf);
+	    checkpoint = add_file_to_list(checkpoint, linebuf, NULL);
 	    verb(VERB_2, "Previously completed: %s", linebuf);
 	} else {
 	    linebuf[pos] = c;
@@ -132,7 +144,7 @@ int read_checkpoint(char *path){
 
 int open_log_file(){
    
-    if (!opt_log)
+    if (!opts.log)
 	return RET_FAILURE;
 
     int f_mode = O_CREAT | O_WRONLY | O_APPEND;
@@ -147,7 +159,7 @@ int open_log_file(){
 
 int close_log_file(){
 
-    if (!opt_log)
+    if (!opts.log)
 	return RET_SUCCESS;
     
     if(close(flogfd)){
@@ -161,7 +173,7 @@ int close_log_file(){
 
 int log_completed_file(file_object_t *file){
 
-    if (!opt_log)
+    if (!opts.log)
 	return RET_SUCCESS;
 
     char path[MAX_PATH_LEN];
@@ -185,13 +197,15 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
 	cursor--;
 		    
     if (cursor <= path){
-	error("Unable to recognize parent directory: %s", path);
-
+	sprintf(parent_dir, "");	
+    } else {
+	memcpy(parent_dir, path, cursor-path);
     }
-		    
-    memcpy(parent_dir, path, cursor-path);
-}
 
+
+    return RET_SUCCESS;
+
+}
 
 
 int print_file_LL(file_LL *list){
@@ -201,9 +215,14 @@ int print_file_LL(file_LL *list){
     }
 }
 
-file_object_t* new_file_object(char*path){
+file_object_t* new_file_object(char*path, char*root){
+
     file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
+
     file->path = strdup(path);
+
+    file->root = root;
+
     if (stat(path, &file->stats) == -1){
 	perror("ERROR: Unable to stat file");
 	exit(EXIT_FAILURE);
@@ -238,17 +257,17 @@ file_object_t* new_file_object(char*path){
     return file;
 }
 
-file_LL* add_file_to_list(file_LL *fileList, char*path){
+file_LL* add_file_to_list(file_LL *fileList, char*path, char*root){
 
     // make a file object out of the path
-    file_object_t* new_file = new_file_object(path);
+    file_object_t* new_file = new_file_object(path, root);
     file_LL *cursor = fileList;
 
     // create a new file list
     file_LL * new_list = (file_LL*) malloc(sizeof(file_LL));
     new_list->curr = new_file;
     new_list->next = NULL;
-    
+
     if (!fileList){
 	return new_list;
     } else {
@@ -265,22 +284,41 @@ file_LL* build_filelist(int n, char *paths[]){
 
     file_LL *fileList = NULL;
 
+    struct stat stats;
+
     for (int i = 0; i < n ; i++){
-	fileList = add_file_to_list(fileList, paths[i]);
+
+	if (stat(paths[i], &stats) == -1)
+	    error("unable to stat file");
+
+
+	if ((stats.st_mode & S_IFMT) == S_IFDIR){
+
+	    fileList = add_file_to_list(fileList, paths[i], paths[i]);
+	    
+	} else {
+
+	    char parent_dir[MAX_PATH_LEN];
+	    get_parent_dir(parent_dir, paths[i]);
+	    
+	    fileList = add_file_to_list(fileList, paths[i], parent_dir);
+
+	}
+
+	// fileList = add_file_to_list(fileList, paths[i]);
+
     }
-    
+
     return fileList;
     
 
 }
 
-
-
 file_LL* lsdir(file_object_t *file){
     
     // Verify that we were actually passed a directory file
     if ( !(file->mode == S_IFDIR) ){
-	fprintf(stderr, "File is not a directory");
+	warn("attemped to enter a non-directory file");
 	return NULL;
     }
     
@@ -296,7 +334,7 @@ file_LL* lsdir(file_object_t *file){
 	    
 	    char path[MAX_PATH_LEN];
 	    sprintf(path, "%s/%s", file->path, entry->d_name);
-	    ls_fileList = add_file_to_list(ls_fileList, path);
+	    ls_fileList = add_file_to_list(ls_fileList, path, file->root);
 	    
 	}
 	
@@ -331,17 +369,17 @@ int mkdir_parent(char* path){
 
 	if (err == ENOENT){
 	    
-	    if (opt_verbosity > VERB_2)
-		fprintf(stderr, "Again find parent directory and make it\n");
+	    verb(VERB_2, "Again find parent directory and make it\n");
 
 	    char parent_dir[MAX_PATH_LEN];
+
 	    get_parent_dir(parent_dir, path);
-	    
-	    if (opt_verbosity > VERB_2)
-		fprintf(stderr, "Attempting to make %s\n", parent_dir);
+
+	    verb(VERB_2, "Building directory path [%s]\n", parent_dir);
 
 	    mkdir_parent(parent_dir);
-
+	    ret = mkdir_parent(path);
+ 
 	}
 
 	// The directory already exists
@@ -359,8 +397,7 @@ int mkdir_parent(char* path){
 
     } else {
 	
-	if (opt_verbosity > VERB_2)
-	    fprintf(stderr, "Built directory %s\n", path);
+	verb(VERB_2, "Built directory %s\n", path);
 
     }
 
@@ -380,6 +417,8 @@ off_t fsize(int fd) {
     return size;
 }
 
+
+
 int generate_base_path(char* prelim, char *data_path){
 
     // generate a base path for all destination files    
@@ -393,6 +432,7 @@ int generate_base_path(char* prelim, char *data_path){
 
 	if (prelim[bl-1] != '/') bl++;
 	sprintf(data_path, "%s/", prelim);
+
 
     }
 

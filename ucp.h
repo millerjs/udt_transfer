@@ -68,6 +68,13 @@ and limitations under the License.
 #define LABEL_TB "TB"
 #define LABEL_PB "PB"
 
+
+// Global variables
+
+extern int timer;
+extern off_t TOTAL_XFER;
+extern int opt_verbosity;
+
 typedef enum{
     XFER_DATA,
     XFER_FILENAME,
@@ -110,6 +117,48 @@ typedef struct ucp_block{
     int dlen;
 } ucp_block;
 
+
+typedef struct ucp_opt_t{
+    int verbosity;
+    int recurse;
+    int mode;
+    int progress;
+    int regular_files;
+    int default_udpipe;
+    int remote;
+    int delay;
+    int log;
+    int restart;
+    int mmap;
+    int full_root;
+
+    char restart_path[MAX_PATH_LEN];
+
+} ucp_opts_t;
+
+typedef struct remote_arg_t{
+
+    int pipe_pid;
+    int ssh_pid;
+    int remote_pid;
+
+    /* Global path variables */
+    char remote_dest[MAX_PATH_LEN];
+    char pipe_port[MAX_PATH_LEN];
+    char pipe_host[MAX_PATH_LEN];
+    char udpipe_location[MAX_PATH_LEN];
+
+    char pipe_cmd[MAX_PATH_LEN];
+    char xfer_cmd[MAX_PATH_LEN];
+
+
+
+} remote_arg_t;
+
+extern remote_arg_t remote_args;
+extern ucp_opt_t opts;
+
+
 void usage(int EXIT_STAT);
 
 void prii(char* str, int i);
@@ -142,17 +191,6 @@ void clean_exit(int status);
 
 void sig_handler(int signal);
 
-// write header data to out fd
-
-int write_header(header_t header);
-
-
-int fill_data(void* data, size_t len);
-
-// write data block to out fd
-
-off_t write_block(header_t header, int len);
-
 // display the transfer progress of the current file
 
 int print_progress(char* descrip, off_t read, off_t total);
@@ -181,36 +219,5 @@ int run_pipe(char* pipe_cmd);
 
 int run_ssh_command(char *remote_dest);
 
-
-// Global settings
-extern int opt_verbosity;
-extern int opt_recurse;
-extern int opt_mode;
-extern int opt_progress;
-extern int opt_regular_files;
-extern int opt_default_udpipe;
-extern int opt_auto;
-extern int opt_delay;
-extern int opt_log;
-extern int opt_restart;
-extern int opt_mmap;
-
-// The global variables for remote connection
-extern int pipe_pid;
-extern int ssh_pid;
-extern int remote_pid;
-
-/* Global path variables */
-extern char remote_dest[MAX_PATH_LEN];
-extern char pipe_port[MAX_PATH_LEN];
-extern char pipe_host[MAX_PATH_LEN];
-extern char udpipe_location[MAX_PATH_LEN];
-
-// Statistics globals
-extern int timer;
-extern off_t TOTAL_XFER;
-
-// Buffers
-extern ucp_block block;
 
 #endif

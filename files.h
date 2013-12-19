@@ -40,7 +40,8 @@ typedef struct file_object_t{
     struct stat stats;
     int mode;
     char *filetype;
-    char * path;
+    char *path;
+    char *root;
     int length;
 } file_object_t;
 
@@ -75,7 +76,9 @@ file_object_t* new_file_object(char*path);
 /* Adds a file_object_t to the fileList linked list of file_object_t
    based on path */
 
-file_LL* add_file_to_list(file_LL *fileList, char*path);
+file_LL* add_file_to_list(file_LL *fileList, char*path, char*root);
+
+file_LL* init_filelist(int n, char *paths[]);
 
 /* Buils a linked list of file_object_t given path array of length n */
 
@@ -94,7 +97,6 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 off_t fsize(int fd);
 
 int generate_base_path(char *perlim_path, char *data_path);
-
 
 
 int map_fd(int fd, off_t size);
