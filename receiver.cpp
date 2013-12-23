@@ -100,7 +100,7 @@ int receive_files(char*base_path){
 		// make directory, if any parent in directory path
 		// doesnt exist, make that as well
 
-		int r = mkdir_parent(data_path);
+		mkdir_parent(data_path);
 
 		// safety reset, data block after this will fault, expect a header
 
@@ -256,7 +256,8 @@ int receive_files(char*base_path){
 		    warn("Completed stream of known size");
 		}
 
-		ftruncate64(fout, f_size);
+		if (!ftruncate64(fout, f_size))
+		    error("unable to truncate file to correct size");
 
 		// On the next loop, use the header that was just read in
 
@@ -293,5 +294,7 @@ int receive_files(char*base_path){
 	}
 	
     }
+    
+    return RET_SUCCESS;
 
 }

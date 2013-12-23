@@ -224,6 +224,8 @@ int send_file(file_object_t *file){
 	close(fd);
 
     }
+
+    return RET_SUCCESS;
     
 }
 

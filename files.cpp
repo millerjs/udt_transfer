@@ -91,6 +91,8 @@ int mwrite(char* buff, off_t pos, int len){
 
     memcpy(f_map+pos, buff, len);
 
+    return RET_SUCCESS;
+
 }
 
 
@@ -179,7 +181,10 @@ int log_completed_file(file_object_t *file){
     char path[MAX_PATH_LEN];
 
     sprintf(path, "%s\n", file->path);
-    write(flogfd, path, strlen(path));
+
+    if (!write(flogfd, path, strlen(path)))
+	perror("WARNING: [log_completed_file] unable to log file completion");
+
 
     return RET_SUCCESS;
 
@@ -197,7 +202,7 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
 	cursor--;
 		    
     if (cursor <= path){
-	sprintf(parent_dir, "");	
+	parent_dir[0] = '\0';
     } else {
 	memcpy(parent_dir, path, cursor-path);
     }
@@ -209,10 +214,14 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
 
 
 int print_file_LL(file_LL *list){
+
     while (list){
 	fprintf(stderr, "%s, ", list->curr->path);
 	list = list->next;
     }
+
+    return RET_SUCCESS;
+
 }
 
 file_object_t* new_file_object(char*path, char*root){
@@ -224,8 +233,7 @@ file_object_t* new_file_object(char*path, char*root){
     file->root = root;
 
     if (stat(path, &file->stats) == -1){
-	perror("ERROR: Unable to stat file");
-	exit(EXIT_FAILURE);
+	error("unable to stat file [%s]", file->path);
     }
 
     switch (file->stats.st_mode & S_IFMT) {
@@ -288,20 +296,23 @@ file_LL* build_filelist(int n, char *paths[]){
 
     for (int i = 0; i < n ; i++){
 
-	if (stat(paths[i], &stats) == -1)
-	    error("unable to stat file");
+	if (paths[i]){
 
+	    if (stat(paths[i], &stats) == -1)
+		error("unable to stat file [%s]", paths[i]);
 
-	if ((stats.st_mode & S_IFMT) == S_IFDIR){
+	    if ((stats.st_mode & S_IFMT) == S_IFDIR){
 
-	    fileList = add_file_to_list(fileList, paths[i], paths[i]);
+		fileList = add_file_to_list(fileList, paths[i], paths[i]);
 	    
-	} else {
+	    } else {
 
-	    char parent_dir[MAX_PATH_LEN];
-	    get_parent_dir(parent_dir, paths[i]);
+		char parent_dir[MAX_PATH_LEN];
+		get_parent_dir(parent_dir, paths[i]);
 	    
-	    fileList = add_file_to_list(fileList, paths[i], parent_dir);
+		fileList = add_file_to_list(fileList, paths[i], parent_dir);
+
+	    }
 
 	}
 
@@ -383,7 +394,7 @@ int mkdir_parent(char* path){
 	}
 
 	// The directory already exists
-	else if (err = EEXIST){
+	else if (err == EEXIST){
 	    // Continue
 	}
 

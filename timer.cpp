@@ -32,6 +32,9 @@ int init_timers(){
 	end[i].tv_nsec = 0;
 	bzero(descrip[i], MAX_DESCRIP_LEN);
     }    
+    
+    return 0;
+    
 }
 
 int clock_gettime(clockid_t clk_id, struct timespec *tp);
@@ -66,27 +69,27 @@ double diff(timespec start, timespec end){
 
 
 double timer_elapsed(int tag){
-    if (start[tag].tv_sec+start[tag].tv_nsec){
 
-	if (end[tag].tv_sec+end[tag].tv_nsec){
+    if (start[tag].tv_sec+start[tag].tv_nsec 
+	&&
+	end[tag].tv_sec+end[tag].tv_nsec){
 
 	    return diff(start[tag], end[tag]);
-
-	} else {
-	    
-	    return 0.0;
-
-	}
+    
     }
+
+    return 0.0;
+	
 }
 
 
 int print_timer(int tag){
 
     printf("%s\t%f\n", descrip[tag], timer_elapsed(tag));
+    return fflush(stdout);
 
-    fflush(stdout);
 }
+
 
 void print_timers(){
     int i;
