@@ -23,21 +23,21 @@ and limitations under the License.
 
 ucp_block block;
 
-// Allocate a buffer for all of the data we will ever use
-
-// Format of buffer:
-//      [header -> sizeof(header_t)] [data BUFFER_LEN]
-
+// int allocate_block
+// - allocates the block that encapsulates the header and data buffer
+// - note:
+//   Format of buffer:
+//     [header --> sizeof(header_t)] [data --> BUFFER_LEN]
+// - returns: RET_SUCCESS on success, RET_FAILURE on failure
 int allocate_block(ucp_block *block){
 
     // Calculate length of block based on optimal buffer size and
     // header length
-
     int alloc_len = BUFFER_LEN + sizeof(header_t);
 
-    // allocate block
+    block->buffer = (char*) malloc(alloc_len*sizeof(char));
 
-    if (!(block->buffer = (char*) malloc( alloc_len * sizeof(char))))
+    if (!block->buffer)
 	error("unable to allocate data");
 
     // record parameters in block
@@ -48,11 +48,10 @@ int allocate_block(ucp_block *block){
     return RET_SUCCESS;
 }
 
-
+// int fill_data
+// - copy a small amount of data into the buffer, this is not used
+//   for data blocks
 int fill_data(void* data, size_t len){
-    
-    // Copy a small amount of data into the buffer, this is not used
-    // for data blocks
     
     return (!!memcpy(block.data, data, len));
     

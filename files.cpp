@@ -32,7 +32,7 @@ file_LL *checkpoint = NULL;
 
 int map_fd(int fd, off_t size){
 
-    // file protections and advice
+        // file protections and advice
 
     int prot	= PROT_READ | PROT_WRITE;
     int advice	= POSIX_MADV_SEQUENTIAL;
@@ -80,7 +80,7 @@ int map_fd(int fd, off_t size){
 int unmap_fd(int fd, off_t size){
 
     if (munmap(f_map, size) < 0) {
-	error("unable to un-mmap the file");
+	// error("unable to un-mmap the file");
     }
     
     return RET_SUCCESS;

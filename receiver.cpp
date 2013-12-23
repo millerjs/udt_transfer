@@ -256,8 +256,9 @@ int receive_files(char*base_path){
 		    warn("Completed stream of known size");
 		}
 
-		if (!ftruncate64(fout, f_size))
+		if (ftruncate64(fout, f_size)){
 		    error("unable to truncate file to correct size");
+		}
 
 		// On the next loop, use the header that was just read in
 
