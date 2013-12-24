@@ -292,7 +292,6 @@ void print_xfer_stats(){
  * - note: this is important or subsequent transfers will encounter zomibe children
  */
 void clean_exit(int status){
-
     close_log_file();
     print_xfer_stats();
     kill_children(VERB_2);
@@ -351,7 +350,7 @@ int print_progress(char* descrip, off_t read, off_t total){
     // if we know the file size, print percentage of completion
     if (total){
 
-	double percent = total ? read/100.*total : 0.0;
+	double percent = total ? read*100./total : 0.0;
 
 	sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
 	fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);

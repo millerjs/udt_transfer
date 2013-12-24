@@ -37,10 +37,7 @@ int read_header(header_t *header){
 
 }
 
-
-
 // wrapper for read
-
 off_t read_data(void* b, int len){
 
     off_t rs, total = 0;

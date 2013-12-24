@@ -58,7 +58,6 @@ int fill_data(void* data, size_t len){
 }
 
 // write header data to out fd
-
 int write_header(header_t header){
 
     // should you be using write block?
@@ -70,7 +69,6 @@ int write_header(header_t header){
 }
 
 // write data block to out fd
-
 off_t write_block(header_t header, int len){
 
     memcpy(block.buffer, &header, sizeof(header_t));
@@ -92,10 +90,9 @@ off_t write_block(header_t header, int len){
 
 }
 
-
+// Notify the destination that the transfer is complete
 int complete_xfer(){
     
-    // Notify the destination that the transfer is complete
     verb(VERB_2, "Signalling end of transfer.");
 
     // Send completition header
@@ -112,7 +109,6 @@ int complete_xfer(){
 
 // sends a file to out fd by creating an appropriate header and
 // sending any data
-
 int send_file(file_object_t *file){
 
     if (!file) return -1;
