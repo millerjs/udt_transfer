@@ -1,4 +1,7 @@
 ucp
-libudt.so
+udpipe/src/up
+udpipe/udt/src/udt
+udpipe/udt/src/libudt.a
+udpipe/udt/src/libudt.so
 *.o
 *.d

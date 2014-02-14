@@ -22,8 +22,8 @@ all: ucp
 
 ucp:
 	$(MAKE) -C src/
-	$(MAKE) -C udpipe/
+	$(MAKE) -C udt/
 
 clean:
 	$(MAKE) clean -C src/
-	$(MAKE) clean -C udpipe/
+	$(MAKE) clean -C udt/

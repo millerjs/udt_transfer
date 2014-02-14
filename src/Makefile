@@ -1,27 +1,55 @@
-##### Compiler
+C++ = g++
 
-CC = g++
+ifndef os
+   os = LINUX
+endif
 
-##### FLAGS
+ifndef arch
+   arch = IA32
+endif
 
-CFLAGS = -I../../include -Wno-write-strings -g -fpic -std=gnu99 -MMD -MP -DDEBUG -O3 
-LDLIBS = -lm -lrt -pthread 
+CCFLAGS = -Wall -D$(os) -I../udt/src -finline-functions -g -lcrypto -D_LARGE_FILE_SOURCE=1
 
-##### Objects
+ifeq ($(arch), IA32)
+   CCFLAGS += -DIA32 #-mcpu=pentiumpro -march=pentiumpro -mmmx -msse
+endif
 
-BIN = ../ucp
-DEPS = $(OBJS:.o=.d)
-OBJS = ucp.o sender.o receiver.o files.o timer.o
+ifeq ($(arch), POWERPC)
+   CCFLAGS += -mcpu=powerpc
+endif
 
-all: $(BIN)
+ifeq ($(arch), IA64)
+   CCFLAGS += -DIA64
+endif
 
-$(BIN): $(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS)  $(LDLIBS) -o $(BIN)
+ifeq ($(arch), SPARC)
+   CCFLAGS += -DSPARC
+endif
 
-%.d: %.c
+LDFLAGS = -L../src ../udt/src/libudt.a -lstdc++ -lpthread -lm -lssl -lcrypto -lrt
 
-check-syntax:
-	$(CC) -o nul -S ${CHK_SOURCES}
+ifeq ($(os), UNIX)
+   LDFLAGS += -lsocket
+endif
+
+ifeq ($(os), SUNOS)
+   LDFLAGS += -lrt -lsocket
+endif
+
+DIR = $(shell pwd)
+
+APP = ucp  
+
+all: $(APP) 
+
+%.o: %.cpp 
+	$(C++) $(CCFLAGS) $< -c
+
+ucp: ucp.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o 
+	$(C++) $^ -o $(APP) $(LDFLAGS)
 
 clean:
-	rm -f $(OBJS) $(BIN) *.d
+	rm -f *.o $(APP) 
+
+install:
+	export PATH=$(DIR):$$PATH

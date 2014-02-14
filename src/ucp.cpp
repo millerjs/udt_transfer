@@ -28,10 +28,10 @@ int opt_verbosity = 1;
 int timer = 0;
 off_t TOTAL_XFER = 0;
 
-#include "../udpipe/src/udpipe.h"
-#include "../udpipe/src/udpipe_threads.h"
-#include "../udpipe/src/udpipe_server.h"
-#include "../udpipe/src/udpipe_client.h"
+#include "udpipe.h"
+#include "udpipe_threads.h"
+#include "udpipe_server.h"
+#include "udpipe_client.h"
 
 remote_arg_t remote_args;
 ucp_opt_t opts;
@@ -531,7 +531,7 @@ int start_udpipe_server(thread_args *args)
     dup2(ssh_fd[2], 2);
     dup2(ssh_fd[1], 1);
     
-    
+    run_server(args);
 
 
     return 0;
