@@ -1,0 +1,1064 @@
+/*****************************************************************************
+Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
+
+	      This file is part of ucp by Joshua Miller
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions
+and limitations under the License.
+*****************************************************************************/
+
+#include "ucp.h"
+#include "timer.h"
+#include "sender.h"
+#include "receiver.h"
+#include "files.h"
+
+int opt_verbosity = 1;
+
+// Statistics globals
+int timer = 0;
+off_t TOTAL_XFER = 0;
+
+#include "../udpipe/src/udpipe.h"
+#include "../udpipe/src/udpipe_threads.h"
+#include "../udpipe/src/udpipe_server.h"
+#include "../udpipe/src/udpipe_client.h"
+
+remote_arg_t remote_args;
+ucp_opt_t opts;
+
+using std::cerr;
+using std::endl;
+
+/* 
+ * void print_bytes:
+ * - print the bytes at pointer object for length size
+ */
+void print_bytes(const void *object, size_t size) 
+{
+    size_t i;
+    
+    fprintf(stderr, "[ ");
+    for(i = 0; i < size; i++){
+	fprintf(stderr, "%02x ", ((const unsigned char *) object)[i] & 0xff);
+    }
+    fprintf(stderr, "]\n");
+}
+
+/* 
+ * void usage
+ * - print the usage information
+ */
+void usage(int EXIT_STAT)
+{
+
+    char* options[] = {
+	"--help \t\t\t print this message",
+	"--remote (-r) host:dest \t immitate scp with ucp and udpipe",
+	"--checkpoint (-k) log_file \t log transfer to file log_file.  If log_file exists",
+	"\t\t\t\t from previous transfer, resume transfer at last completed file.",
+	"--verbose \t\t\t verbose, notify of files being sent. Same as -v2",
+	"--quiet \t\t\t silence all warnings. Same as -v0",
+	"--no-mmap \t\t\t do not memory map the file (involves extra memory copy)",
+	"--full-root \t\t\t do not trim file path but reconstruct full source path",
+	"--pipe pipe_cmd \t\t attempt to connect to specified pipe executable",
+	"--log (-g) log_file \t\t log transfer to file log_file but do not restart",
+	"--restart log_file \t\t restart transfer from file log_file but do not log",
+	"",
+
+	"-l [dest_dir] \t\t listen for file transfer and write to dest_dir [default ./]",
+	"-v verbosity level \t\t set the level of verbosity",
+	"",
+
+	"Remote transfers: --remote (-r) host:dest",
+	"\tThis option requires udpipe [up] to be in your path. ucp",
+	"\twill attempt to execute udpipe on the specified host over",
+	"\tssh.  If successful, it will transfer file list to",
+	"\tdirectory dest.",
+	
+	"\nLevels of Verbosity:",
+	"\t0: Withhold WARNING messages",
+	"\t1: Update user on file transfers [DEFAULT]",
+	"\t2: Update user on underlying processes, i.e. directory creation ",
+	"\t3: Print information on optimizations ",
+	"\t4: Print any information generated",
+	NULL
+    };
+    
+    fprintf(stderr, "Basic usage: \n\tucp source_dir | ucp -l dest_dir\n");
+    fprintf(stderr, "Options:\n");
+    
+    for (int i = 0; options[i]; i++)
+	fprintf(stderr, "   %s\n", options[i]);
+    
+    exit(EXIT_STAT);
+
+}
+
+/* 
+ * void verb
+ * - print message to stdout depending on user's selection of verbosity
+ */
+void verb(int verbosity, char* fmt, ... ){
+    if (opt_verbosity >= verbosity){
+	va_list args; va_start(args, fmt);
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
+	va_end(args);
+    }
+}
+
+
+/* 
+ * void warn
+ * - warn the user unless verbosity set to VERB_0 (0)
+ */
+void warn(char* fmt, ... ){
+    if (opt_verbosity > VERB_0){
+	va_list args; va_start(args, fmt);
+	fprintf(stderr, "WARNING: ");
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
+	va_end(args);
+    }
+}
+
+/* 
+ * void error
+ * - print error to stdout and quit
+ * - note: error() takes a variable number of arguments with 
+ *   format string (like printf)
+ */
+void error(char* fmt, ... ){
+    va_list args; va_start(args, fmt);
+    fprintf(stderr, "ERROR: ");
+    vfprintf(stderr, fmt, args);
+    if (errno) perror(" ");
+    fprintf(stderr, "\n");
+    va_end(args);
+    clean_exit(EXIT_FAILURE);
+}
+
+
+/* 
+ * int kill_children
+ * - Make sure that we have killed any zombie or orphaned children
+ * - returns: returns 0 on success, does not return on failure
+ */
+int kill_children(int verbosity){
+
+    // Clean up the ssh process
+    if (remote_args.ssh_pid && remote_args.remote_pid){
+
+	if (opt_verbosity >= verbosity) 
+	    fprintf(stderr, "Killing child ssh process... ");
+
+	if (kill(remote_args.ssh_pid, SIGINT)){
+	    if (opt_verbosity >= verbosity) 
+		perror("FAILURE");
+	} else {
+	    verb(verbosity, "success.");
+	}
+
+	int ssh_kill_pid;
+	ssh_kill_pid = fork();
+
+	// CHILD
+	if (ssh_kill_pid == 0) {
+
+	    if (opt_verbosity >= verbosity) 
+		fprintf(stderr, "Killing remote ucp process... ");
+
+	    char kill_cmd[MAX_PATH_LEN];
+	    sprintf(kill_cmd, "kill -s SIGINT %d 2> /dev/null", remote_args.remote_pid);
+	    char *args[] = {"ssh", "-A", remote_args.pipe_host, kill_cmd, NULL};
+
+	    // Execute the pipe process
+	    if (execvp(args[0], args)){
+		fprintf(stderr, "WARNING: unable to kill remote process.");
+		exit(EXIT_FAILURE);
+	    }
+
+	} 
+
+	// PARENT
+	else {
+
+	    int stat;
+	    waitpid(ssh_kill_pid, &stat, 0);
+	    if (!stat) 
+		verb(verbosity, "success.");
+	    
+	}
+	
+    }
+
+    // Kill the pipe process
+    if (remote_args.pipe_pid){
+
+	int status;
+
+	if (opt_verbosity >= verbosity)
+	    fprintf(stderr, "Killing child pipe process... ");
+
+	if (kill(remote_args.pipe_pid, SIGINT)){
+	    if (opt_verbosity >= verbosity) perror("FAILURE");
+	} else {
+	    verb(verbosity, "success.");
+	}
+
+	if (opt_verbosity >= verbosity)
+	    fprintf(stderr, "Reaping child pipe process... ");	
+
+	// Reap the child pipe process
+	if ((wait(&status)) == -1){
+	    if (opt_verbosity >= verbosity) 
+		perror("FAILURE");
+
+	} else { 
+	    verb(verbosity, "success.");
+	}
+
+    }
+
+    return RET_SUCCESS;
+
+}
+
+/* 
+ * double get_scale
+ * - takes the transfer size and an allocated label string
+ * - returns: the ratio to scale the transfer size to be human readable
+ * - state  : writes the label fro the scale to char*label
+ */
+double get_scale(off_t size, char*label){
+    
+     if (size < SIZE_KB){
+	sprintf(label, "B");
+	return SIZE_B;
+    } else if (size < SIZE_MB){
+	sprintf(label, "KB");
+	return SIZE_KB;
+    } else if (size < SIZE_GB){
+	sprintf(label, "MB");
+	return SIZE_MB;
+    } else if (size < SIZE_TB){
+	sprintf(label, "GB");
+	return SIZE_GB;
+    } else if (size < SIZE_PB){
+	sprintf(label, "TB");
+	return SIZE_TB;
+    } else {
+	sprintf(label, "PB");
+	return SIZE_PB;
+    } 
+
+    label = "[?]";
+    return 1.0;
+
+}
+
+
+/* 
+ * void print_xfer_stats
+ * - prints the average speed, total data transfered, and time of transfer to terminal
+ */
+void print_xfer_stats(){
+
+    char label[8];
+    
+    if (opts.verbosity >= VERB_2 || opts.progress){
+	stop_timer(timer);
+	double elapsed = timer_elapsed(timer);
+
+	double scale = get_scale(TOTAL_XFER, label);
+
+	fprintf(stderr, "\t\t\tSTAT: %.2f %s transfered in %.2f s [ %.2f Gb/s ] \n", 
+		TOTAL_XFER/scale, label, elapsed, 
+		TOTAL_XFER/elapsed/scale*SIZE_B);
+    }
+    
+}
+
+/* 
+ * void clean_exit
+ * - a wrapper for exit 
+ * - note: this is important or subsequent transfers will encounter zomibe children
+ */
+void clean_exit(int status){
+    close_log_file();
+    print_xfer_stats();
+    kill_children(VERB_2);
+    exit(status);
+}
+
+/* 
+ * void sig_handler
+ * called when signals are passed to ucp
+ * - note: set by set_handlers
+ */
+void sig_handler(int signal){
+
+    if (signal == SIGINT){
+	verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
+    
+    }
+
+    if (signal == SIGSEGV){
+	verb(VERB_0, "\nERROR: [%d] received SIGSEV, cleaning up and exiting...", getpid());
+	perror("Catching SEGFAULT");
+    }
+
+    // Kill chiildren and let user know
+    kill_children(VERB_2);
+
+    // ragequit
+
+    clean_exit(EXIT_FAILURE);
+
+}
+
+
+/* 
+ * int print_progress
+ * - prints the fraction of data transfered for the current file with a carriage return
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int print_progress(char* descrip, off_t read, off_t total){
+
+    char label[8];
+    char fmt[1024];
+    int path_width = 60;
+
+    // Get the width of the terminal
+    struct winsize term;
+    if (!ioctl(fileno(stdout), TIOCGWINSZ, &term)){
+    	int progress_width = 35;
+    	path_width = term.ws_col - progress_width;
+    }
+    
+    // Scale the amount read and generate label
+    off_t ref = (total > read) ? total : read;
+    double scale = get_scale(ref, label);
+
+    // if we know the file size, print percentage of completion
+    if (total){
+
+	double percent = total ? read*100./total : 0.0;
+
+	sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
+	fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+
+    } else {
+
+	sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
+	fprintf(stderr, fmt, descrip, read/scale,label);
+
+    }
+
+    return RET_SUCCESS;
+
+}
+
+/* 
+ * header_t nheader
+ * - creates and initializes a new header with type [type] and length [size]
+ * - returns: new header
+ */
+header_t nheader(xfer_t type, off_t size){
+
+    header_t header;
+
+    header.type = type;
+    header.data_len = size;
+
+    return header;
+
+}
+
+
+/* 
+ * int generate_pipe_cmd
+ * - generates the pipe command to be used to execvp a pipe, i.e. udpipe
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int generate_pipe_cmd(char*pipe_cmd, int pipe_mode){
+    
+    if (*pipe_cmd){
+
+	// Run user specified pipe process
+	return RET_SUCCESS;
+
+    } else if (opts.default_udpipe){
+
+	// Make sure the user supplied a host ip 
+	if (!*remote_args.pipe_host){
+	    error("Please specify ip: [-i host]");
+	}
+
+	char *default_args = "";
+	if (pipe_mode == MODE_SEND){
+	    sprintf(pipe_cmd, "up %s %s %s", default_args, 
+		    remote_args.pipe_host, remote_args.pipe_port);
+
+	} else {
+	    sprintf(pipe_cmd, "up %s -l %s", default_args, 
+		    remote_args.pipe_port);
+	}
+
+    } else {
+	return RET_FAILURE;
+    }
+
+    return RET_SUCCESS;
+
+}
+
+
+/* 
+ * int run_pipe
+ * - execute a pipe process i.e. udpipe and redirect ucp output
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int run_pipe(char* pipe_cmd){
+
+    // Create/verfiy the command that will be used to execute the pipe
+
+    if (generate_pipe_cmd(pipe_cmd, opts.mode))
+	return RET_FAILURE;
+
+    verb(VERB_2, "Attempting to use pipe: [%s]\n", pipe_cmd);
+
+    char *args[MAX_ARGS];
+    bzero(args, MAX_ARGS);
+    
+    // tokenize the pipe command into argument array
+    int arg_idx = 0;
+    char* token = strtok(pipe_cmd, " ");
+    while (token) {
+	args[arg_idx] = strdup(token);
+	arg_idx++;
+	token = strtok(NULL, " ");
+    }
+
+
+    // Create pipe and fork
+    int pipefd[2], empty_fd[2];
+
+    if (pipe(pipefd))
+	warn("[run_pipe] unable to create pipe pipefd");
+
+    if(pipe(empty_fd))
+	warn("[run_pipe] unable to create pipe empty_fd");
+ 
+    pid_t parent_pid = getpid();
+
+    remote_args.pipe_pid = fork();
+
+    // CHILD
+    if (remote_args.pipe_pid == 0) {
+
+	// Redirect stdout to pipe's stdout
+	if (opts.mode == MODE_SEND){
+	    dup2(pipefd[0], 0);
+	    dup2(pipefd[1], 1);
+	} 
+
+	//  MODE_RCV
+	// Redirect stdout to pipe's stdout
+	else {
+	    dup2(empty_fd[0], 0);
+	    dup2(pipefd[1], 1);
+	}
+
+	// Execute the pipe process
+	if (execvp(args[0], args)){
+	    verb(VERB_0, "ERROR: unable to execute pipe process");
+	    perror(args[0]);
+
+	    if (opt_verbosity >= VERB_2) 
+		fprintf(stderr, "Killing parent process... ");
+
+	    if (kill(parent_pid, SIGINT)){
+		if (opt_verbosity >= VERB_2) 
+		    perror("FAILURE");
+	    } else {
+		verb(VERB_2, "success.");
+	    }
+
+	    clean_exit(EXIT_FAILURE);
+	    
+	}
+	
+    }
+
+    // PARENT
+    else {
+
+	// Redirect the input from the pipe to stdin
+	if (opts.mode == MODE_SEND){
+	    dup2(pipefd[1], 1);
+	} 
+
+	// Redirect the output to the pipe's stdout
+	else {
+	    dup2(pipefd[0], 0);
+	}
+	
+    }
+
+    return RET_SUCCESS;
+
+}
+
+int start_udpipe_server(thread_args *args)
+{
+
+    // Create pipe and fork
+    int ssh_fd[2];
+    if (pipe(ssh_fd))
+	warn("[run_ssh_command] unable to create pipe");
+
+    dup2(ssh_fd[2], 2);
+    dup2(ssh_fd[1], 1);
+    
+    
+
+
+    return 0;
+}
+
+/* 
+ * int run_ssh_command
+ * - run the ssh command that will create a remote ucp process
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int run_ssh_command(char *remote_dest)
+{
+
+    if (!remote_dest) 
+	return RET_FAILURE;
+    
+    verb(VERB_2, "Attempting to run remote command to %s:%s\n", 
+	 remote_args.pipe_host, remote_args.pipe_port);
+
+    // Create pipe and fork
+    int ssh_fd[2];
+    if (pipe(ssh_fd))
+	warn("[run_ssh_command] unable to create pipe");
+
+    remote_args.ssh_pid = fork();
+
+    // CHILD
+    if (remote_args.ssh_pid == 0) {
+
+	char remote_pipe_cmd[MAX_PATH_LEN];	
+	bzero(remote_pipe_cmd, MAX_PATH_LEN);
+
+	if (opts.mode == MODE_SEND){
+
+	    // Generate remote ucp command to RECEIVE DATA
+	    // generate_pipe_cmd(remote_pipe_cmd, MODE_RCV);
+	    // sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2>~/ucp.log & %s", 
+	    sprintf(remote_pipe_cmd, "%s -x -l -v0 --udpipe -l %s 2>~/ucp.log & %s", 
+		    remote_args.udpipe_location, remote_args.remote_dest, "echo $!");
+	    
+	    // Redirect output from ssh process to ssh_fd
+	    char *args[] = {
+		"ssh",
+		"-A", 
+		remote_args.pipe_host, 
+		remote_pipe_cmd, 
+		NULL
+	    };
+
+	    verb(VERB_3, "ssh command: ");
+	    for (int i = 0; args[i]; i++)
+		verb(VERB_3, "args[%d]: %s\n", i, args[i]);
+
+	    dup2(ssh_fd[2], 2);
+	    dup2(ssh_fd[1], 1);
+
+	    if (execvp(args[0], args)){
+	    	fprintf(stderr, "ERROR: unable to execute ssh process\n");
+	    	clean_exit(EXIT_FAILURE);
+	    } else {
+	    	fprintf(stderr, "ERROR: premature ssh process exit\n");
+	    	clean_exit(EXIT_FAILURE);
+	    }
+
+	} else if (opts.mode == MODE_RCV){
+	    
+	    // TODO
+
+	    error("Remote -> Local transfers not currently supported, remove -l?\n");
+
+	}
+
+    }
+
+    // PARENT
+    else {
+
+	char ssh_pid_str[MAX_PATH_LEN];
+	
+	// Try and get the pid of the remote process from the ssh pipe input
+	if (read(ssh_fd[0], ssh_pid_str, MAX_PATH_LEN) < 0){
+	    perror("WARNING: Unable to read pid from remote process");
+
+	} 
+
+	// Read something from the pipe, proceed
+	else {
+
+	    remote_args.remote_pid = atoi(ssh_pid_str);
+	    verb(VERB_2, "Remote process pid: %d\n", remote_args.remote_pid);
+
+	}
+
+    }
+
+    return RET_SUCCESS;
+
+}
+
+
+void initialize_udpipe_args(thread_args *args){
+    args->listen_ip = NULL;
+    args->ip = NULL;
+    args->port = NULL;
+    args->blast = 0;
+    args->blast_rate = 1000;
+    args->udt_buff = BUFF_SIZE;
+    args->udp_buff = BUFF_SIZE;
+    args->mss = 8400;
+    args->use_crypto = 0;
+    args->verbose = 0;
+    args->n_crypto_threads = 1;
+    args->print_speed = 0;
+    args->timeout = 0;
+}
+
+/* 
+ * int parse_destination
+ * - parse argument xfer_cmd for host:destination
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int parse_destination(char*xfer_cmd){
+
+    int hostlen = -1;
+    int cmd_len = strlen(xfer_cmd);
+
+    // the string appears not to contain a remote destination
+    if ((hostlen = strchr(xfer_cmd, ':') - xfer_cmd + 1) < 0){
+	error("Please specify transfer command [host:destination_file]");
+	return RET_FAILURE;
+    }
+
+    // the string appeasrs to contain a remote destination
+    else {
+	snprintf(remote_args.pipe_host, hostlen, "%s", xfer_cmd);
+	snprintf(remote_args.remote_dest, cmd_len-hostlen+1,"%s", xfer_cmd+hostlen);
+    }
+
+    return RET_SUCCESS;
+
+}
+
+/* 
+ * int get_remote_host
+ * - given a list of arguments, check to see if user passed a remote specification
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int get_remote_host(int argc, char** argv){
+
+    // Look for a specified remote destination
+    for (int i = 0; i < argc; i++){
+
+	if (strchr(argv[i], ':')){
+
+	    verb(VERB_2, "Found remote destination [%s]\n", argv[i]);
+
+	    sprintf(remote_args.xfer_cmd, "%s", argv[i]);
+	    opts.remote = 1;
+
+	    // Set this argument to NULL because it is not a file to send
+	    argv[i] = NULL;
+
+	    return RET_SUCCESS;
+
+	}
+    }
+
+    return RET_FAILURE;
+    
+}
+
+/* 
+ * int set_defaults
+ * - sets the defaults for the two global option structs, 
+ *    [ucp_opt_t opts] and [remote_arg_t remote_args]
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int set_defaults(){
+    
+    bzero(remote_args.pipe_cmd,	   MAX_PATH_LEN);
+    bzero(remote_args.xfer_cmd,	   MAX_PATH_LEN);
+    bzero(remote_args.pipe_host,   MAX_PATH_LEN);
+    bzero(remote_args.pipe_port,   MAX_PATH_LEN);
+    bzero(remote_args.remote_dest, MAX_PATH_LEN);
+    
+    sprintf(remote_args.udpipe_location, "ucp");
+    sprintf(remote_args.pipe_port,	 "9000");
+    
+    opts.mode		= MODE_SEND;
+    opts.verbosity	= VERB_1;
+    opts.recurse	= 1;
+    opts.regular_files	= 1;
+    opts.progress	= 1;
+    opts.default_udpipe	= 0;
+    opts.remote		= 0;
+    opts.delay		= 0;
+    opts.log		= 0;
+    opts.restart	= 0;
+    opts.mmap		= 0;
+    opts.full_root	= 0;
+
+    return RET_SUCCESS;
+
+}
+
+/* 
+ * int get_options
+ * - parse the command line arguments
+ * - returns: optind, the index of the last used argument
+ */
+int get_options(int argc, char *argv[]){
+
+    int opt;
+    
+    // Read in options
+
+    static struct option long_options[] =
+	{
+	    {"verbosity"	, no_argument	, &opts.verbosity	, VERB_2},
+	    {"quiet"		, no_argument	, &opts.verbosity	, VERB_0},
+	    {"no-mmap"		, no_argument	, &opts.mmap		, 1},
+	    {"full-root"	, no_argument	, &opts.full_root	, 1},
+	    {"all-files"	, no_argument	, &opts.regular_files	, 0},
+	    {"help"		, no_argument		, NULL	, 'h'},
+	    {"udpipe"		, required_argument	, NULL	, 'u'},
+	    {"pipe"		, required_argument	, NULL	, 'n'},
+	    {"remote"		, required_argument	, NULL	, 'r'},
+	    {"log"		, required_argument	, NULL	, 'g'},
+	    {"restart"		, required_argument	, NULL	, 'w'},
+	    {"checkpoint"	, required_argument	, NULL	, 'k'},
+	    {0, 0, 0, 0}
+        };
+
+    int option_index = 0;
+
+    while ((opt = getopt_long(argc, argv, "n:i:u:xlhv:np:d:c:r:g:k:w:o:", 
+			      long_options, &option_index)) != -1){
+	switch (opt){
+
+	case 'k':
+	    // restart and log to/from file
+	    opts.restart = 1;
+	    opts.log = 1;
+	    sprintf(log_path, "%s", optarg);
+	    sprintf(opts.restart_path, "%s", optarg);
+	    break;
+
+	case '1':
+	    // restart but do not log to file
+	    opts.restart = 1;
+	    sprintf(opts.restart_path, "%s", optarg);
+	    break;
+
+	case 'o':
+	    // pipe option to pass to remote pipe
+
+	    // TODO
+	    fprintf(stderr, "Got pipe option: %s\n", optarg);
+	    break;
+
+	case 'g':
+	    // log to file but do not restart from file
+	    opts.log = 1;
+	    sprintf(log_path, "%s", optarg);
+	    break;
+	    
+	case 'r':
+	    // user specified remote transfer, useful now for files
+	    // that contain ':'
+	    opts.remote = 1;
+	    sprintf(remote_args.xfer_cmd, "%s", optarg);
+	    break;
+
+	case 'c':
+	    // specify location of remote binary
+	    sprintf(remote_args.udpipe_location, "%s", optarg);
+	    break;
+	    
+	case 'x':
+	    // disable printing progress
+	    opts.progress = 0;
+	    break;
+
+	case 'l':
+	    // specify receive mode
+	    opts.mode = MODE_RCV;
+	    break;
+
+	case 'p':
+	    // specify pipe command
+	    sprintf(remote_args.pipe_port, "%s", optarg);
+	    break;
+
+	case 'i':
+	    // specify the host, [i]p address
+	    sprintf(remote_args.pipe_host, "%s", optarg);
+	    break;
+
+	case 'd':
+	    // in the case of slow ssh initiation, delay binding to
+	    // remote by optarg seconds
+	    opts.delay = atoi(optarg);
+	    break;
+
+	case 'u':
+	    // specify the local binary for udpipe (if not in path)
+	    if (*remote_args.pipe_cmd){
+		fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
+		clean_exit(EXIT_FAILURE);
+	    }
+	    sprintf(remote_args.pipe_host, "%s", optarg);
+	    opts.default_udpipe = 1;
+	    break;
+		
+	case 'n':
+	    // specify the entire command for pipe, i.e. [netcat localhost 9000]
+	    if (opts.default_udpipe){
+		fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
+		clean_exit(EXIT_FAILURE);
+	    }
+	    strcpy(remote_args.pipe_cmd, optarg);
+	    break;
+	    
+	case 'v':
+	    // verbosity
+	    opts.verbosity = atoi(optarg);
+	    break;
+	    
+	case 'h':
+	    // help
+	    usage(0);
+	    break;
+	    
+	case '\0':
+	    break;
+	    
+	default:
+	    fprintf(stderr, "Unknown command line option: [%c].\n", opt);
+	    usage(EXIT_FAILURE);
+	    
+	}
+    }
+
+    opt_verbosity = opts.verbosity;
+    if (opt_verbosity < VERB_1)
+	opts.progress = 0;
+
+    return optind;
+
+}
+
+/* 
+ * int set_handlers
+ * - sets the signal handler to sig_handler()
+ * - returns: RET_SUCCESS on success, RET_FAILURE on failure
+ */
+int set_handlers(){
+
+    // Catch interupt signals
+
+    if (signal(SIGINT, sig_handler) == SIG_ERR){
+	warn("[set_handlers] unable to set SIGINT handler");
+	return RET_FAILURE;
+    }
+
+    if (signal(SIGSEGV, sig_handler) == SIG_ERR){
+    	warn("[set_handlers] unable to set SIGSEGV handler\n");
+	return RET_FAILURE;
+    }
+
+    return RET_SUCCESS;
+
+}
+
+
+int main(int argc, char *argv[]){
+
+    int optind;
+    file_LL *fileList = NULL;
+
+    // specify how to catch signals
+    set_handlers();
+
+    // set structs opts and remote_args to their default values
+    set_defaults();
+
+    // parse user command line input and get the remaining argument index
+    optind = get_options(argc, argv);
+
+    // if logging is enabled, opent he log/checkpoint file
+    open_log_file();
+
+    // if user selected to restart a previous transfer
+    if (opts.restart){
+	verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
+	read_checkpoint(opts.restart_path);
+    }
+
+
+    if (opts.mode == MODE_SEND){
+
+	if (!opts.remote) {
+
+	    // Did the user specify the remote destination without the flag?
+	    get_remote_host(argc, argv);
+
+	}
+
+	if (opts.remote){
+
+	    parse_destination(remote_args.xfer_cmd);
+
+	    // if the user did not specify a pipe command in place of the default
+	    if (!*remote_args.pipe_cmd) 
+		opts.default_udpipe = 1;
+
+	    run_ssh_command(remote_args.remote_dest);
+
+	    if (opts.delay)
+		verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
+
+	    sleep(opts.delay);
+
+	}
+
+	// start the pipe command if miming scp or pipe specified
+
+	run_pipe(remote_args.pipe_cmd);
+	
+	// Did the user pass any files?
+
+	if (optind < argc){
+	    
+	    verb(VERB_2, "Running with file source mode.\n");
+	    
+	    // Clarify what we are passing as a file list
+	    
+	    int n_files = argc-optind;
+	    char **path_list = argv+optind;
+
+	    // Generate a linked list of file objects from path list
+	    if (!(fileList = build_filelist(n_files, path_list)))
+		error("Filelist empty. Please specify files to send.\n");
+		
+	    // Visit all directories and send all files
+	    timer = start_timer("send_timer");
+
+	    // This is where we pass the remainder of the work to the
+	    // file handler in sender.cpp
+	    handle_files(fileList);
+	    
+	    // signal the end of the transfer
+	    complete_xfer();
+	    
+	}  
+	
+	// if no files were passed by user
+	else {
+	    error("No files specified. Did you mean to receive? [-l]\n");
+
+	}
+	
+    } 
+    
+    // Otherwise, switch to receiving mode
+    else if (opts.mode == MODE_RCV) {
+
+	verb(VERB_2, "Running with file destination mode\n");
+
+        // start udpipe server
+        thread_args args;
+        initialize_udpipe_args(&args);
+
+        args.ip = remote_args.pipe_host;
+        args.port = remote_args.pipe_port;
+        args.verbose = 1;
+        args.n_crypto_threads = 1;
+        args.timeout = 30;
+
+        start_udpipe_server(&args);
+	
+	// Check to see if user specified a pipe, if so, run it
+	// run_pipe(remote_args.pipe_cmd);
+
+	// Destination directory was passed
+	if (optind < argc) {
+	    
+	    // Generate a base path for file locations
+	    char base_path[MAX_PATH_LEN];
+	    bzero(base_path, MAX_PATH_LEN);
+	    sprintf(base_path, "%s", argv[optind++]);
+	    
+	    // Are there any remaining command line args? Warn user
+	    if (opts.verbosity > VERB_0){
+
+		warn("Unused command line args:");
+		for (; optind < argc-1; optind++)
+		    warn("Unused %s\n", argv[optind]);
+
+	    }
+
+	    
+	    timer = start_timer("receive_timer");
+
+	    // Listen to sender for files and data, see receiver.cpp
+	    receive_files(base_path);
+	    
+	}
+	
+	// If no destination directory was passed, default to current dir
+	else {
+	    
+	    timer = start_timer("receive_timer");
+	    receive_files("");
+	    
+	}
+	
+    }
+
+    print_xfer_stats();    
+
+    // Delay for a predefined interval to account for network latency
+    sleep(END_LATENCY);
+
+
+    kill_children(VERB_2);
+    
+    return RET_SUCCESS;
+  
+}
