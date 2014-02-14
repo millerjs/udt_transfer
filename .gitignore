@@ -1,4 +1,5 @@
 ucp
-testdir
-testdir/*
+udpipe
+libudt.so
 *.o
+*.d
