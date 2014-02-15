@@ -131,6 +131,9 @@ typedef struct ucp_opt_t{
     int restart;
     int mmap;
     int full_root;
+    int socket_ready;
+    int *send_pipe;
+    int *recv_pipe;
 
     char restart_path[MAX_PATH_LEN];
 
@@ -142,7 +145,6 @@ typedef struct remote_arg_t{
     int ssh_pid;
     int remote_pid;
 
-    /* Global path variables */
     char remote_dest[MAX_PATH_LEN];
     char pipe_port[MAX_PATH_LEN];
     char pipe_host[MAX_PATH_LEN];

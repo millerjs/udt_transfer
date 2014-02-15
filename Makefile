@@ -21,8 +21,8 @@ all: ucp
 .PHONY: ucp
 
 ucp:
+	$(MAKE) -C udt/src/
 	$(MAKE) -C src/
-	$(MAKE) -C udt/
 
 clean:
 	$(MAKE) clean -C src/

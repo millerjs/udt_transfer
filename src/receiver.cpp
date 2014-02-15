@@ -33,7 +33,8 @@ char data_path[MAX_PATH_LEN];
 
 int read_header(header_t *header){
 
-    return read(fileno(stdin), header, sizeof(header_t));
+    // return read(fileno(stdin), header, sizeof(header_t));
+    return read(opts.recv_pipe[0], header, sizeof(header_t));
 
 }
 
@@ -44,7 +45,8 @@ off_t read_data(void* b, int len){
     char* buffer = (char*)b;
     
     while (total < len){
-	rs = read(fileno(stdin), buffer+total, len - total);
+	// rs = read(fileno(stdin), buffer+total, len - total);
+        rs = read(opts.recv_pipe[0], buffer+total, len - total);
 	total += rs;
 	TOTAL_XFER += rs;
     }
@@ -59,6 +61,9 @@ off_t read_data(void* b, int len){
 int receive_files(char*base_path){
 
     header_t header;
+
+    while (!opts.socket_ready)
+        usleep(10000);
 
     int alloc_len = BUFFER_LEN - sizeof(header_t);
     char* data = (char*) malloc( alloc_len * sizeof(char));

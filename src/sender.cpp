@@ -62,7 +62,8 @@ int write_header(header_t header){
 
     // should you be using write block?
 
-    int ret = write(fileno(stdout), &header, sizeof(header_t));
+    // int ret = write(fileno(stdout), &header, sizeof(header_t));
+    int ret = write(opts.send_pipe[1], &header, sizeof(header_t));
 
     return ret;
 
@@ -78,10 +79,13 @@ off_t write_block(header_t header, int len){
 
     int send_len = len + sizeof(header_t);
 
-    int ret = write(fileno(stdout), block.buffer, send_len);
+    // int ret = write(fileno(stdout), block.buffer, send_len);
+    int ret = write(opts.send_pipe[1], block.buffer, send_len);
+
+    fprintf(stderr, "Wrote %d bytes\n", ret);
 
     if (ret < 0){
-	error("unable to write to stdout");
+	error("unable to write to send_pipe");
     }
 
     TOTAL_XFER += ret;
@@ -112,6 +116,9 @@ int complete_xfer(){
 int send_file(file_object_t *file){
 
     if (!file) return -1;
+
+    while (!opts.socket_ready)
+        usleep(10000);
 
     verb(VERB_2, " --- sending [%s] %s", file->filetype, file->path);
 

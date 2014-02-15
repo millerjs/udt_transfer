@@ -38,7 +38,8 @@ endif
 
 DIR = $(shell pwd)
 
-APP = ucp  
+APP = ucp
+APPOUT = ../ucp  
 
 all: $(APP) 
 
@@ -46,10 +47,10 @@ all: $(APP)
 	$(C++) $(CCFLAGS) $< -c
 
 ucp: ucp.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o 
-	$(C++) $^ -o $(APP) $(LDFLAGS)
+	$(C++) $^ -o $(APPOUT) $(LDFLAGS)
 
 clean:
-	rm -f *.o $(APP) 
+	rm -f *.o $(APPOUT) 
 
 install:
 	export PATH=$(DIR):$$PATH
