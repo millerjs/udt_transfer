@@ -22,6 +22,11 @@ and limitations under the License.
 #include "receiver.h"
 #include "files.h"
 
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+
 int opt_verbosity = 1;
 
 // Statistics globals
@@ -329,7 +334,6 @@ int print_progress(char* descrip, off_t read, off_t total){
     } else {
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
         fprintf(stderr, fmt, descrip, read/scale,label);
-
     }
 
     return RET_SUCCESS;
@@ -377,7 +381,7 @@ int run_ssh_command(char *remote_dest)
 
         if (opts.mode == MODE_SEND){
 
-            sprintf(remote_pipe_cmd, "%s -xt 2>&1 %s & %s", 
+            sprintf(remote_pipe_cmd, "%s -xt %s 2>&1 & %s", 
                     remote_args.udpipe_location, 
                     remote_args.remote_dest, "echo $!");
 
@@ -390,9 +394,9 @@ int run_ssh_command(char *remote_dest)
                 NULL
             };
 
-            verb(VERB_3, "ssh command: ");
+            verb(VERB_2, "ssh command: ");
             for (int i = 0; args[i]; i++)
-                verb(VERB_3, "args[%d]: %s\n", i, args[i]);
+                verb(VERB_2, "args[%d]: %s\n", i, args[i]);
 
             dup2(ssh_fd[2], 2);
             dup2(ssh_fd[1], 1);
@@ -473,7 +477,7 @@ int parse_destination(char*xfer_cmd){
 
     // the string appears not to contain a remote destination
     if ((hostlen = strchr(xfer_cmd, ':') - xfer_cmd + 1) < 0){
-        error("Please specify transfer command [host:destination_file]");
+        error("Please specify host [host:destination_file]");
         return RET_FAILURE;
     }
 
@@ -506,6 +510,9 @@ int get_remote_host(int argc, char** argv){
 
             // Set this argument to NULL because it is not a file to send
             argv[i] = NULL;
+
+            if (i < argc - 1)
+                opts.remote_to_local = 1;
 
             return RET_SUCCESS;
 
@@ -546,6 +553,7 @@ int set_defaults(){
     opts.mmap           = 0;
     opts.full_root      = 0;
 
+    opts.remote_to_local = 0;
     opts.ignore_modification = 0;
 
     opts.socket_ready = 0;
@@ -586,7 +594,7 @@ int get_options(int argc, char *argv[]){
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -626,7 +634,8 @@ int get_options(int argc, char *argv[]){
 
         case 't':
             // specify receive mode
-            opts.mode = MODE_RCV;
+            opts.mode |= MODE_RCV;
+            opts.mode ^= MODE_SEND;
             break;
 
         case 'i':
@@ -639,6 +648,12 @@ int get_options(int argc, char *argv[]){
             // remote by optarg seconds
             opts.delay = atoi(optarg);
             break;
+
+        case '0':
+            
+            break;
+
+
 
         case 'v':
             // verbosity
@@ -690,7 +705,6 @@ int set_handlers(){
     return RET_SUCCESS;
 
 }
-
 
 
 pthread_t *start_udpipe_server(remote_arg_t *remote_args)
@@ -780,28 +794,22 @@ int main(int argc, char *argv[]){
         read_checkpoint(opts.restart_path);
     }
 
+    get_remote_host(argc, argv);
 
-    if (opts.mode == MODE_SEND){
+    if (opts.remote_to_local){
+        fprintf(stderr, "ucp currently only supports local-to-remote transfers\n");
+        clean_exit(EXIT_FAILURE);
+    }
 
-        if (!opts.remote) 
-            get_remote_host(argc, argv);
+    if (opts.mode & MODE_SEND){
 
-        if (opts.remote){
+        parse_destination(remote_args.xfer_cmd);
+        run_ssh_command(remote_args.remote_dest);
 
-            parse_destination(remote_args.xfer_cmd);
+        if (opts.delay)
+            verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
 
-            // if the user did not specify a pipe command in place of the default
-            if (!*remote_args.pipe_cmd) 
-                opts.default_udpipe = 1;
-
-            run_ssh_command(remote_args.remote_dest);
-
-            if (opts.delay)
-                verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
-
-            sleep(opts.delay);
-
-        }
+        sleep(opts.delay);
 
         start_udpipe_client(&remote_args);
 
@@ -840,7 +848,7 @@ int main(int argc, char *argv[]){
     } 
     
     // Otherwise, switch to receiving mode
-    else if (opts.mode == MODE_RCV) {
+    else if (opts.mode & MODE_RCV) {
 
         opts.socket_ready = 1;
 
@@ -867,7 +875,6 @@ int main(int argc, char *argv[]){
                     warn("Unused %s\n", argv[optind]);
 
             }
-
             
             timer = start_timer("receive_timer");
 

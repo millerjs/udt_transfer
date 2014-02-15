@@ -100,11 +100,10 @@ typedef enum{
     VERB_4
 } verb_t;
 
-
-typedef enum{
-    MODE_SEND,
-    MODE_RCV
-} xfer_mode_t;
+#define MODE_SEND   1<<0 
+#define MODE_RCV    1<<1
+#define MODE_CLIENT 1<<2
+#define MODE_SERVER 1<<3
 
 typedef struct header{
     xfer_t type;
@@ -136,6 +135,7 @@ typedef struct ucp_opt_t{
     int *send_pipe;
     int *recv_pipe;
 
+    int remote_to_local; 
     int encryption;
 
     char restart_path[MAX_PATH_LEN];
