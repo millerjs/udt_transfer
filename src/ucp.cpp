@@ -546,6 +546,8 @@ int set_defaults(){
     opts.mmap           = 0;
     opts.full_root      = 0;
 
+    opts.ignore_modification = 0;
+
     opts.socket_ready = 0;
     opts.encryption   = 0;
 
@@ -569,11 +571,12 @@ int get_options(int argc, char *argv[]){
 
     static struct option long_options[] =
         {
-            {"verbosity"        , no_argument   , &opts.verbosity       , VERB_2},
-            {"quiet"            , no_argument   , &opts.verbosity       , VERB_0},
-            {"no-mmap"          , no_argument   , &opts.mmap            , 1},
-            {"full-root"        , no_argument   , &opts.full_root       , 1},
-            {"all-files"        , no_argument   , &opts.regular_files   , 0},
+            {"verbosity"           , no_argument , &opts.verbosity           , VERB_2},
+            {"quiet"               , no_argument , &opts.verbosity           , VERB_0},
+            {"no-mmap"             , no_argument , &opts.mmap                , 1},
+            {"full-root"           , no_argument , &opts.full_root           , 1},
+            {"ignore-modification" , no_argument , &opts.ignore_modification , 1},
+            {"all-files"           , no_argument , &opts.regular_files       , 0},
             {"help"             , no_argument           , NULL  , 'h'},
             {"log"              , required_argument     , NULL  , 'l'},
             {"restart"          , required_argument     , NULL  , 'r'},

@@ -95,6 +95,29 @@ int mwrite(char* buff, off_t pos, int len){
 
 }
 
+file_object_t *get_file_LL_tail(file_LL *list)
+{
+    if (!list)
+        return NULL;
+    while (list->next){
+        list = list->next;
+    }
+    return list->curr;
+}
+
+file_object_t *find_last_instance(file_LL *list, file_object_t *file)
+{
+    file_object_t *last = NULL;
+     
+    while (list){
+	if (!strcmp(list->curr->path, file->path)){
+            last = list->curr;
+        }
+        list = list->next;
+    }   
+
+    return last;
+}
 
 
 int is_in_checkpoint(file_object_t *file){
@@ -102,14 +125,27 @@ int is_in_checkpoint(file_object_t *file){
     if (!opts.restart || !file)
 	return 0;
 
-    file_LL *comp = checkpoint;
+    struct timespec mtime1 = {0, 0};
+    struct timespec mtime2 = {0, 0};
 
-    while (comp){
+    file_object_t *match = find_last_instance(checkpoint, file);
 
-	if (!strcmp(comp->curr->path, file->path))
-	    return 1;
-	
-	comp = comp->next;
+    if (match){
+
+        if (opts.ignore_modification)
+            return 1;
+
+        mtime1.tv_sec = file->stats.st_mtime;
+        mtime2.tv_sec = match->stats.st_mtime;
+
+        if (mtime2.tv_sec - mtime1.tv_sec){
+            verb(VERB_1, "Resending [%s]. File has been modified since checkpoint.", 
+                 file->path);
+            return 0;
+        }
+
+        return 1;
+
     }
 
     return 0;
@@ -119,24 +155,21 @@ int is_in_checkpoint(file_object_t *file){
 int read_checkpoint(char *path){
 
     char c;
-    FILE* rstrtf;
+    FILE* restart_f;
     char linebuf[MAX_PATH_LEN];
-    bzero(linebuf, MAX_PATH_LEN);
 
-    if(!(rstrtf = fopen(path, "r")))
+    if(!(restart_f = fopen(path, "r")))
 	error("Unable to open restart file [%s]", path);
 
-    int pos = 0;
-    while ((c = fgetc(rstrtf)) > 0){
-	if (c == '\n'){
-	    pos = 0;
-	    checkpoint = add_file_to_list(checkpoint, linebuf, NULL);
-	    verb(VERB_2, "Previously completed: %s", linebuf);
-	} else {
-	    linebuf[pos] = c;
-	    linebuf[pos+1] = '\0';
-	    pos++;
-	}
+    struct timespec mtime = {0, 0};
+    while (fscanf(restart_f, "%s %li", linebuf, &mtime.tv_sec) == 2){
+        checkpoint = add_file_to_list(checkpoint, linebuf, NULL);
+        file_object_t *last = get_file_LL_tail(checkpoint);
+        if (last){
+            last->stats.st_mtime = mtime.tv_sec;
+            verb(VERB_2, "Checkpoint completed and unmodified: %s [%li]", 
+                 linebuf, mtime.tv_sec);
+        }
     }
 
     return RET_SUCCESS;
@@ -180,19 +213,18 @@ int log_completed_file(file_object_t *file){
 
     char path[MAX_PATH_LEN];
 
-    sprintf(path, "%s\n", file->path);
+    struct timespec mtime = {0, 0};
+    mtime.tv_sec = file->stats.st_mtime;
+    sprintf(path, "%s %li\n", file->path, mtime.tv_sec);
 
     if (!write(flogfd, path, strlen(path)))
 	perror("WARNING: [log_completed_file] unable to log file completion");
-
 
     return RET_SUCCESS;
 
 }
 
-
-// step backwards down a given directory path
-
+// step backwards up a given directory path
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]){
     
     bzero(parent_dir, MAX_PATH_LEN);
