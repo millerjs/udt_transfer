@@ -440,7 +440,11 @@ int run_ssh_command(char *remote_dest)
 
 }
 
-
+/* 
+ * void initialize_udpipe_args
+ * - 
+ * - returns: nothing
+ */
 void initialize_udpipe_args(thread_args *args){
     args->listen_ip = NULL;
     args->ip = NULL;
@@ -542,7 +546,7 @@ int set_defaults(){
     opts.mmap           = 0;
     opts.full_root      = 0;
 
-    opts.socket_ready   = 0;
+    opts.socket_ready = 0;
     opts.encryption   = 0;
 
     opts.send_pipe      = NULL;
