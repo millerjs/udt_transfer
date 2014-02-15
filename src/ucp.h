@@ -48,7 +48,7 @@ and limitations under the License.
 
 #define MAX_ARGS 128
 
-#define END_LATENCY 2
+#define END_LATENCY 2000
 
 #define RET_FAILURE -1
 #define RET_SUCCESS 0
@@ -134,6 +134,8 @@ typedef struct ucp_opt_t{
     int socket_ready;
     int *send_pipe;
     int *recv_pipe;
+
+    int encryption;
 
     char restart_path[MAX_PATH_LEN];
 

@@ -202,34 +202,6 @@ int kill_children(int verbosity){
         
     }
 
-    // Kill the pipe process
-    if (remote_args.pipe_pid){
-
-        int status;
-
-        if (opt_verbosity >= verbosity)
-            fprintf(stderr, "Killing child pipe process... ");
-
-        if (kill(remote_args.pipe_pid, SIGINT)){
-            if (opt_verbosity >= verbosity) perror("FAILURE");
-        } else {
-            verb(verbosity, "success.");
-        }
-
-        if (opt_verbosity >= verbosity)
-            fprintf(stderr, "Reaping child pipe process... ");  
-
-        // Reap the child pipe process
-        if ((wait(&status)) == -1){
-            if (opt_verbosity >= verbosity) 
-                perror("FAILURE");
-
-        } else { 
-            verb(verbosity, "success.");
-        }
-
-    }
-
     return RET_SUCCESS;
 
 }
@@ -321,8 +293,6 @@ void sig_handler(int signal){
     // Kill chiildren and let user know
     kill_children(VERB_2);
 
-    // ragequit
-
     clean_exit(EXIT_FAILURE);
 
 }
@@ -352,14 +322,11 @@ int print_progress(char* descrip, off_t read, off_t total){
 
     // if we know the file size, print percentage of completion
     if (total){
-
         double percent = total ? read*100./total : 0.0;
-
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
         fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
 
     } else {
-
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
         fprintf(stderr, fmt, descrip, read/scale,label);
 
@@ -375,149 +342,10 @@ int print_progress(char* descrip, off_t read, off_t total){
  * - returns: new header
  */
 header_t nheader(xfer_t type, off_t size){
-
     header_t header;
-
     header.type = type;
     header.data_len = size;
-
     return header;
-
-}
-
-
-/* 
- * int generate_pipe_cmd
- * - generates the pipe command to be used to execvp a pipe, i.e. udpipe
- * - returns: RET_SUCCESS on success, RET_FAILURE on failure
- */
-int generate_pipe_cmd(char*pipe_cmd, int pipe_mode){
-    
-    if (*pipe_cmd){
-
-        // Run user specified pipe process
-        return RET_SUCCESS;
-
-    } else if (opts.default_udpipe){
-
-        // Make sure the user supplied a host ip 
-        if (!*remote_args.pipe_host){
-            error("Please specify ip: [-i host]");
-        }
-
-        char *default_args = "";
-        if (pipe_mode == MODE_SEND){
-            sprintf(pipe_cmd, "up %s %s %s", default_args, 
-                    remote_args.pipe_host, remote_args.pipe_port);
-
-        } else {
-            sprintf(pipe_cmd, "up %s -l %s", default_args, 
-                    remote_args.pipe_port);
-        }
-
-    } else {
-        return RET_FAILURE;
-    }
-
-    return RET_SUCCESS;
-
-}
-
-
-/* 
- * int run_pipe
- * - execute a pipe process i.e. udpipe and redirect ucp output
- * - returns: RET_SUCCESS on success, RET_FAILURE on failure
- */
-int run_pipe(char* pipe_cmd){
-
-    // Create/verfiy the command that will be used to execute the pipe
-
-    if (generate_pipe_cmd(pipe_cmd, opts.mode))
-        return RET_FAILURE;
-
-    verb(VERB_2, "Attempting to use pipe: [%s]\n", pipe_cmd);
-
-    char *args[MAX_ARGS];
-    bzero(args, MAX_ARGS);
-    
-    // tokenize the pipe command into argument array
-    int arg_idx = 0;
-    char* token = strtok(pipe_cmd, " ");
-    while (token) {
-        args[arg_idx] = strdup(token);
-        arg_idx++;
-        token = strtok(NULL, " ");
-    }
-
-
-    // Create pipe and fork
-    int pipefd[2], empty_fd[2];
-
-    if (pipe(pipefd))
-        warn("[run_pipe] unable to create pipe pipefd");
-
-    if(pipe(empty_fd))
-        warn("[run_pipe] unable to create pipe empty_fd");
- 
-    pid_t parent_pid = getpid();
-
-    remote_args.pipe_pid = fork();
-
-    // CHILD
-    if (remote_args.pipe_pid == 0) {
-
-        // Redirect stdout to pipe's stdout
-        if (opts.mode == MODE_SEND){
-            dup2(pipefd[0], 0);
-            dup2(pipefd[1], 1);
-        } 
-
-        //  MODE_RCV
-        // Redirect stdout to pipe's stdout
-        else {
-            dup2(empty_fd[0], 0);
-            dup2(pipefd[1], 1);
-        }
-
-        // Execute the pipe process
-        if (execvp(args[0], args)){
-            verb(VERB_0, "ERROR: unable to execute pipe process");
-            perror(args[0]);
-
-            if (opt_verbosity >= VERB_2) 
-                fprintf(stderr, "Killing parent process... ");
-
-            if (kill(parent_pid, SIGINT)){
-                if (opt_verbosity >= VERB_2) 
-                    perror("FAILURE");
-            } else {
-                verb(VERB_2, "success.");
-            }
-
-            clean_exit(EXIT_FAILURE);
-            
-        }
-        
-    }
-
-    // PARENT
-    else {
-
-        // Redirect the input from the pipe to stdin
-        if (opts.mode == MODE_SEND){
-            dup2(pipefd[1], 1);
-        } 
-
-        // Redirect the output to the pipe's stdout
-        else {
-            dup2(pipefd[0], 0);
-        }
-        
-    }
-
-    return RET_SUCCESS;
-
 }
 
 /* 
@@ -549,12 +377,10 @@ int run_ssh_command(char *remote_dest)
 
         if (opts.mode == MODE_SEND){
 
-            // Generate remote ucp command to RECEIVE DATA
-            // generate_pipe_cmd(remote_pipe_cmd, MODE_RCV);
-            // sprintf(remote_pipe_cmd, "%s -x -l -v4 --udpipe -l %s 2>~/ucp.log & %s", 
-            sprintf(remote_pipe_cmd, "%s -x -l -v4 %s 2>&1 & %s", 
-                    remote_args.udpipe_location, remote_args.remote_dest, "echo $!");
-            
+            sprintf(remote_pipe_cmd, "%s -xt 2>&1 %s & %s", 
+                    remote_args.udpipe_location, 
+                    remote_args.remote_dest, "echo $!");
+
             // Redirect output from ssh process to ssh_fd
             char *args[] = {
                 "ssh",
@@ -717,6 +543,7 @@ int set_defaults(){
     opts.full_root      = 0;
 
     opts.socket_ready   = 0;
+    opts.encryption   = 0;
 
     opts.send_pipe      = NULL;
     opts.recv_pipe      = NULL;
@@ -744,53 +571,40 @@ int get_options(int argc, char *argv[]){
             {"full-root"        , no_argument   , &opts.full_root       , 1},
             {"all-files"        , no_argument   , &opts.regular_files   , 0},
             {"help"             , no_argument           , NULL  , 'h'},
-            {"udpipe"           , required_argument     , NULL  , 'u'},
-            {"pipe"             , required_argument     , NULL  , 'n'},
-            {"remote"           , required_argument     , NULL  , 'r'},
-            {"log"              , required_argument     , NULL  , 'g'},
-            {"restart"          , required_argument     , NULL  , 'w'},
+            {"log"              , required_argument     , NULL  , 'l'},
+            {"restart"          , required_argument     , NULL  , 'r'},
             {"checkpoint"       , required_argument     , NULL  , 'k'},
             {0, 0, 0, 0}
         };
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:u:xlhv:np:d:c:r:g:k:w:o:", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n", 
                               long_options, &option_index)) != -1){
         switch (opt){
-
         case 'k':
-            // restart and log to/from file
+            // restart from and log to file argument
             opts.restart = 1;
             opts.log = 1;
             sprintf(log_path, "%s", optarg);
             sprintf(opts.restart_path, "%s", optarg);
             break;
 
-        case '1':
+        case 'n':
+            if (sscanf(optarg, "%d", &opts.encryption) != 1)
+                error("unable to parse encryption threads from -n flag");
+            break;
+
+        case 'r':
             // restart but do not log to file
             opts.restart = 1;
             sprintf(opts.restart_path, "%s", optarg);
             break;
 
-        case 'o':
-            // pipe option to pass to remote pipe
-
-            // TODO
-            fprintf(stderr, "Got pipe option: %s\n", optarg);
-            break;
-
-        case 'g':
+        case 'l':
             // log to file but do not restart from file
             opts.log = 1;
             sprintf(log_path, "%s", optarg);
-            break;
-            
-        case 'r':
-            // user specified remote transfer, useful now for files
-            // that contain ':'
-            opts.remote = 1;
-            sprintf(remote_args.xfer_cmd, "%s", optarg);
             break;
 
         case 'c':
@@ -803,14 +617,9 @@ int get_options(int argc, char *argv[]){
             opts.progress = 0;
             break;
 
-        case 'l':
+        case 't':
             // specify receive mode
             opts.mode = MODE_RCV;
-            break;
-
-        case 'p':
-            // specify pipe command
-            sprintf(remote_args.pipe_port, "%s", optarg);
             break;
 
         case 'i':
@@ -824,25 +633,6 @@ int get_options(int argc, char *argv[]){
             opts.delay = atoi(optarg);
             break;
 
-        case 'u':
-            // specify the local binary for udpipe (if not in path)
-            if (*remote_args.pipe_cmd){
-                fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
-                clean_exit(EXIT_FAILURE);
-            }
-            sprintf(remote_args.pipe_host, "%s", optarg);
-            opts.default_udpipe = 1;
-            break;
-                
-        case 'n':
-            // specify the entire command for pipe, i.e. [netcat localhost 9000]
-            if (opts.default_udpipe){
-                fprintf(stderr, "ERROR: --udpipe [-u] and --pipe [-c] exclusive.\n");
-                clean_exit(EXIT_FAILURE);
-            }
-            strcpy(remote_args.pipe_cmd, optarg);
-            break;
-            
         case 'v':
             // verbosity
             opts.verbosity = atoi(optarg);
@@ -916,7 +706,7 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
     args->ip = strdup(remote_args->pipe_host);
     args->port = strdup(remote_args->pipe_port);
 
-    args->verbose = 1;
+    args->verbose = (opts.verbosity > VERB_1);
     args->n_crypto_threads = 1;
     args->timeout = 30;
 
@@ -949,7 +739,7 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     args->ip = remote_args->pipe_host;
     args->port = remote_args->pipe_port;
 
-    args->verbose = 1;
+    args->verbose = (opts.verbosity > VERB_1);
     args->n_crypto_threads = 1;
     args->timeout = 30;
 
@@ -966,7 +756,7 @@ int main(int argc, char *argv[]){
     file_LL *fileList = NULL;
 
     // specify how to catch signals
-    // set_handlers();
+    set_handlers();
 
     // set structs opts and remote_args to their default values
     set_defaults();
@@ -986,12 +776,8 @@ int main(int argc, char *argv[]){
 
     if (opts.mode == MODE_SEND){
 
-        if (!opts.remote) {
-
-            // Did the user specify the remote destination without the flag?
+        if (!opts.remote) 
             get_remote_host(argc, argv);
-
-        }
 
         if (opts.remote){
 
@@ -1012,10 +798,7 @@ int main(int argc, char *argv[]){
 
         start_udpipe_client(&remote_args);
 
-        // run_pipe(remote_args.pipe_cmd);
-        
         // Did the user pass any files?
-
         if (optind < argc){
             
             verb(VERB_2, "Running with file source mode.\n");
@@ -1043,7 +826,7 @@ int main(int argc, char *argv[]){
         
         // if no files were passed by user
         else {
-            error("No files specified. Did you mean to receive? [-l]\n");
+            error("No files specified.\n");
 
         }
         
@@ -1055,12 +838,6 @@ int main(int argc, char *argv[]){
         opts.socket_ready = 1;
 
         verb(VERB_2, "Running with file destination mode\n");
-
-        int send_pipe[2];
-        int recv_pipe[2];
-        
-        opts.send_pipe = send_pipe;
-        opts.recv_pipe = recv_pipe;
 
         pthread_t *server_thread = start_udpipe_server(&remote_args);
 
@@ -1107,7 +884,7 @@ int main(int argc, char *argv[]){
     print_xfer_stats();    
 
     // Delay for a predefined interval to account for network latency
-    sleep(END_LATENCY);
+    usleep(END_LATENCY);
 
 
     kill_children(VERB_2);

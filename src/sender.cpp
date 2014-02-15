@@ -82,8 +82,6 @@ off_t write_block(header_t header, int len){
     // int ret = write(fileno(stdout), block.buffer, send_len);
     int ret = write(opts.send_pipe[1], block.buffer, send_len);
 
-    fprintf(stderr, "Wrote %d bytes\n", ret);
-
     if (ret < 0){
 	error("unable to write to send_pipe");
     }
