@@ -26,11 +26,10 @@ clear
 
 for k in `seq 0 100`
 do
-    tput cup 0 0
     echo -e "$G""Test round #$k$N"
 
 ##### Transfer files
-    echo -e "$G""Command:$N ucp *.dat localhost:/tmp/ucp_test"
+    echo -e "running: ucp *.dat localhost:/tmp/ucp_test ..."
     ucp data localhost:/tmp/ucp_test
 
 ##### Validate transfer
@@ -44,7 +43,7 @@ do
         stat=$?
         if [ $stat -ne 0 ]; then
             echo -e "[$R FAILED $N]"
-            echo "test failed: [`date`] [ucp_test$i.dat] [test round #k]" >> test.log
+            exit
         else
             echo -e "[$G PASSED $N]"
         fi
@@ -59,13 +58,15 @@ do
         stat=$?
         if [ $stat -ne 0 ]; then
             echo -e "[$R FAILED $N]"
-            echo "test failed: [`date`] [recurse/ucp_test$i.dat] [test round #k]" >> test.log
+            exit
         else
             echo -e "[$G PASSED $N]"
         fi
     done
 
-
+    clear
+    echo -e "$G""Previous round #$k passed all tests$N"
+    
 done
 
 
