@@ -378,7 +378,7 @@ int run_ssh_command(char *remote_dest)
         if (opts.mode == MODE_SEND){
 
             // sprintf(remote_pipe_cmd, "%s -xt %s 2>&1 & %s",
-            sprintf(remote_pipe_cmd, "%s -xt -p %s", 
+            sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
                     remote_args.udpipe_location,
                     remote_args.pipe_port, 
                     remote_args.remote_dest);

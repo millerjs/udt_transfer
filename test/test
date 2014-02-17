@@ -24,18 +24,20 @@ mkdir data
 clear
 echo ""
 
+nfiles=10
+
 for k in `seq 0 100`
 do
     echo -e "$G""Test round #$k$N"
 
 ##### Transfer files
-    cmd="ucp data jsmiller@localhost:/tmp/ucp_test"
+    cmd="ucp data `whoami`@localhost:/tmp/ucp_test"
     echo -e $cmd
     $cmd
 
 ##### Validate transfer
-    echo -e "Validating transfer ... \n"
-    for i in `seq 10 -1 1`
+    echo -e "$G""Validating test #$k files ... \n""$N"
+    for i in `seq $nfiles -1 1`
     do
         printf "\r\tTesting [ucp_test$i.dat] \t\t"
         diff data/ucp_test$i.dat           \
@@ -43,14 +45,14 @@ do
             > /dev/null
         stat=$?
         if [ $stat -ne 0 ]; then
-            printf "[$R FAILED $N]"
+            printf "\n\n\tTest[$i] [recurse/ucp_test$i.dat] \t[$R FAILED $N]"
             exit
         else
             printf "[$G PASSED $N]"
         fi
     done
 
-    for i in `seq 10 -1 1`
+    for i in `seq $nfiles -1 1`
     do
         printf "\r\tTesting[$i] [recurse/ucp_test$i.dat] \t"
         diff data/recurse/ucp_test$i.dat           \
@@ -58,7 +60,7 @@ do
             > /dev/null
         stat=$?
         if [ $stat -ne 0 ]; then
-            printf "[$R FAILED $N]"
+            printf "\n\n\tTest[$i] [recurse/ucp_test$i.dat] \t[$R FAILED $N]"
             exit
         else
             printf "[$G PASSED $N]"
@@ -66,8 +68,6 @@ do
     done
 
     rm -r /tmp/ucp_test
-
-    printf "[$G ALL $N]"
     
     tput cup 0 0
     # clear
