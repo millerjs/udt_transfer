@@ -4,7 +4,6 @@ G="\033[1;32m"
 R="\033[0;31m"
 N="\033[0m"
 
-
 mkdir data 
 ##### Generate files
 echo "Generating random test files"
@@ -23,13 +22,15 @@ do
 done
 echo ""
 
+clear
+
 for k in `seq 0 100`
 do
-    clear
-    echo "Test round #$k"
+    tput cup 0 0
+    echo -e "$G""Test round #$k$N"
 
 ##### Transfer files
-    echo -e "ucp *.dat localhost:/tmp/ucp_test"
+    echo -e "$G""Command:$N ucp *.dat localhost:/tmp/ucp_test"
     ucp data localhost:/tmp/ucp_test
 
 ##### Validate transfer
@@ -43,7 +44,7 @@ do
         stat=$?
         if [ $stat -ne 0 ]; then
             echo -e "[$R FAILED $N]"
-            echo "test failed: [`data`] [ucp_test$i.dat] [test round #k]" >> test.log
+            echo "test failed: [`date`] [ucp_test$i.dat] [test round #k]" >> test.log
         else
             echo -e "[$G PASSED $N]"
         fi
@@ -58,7 +59,7 @@ do
         stat=$?
         if [ $stat -ne 0 ]; then
             echo -e "[$R FAILED $N]"
-            echo "test failed: [`data`] [recurse/ucp_test$i.dat] [test round #k]" >> test.log
+            echo "test failed: [`date`] [recurse/ucp_test$i.dat] [test round #k]" >> test.log
         else
             echo -e "[$G PASSED $N]"
         fi
