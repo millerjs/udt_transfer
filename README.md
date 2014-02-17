@@ -1,45 +1,57 @@
 ucp
 ===
 
-Recursive directory concatenation for use with udpipe.  High performance file transfer with checkpoint logging and restarts.  A high performance scp.
+High performance recursive directory file transfer using UDT with restart capabilities. _Remote to local transfers currently under development_.
 
 ******
-_WARNING: In early stages of development._
+_WARNING: In early stages of development._ 
 ******
  
 Basic usage
 -----------
-You can pass it any number of files or directoryies and it will create file stream.  Headers in the stream specify what kind of data the receiving end is reading.  You can also redirect the stream to a file for use later.
+Basic usage is similar to scp 
 
-    ucp source_dir | [pipe of your choosing] |  ucp -l dest_dir
+    ucp list of files or directories host:destdir
     
-    
-More docmuentation to come, but the following command:
+will transfer the the files or directories {ucp, list, of, files, or, directories} into the remote directory destdir recursively.  
 
-    ucp -k log_f source_dir -o localhost:dest/dir
+As an added functionality, ucp has the ability to restart/rerun previous transers. If a file has been modified since the last it was logged, then ucp will by default resend the file. You have the option of logging without restarting, restarting without logging, or doing both (-k). The command
+
+    ucp -k xfer.log source host:dest
     
-will transfer the directory into the directory dest/dir recursively.  It will log each successfull file in the file log_f.  If a previous transfer has used the file log_f as a checkpoint, the transfer will resume from the last complete file.
+Will restart a transfer logged in xfer.log from directory source to directory dest on remote host.
+
+Installation
+------------
+
+From the root ucp directory run the following:
+
+    make
+    make install
+
 	
 Options
 -------
 The following options are currently supported by ucp:
 
-    --help 		      	print this message
-    --verbose 		  	verbose, notify of files being sent. Same as -v2
-    --quiet 		  	silence all warnings. Same as -v0
-    --pipe "pipe cmd"   ucp will tokenize and execute specified pipe command and pipe stdout to new process
-    --no-mmap               opt-out of memory mapping the file write for now, just in case it bugs
+    --help                   print uasge message
+    --all-files              allows ucp to send all file types, i.e. character devices, named pipes, etc.
+    --checkpoint l_file      same as (-r xfer.log -l xfer.log).  Restart and write to checkpoint.
+    --ignore-modification    will not resend logged files that have been since modified
+    --log xfer.log           will output completed file report to l_file
+    --no-mmap                opt-out of memory mapping the file write
+    --restart l_file         will restart the transfer from a log file xfer.log 
+    --verbose                verbose, notify of files being sent. Same as -v2
+    --quiet                  silence all warnings. Same as -v0
     
-    -u					same as --pipe
-    -p 		          	print the transfer progress of each file
-    -l [dest_dir] 	  	listen for file transfer and write to dest_dir [default ./]
-    -v level 	      	set the level of verbosity
-    -x					print xfer progress
-    -o host:dest        specify the output on a remote host
-    -c ucp_src          specify the ucp source binary path
-    --log/-g l_file     will output completed file report to l_file
-    --restart/ l_file   will restart the transfer from a previously written log file [not mutually exclusive with -g]
-    --checkpoint/-k l_file   will use l_file as both a restart checkpoint and a log file.  good for restarts.
+
+    -c ucp_src               specify the ucp source binary path
+    -k                       same as --checkpoint
+    -l xfer.log              same as --log 
+    -r xfer.log              same as --restart
+    -v level                 set the level of verbosity
+    -x                       silence transfer progress    
+
 
 Levels of Verbosity
 -------------------
