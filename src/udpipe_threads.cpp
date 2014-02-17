@@ -296,7 +296,6 @@ void* recvdata(void * _args)
 	    }
 
 	    timeout_sem = 1;	
-            fprintf(stderr, "Attempting to write received data to %d\n", args->recv_pipe[1]);
 	    write(args->recv_pipe[1], indata, rs);	
 
 	}

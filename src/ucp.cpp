@@ -367,10 +367,6 @@ int run_ssh_command(char *remote_dest)
          remote_args.pipe_host, remote_args.pipe_port);
 
     // Create pipe and fork
-    int ssh_fd[2];
-    if (pipe(ssh_fd))
-        warn("[run_ssh_command] unable to create pipe");
-
     remote_args.ssh_pid = fork();
 
     // CHILD
@@ -381,9 +377,10 @@ int run_ssh_command(char *remote_dest)
 
         if (opts.mode == MODE_SEND){
 
-            sprintf(remote_pipe_cmd, "%s -xt %s 2>&1 & %s", 
+            // sprintf(remote_pipe_cmd, "%s -xt %s 2>&1 & %s",
+            sprintf(remote_pipe_cmd, "%s -xt %s", 
                     remote_args.udpipe_location, 
-                    remote_args.remote_dest, "echo $!");
+                    remote_args.remote_dest);
 
             // Redirect output from ssh process to ssh_fd
             char *args[] = {
@@ -398,8 +395,8 @@ int run_ssh_command(char *remote_dest)
             for (int i = 0; args[i]; i++)
                 verb(VERB_2, "args[%d]: %s\n", i, args[i]);
 
-            dup2(ssh_fd[2], 2);
-            dup2(ssh_fd[1], 1);
+            // dup2(ssh_fd[2], 2);
+            // dup2(ssh_fd[1], 1);
 
             if (execvp(args[0], args)){
                 fprintf(stderr, "ERROR: unable to execute ssh process\n");
@@ -422,21 +419,6 @@ int run_ssh_command(char *remote_dest)
     // PARENT
     else {
 
-        char ssh_pid_str[MAX_PATH_LEN];
-        
-        // Try and get the pid of the remote process from the ssh pipe input
-        if (read(ssh_fd[0], ssh_pid_str, MAX_PATH_LEN) < 0){
-            perror("WARNING: Unable to read pid from remote process");
-
-        } 
-
-        // Read something from the pipe, proceed
-        else {
-
-            remote_args.remote_pid = atoi(ssh_pid_str);
-            verb(VERB_2, "Remote process pid: %d\n", remote_args.remote_pid);
-
-        }
 
     }
 
@@ -444,25 +426,60 @@ int run_ssh_command(char *remote_dest)
 
 }
 
+
+/* 
+ * int get_remote_pid
+ * - Attempts to read the process id from the remote process
+ * - returns: nothing
+ */
+int get_remote_pid()
+{
+    char ssh_pid_str[MAX_PATH_LEN];
+
+    // Try and get the pid of the remote process from the ssh pipe input
+    if (read(opts.recv_pipe[0], ssh_pid_str, MAX_PATH_LEN) < 0){
+        perror("WARNING: Unable to read pid from remote process");
+    } 
+
+    // Read something from the pipe, proceed
+    else {
+        remote_args.remote_pid = atoi(ssh_pid_str);
+        if (sscanf(ssh_pid_str, "%d", &remote_args.remote_pid) != 1)
+            warn("unable to parse remote pid.");
+        else
+            verb(VERB_2, "Remote process pid: %d\n", remote_args.remote_pid);
+    }
+
+    return 0;
+
+}
+
+
 /* 
  * void initialize_udpipe_args
  * - 
  * - returns: nothing
  */
 void initialize_udpipe_args(thread_args *args){
-    args->listen_ip = NULL;
-    args->ip = NULL;
-    args->port = NULL;
-    args->blast = 0;
-    args->blast_rate = 1000;
-    args->udt_buff = BUFF_SIZE;
-    args->udp_buff = BUFF_SIZE;
-    args->mss = 8400;
-    args->use_crypto = 0;
-    args->verbose = 0;
+
+    args->ip               = NULL;
+    args->listen_ip        = NULL;
+    args->port             = NULL;
+
+    args->udt_buff         = BUFF_SIZE;
+    args->udp_buff         = BUFF_SIZE;
+
+    args->blast            = 0;
+    args->blast_rate       = 1000;
+    args->mss              = 8400;
     args->n_crypto_threads = 1;
-    args->print_speed = 0;
-    args->timeout = 0;
+    args->print_speed      = 0;
+    args->timeout          = 0;
+    args->use_crypto       = 0;
+    args->verbose          = 0;
+    
+    return;
+
 }
 
 /* 
@@ -653,8 +670,6 @@ int get_options(int argc, char *argv[]){
             
             break;
 
-
-
         case 'v':
             // verbosity
             opts.verbosity = atoi(optarg);
@@ -706,6 +721,20 @@ int set_handlers(){
 
 }
 
+int initialize_pipes(){
+
+    opts.send_pipe = (int*) malloc(2*sizeof(int));
+    opts.recv_pipe = (int*) malloc(2*sizeof(int));
+
+    if (pipe(opts.send_pipe))
+        error("unable to create server's send pipe");
+    if (pipe(opts.recv_pipe))
+        error("unable to create server's receiver pipe");
+
+    return RET_SUCCESS;
+
+}
+
 
 pthread_t *start_udpipe_server(remote_arg_t *remote_args)
 { 
@@ -713,23 +742,13 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
 
     initialize_udpipe_args(args);
 
-    opts.send_pipe = (int*) malloc(2*sizeof(int));
-    opts.recv_pipe = (int*) malloc(2*sizeof(int));
-
-    args->send_pipe = opts.send_pipe;
-    args->recv_pipe = opts.recv_pipe;
-
-    if (pipe(args->send_pipe))
-        error("unable to create server's send pipe");
-    if (pipe(args->recv_pipe))
-        error("unable to create server's receiver pipe");
-
-    args->ip = strdup(remote_args->pipe_host);
-    args->port = strdup(remote_args->pipe_port);
-
-    args->verbose = (opts.verbosity > VERB_1);
+    args->ip               = strdup(remote_args->pipe_host);
     args->n_crypto_threads = 1;
-    args->timeout = 30;
+    args->port             = strdup(remote_args->pipe_port);
+    args->recv_pipe        = opts.recv_pipe;
+    args->send_pipe        = opts.send_pipe;
+    args->timeout          = 30;
+    args->verbose          = (opts.verbosity > VERB_1);
 
     pthread_t *server_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(server_thread, NULL, &run_server, args);
@@ -746,23 +765,13 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     
     initialize_udpipe_args(args);
 
-    opts.send_pipe = (int*) malloc(2*sizeof(int));
-    opts.recv_pipe = (int*) malloc(2*sizeof(int));
-
-    args->send_pipe = opts.send_pipe;
-    args->recv_pipe = opts.recv_pipe;
-
-    if (pipe(args->send_pipe))
-        error("unable to create client's send pipe");
-    if (pipe(args->recv_pipe))
-        error("unable to create client's receiver pipe");
-
-    args->ip = remote_args->pipe_host;
-    args->port = remote_args->pipe_port;
-
-    args->verbose = (opts.verbosity > VERB_1);
+    args->ip               = remote_args->pipe_host;
     args->n_crypto_threads = 1;
-    args->timeout = 30;
+    args->port             = remote_args->pipe_port;
+    args->recv_pipe        = opts.recv_pipe;
+    args->send_pipe        = opts.send_pipe;
+    args->timeout          = 30;
+    args->verbose          = (opts.verbosity > VERB_1);
 
     pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(client_thread, NULL, &run_client, args);
@@ -801,24 +810,31 @@ int main(int argc, char *argv[]){
         clean_exit(EXIT_FAILURE);
     }
 
+    initialize_pipes();
+
     if (opts.mode & MODE_SEND){
 
         parse_destination(remote_args.xfer_cmd);
+
+        // spawn process on remote host and let it create the server
         run_ssh_command(remote_args.remote_dest);
 
-        if (opts.delay)
+        // delay proceeding for slow ssh connection
+        if (opts.delay){
             verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
+            sleep(opts.delay);
+        }
 
-        sleep(opts.delay);
-
+        // connect to receiving server
         start_udpipe_client(&remote_args);
+
+        // get the pid of the remote process in case we need to kill it
+        get_remote_pid();
 
         // Did the user pass any files?
         if (optind < argc){
             
             verb(VERB_2, "Running with file source mode.\n");
-            
-            // Clarify what we are passing as a file list
             
             int n_files = argc-optind;
             char **path_list = argv+optind;
@@ -850,6 +866,9 @@ int main(int argc, char *argv[]){
     // Otherwise, switch to receiving mode
     else if (opts.mode & MODE_RCV) {
 
+        pid_t pid = getpid();
+        write(opts.send_pipe[1], &pid, sizeof(pid_t));
+
         opts.socket_ready = 1;
 
         verb(VERB_2, "Running with file destination mode\n");
@@ -868,13 +887,9 @@ int main(int argc, char *argv[]){
             sprintf(base_path, "%s", argv[optind++]);
             
             // Are there any remaining command line args? Warn user
-            if (opts.verbosity > VERB_0){
-
-                warn("Unused command line args:");
-                for (; optind < argc-1; optind++)
-                    warn("Unused %s\n", argv[optind]);
-
-            }
+            verb(VERB_2, "Unused command line args:");
+            for (; optind < argc-1; optind++)
+                verb(VERB_2, "Unused %s\n", argv[optind]);
             
             timer = start_timer("receive_timer");
 
@@ -891,6 +906,10 @@ int main(int argc, char *argv[]){
             
         }
 
+        header_t h = nheader(XFER_COMPLTE, 0);
+        write(opts.send_pipe[1], &h, sizeof(header_t));
+        sleep(1);
+
         pthread_join(*server_thread, NULL);
         
     }
@@ -898,10 +917,18 @@ int main(int argc, char *argv[]){
     print_xfer_stats();    
 
     // Delay for a predefined interval to account for network latency
-    usleep(END_LATENCY);
+    header_t h = nheader(XFER_WAIT, 0);
+    while (read(opts.recv_pipe[0], &h, sizeof(header_t))){
+        if (h.type == XFER_COMPLTE) 
+            break;
+        else
+            fprintf(stderr, "received non-end-of-transfer message\n");
+    }
 
+    verb(VERB_2, "Received acknowledgement of completion");
+    
 
-    kill_children(VERB_2);
+    // kill_children(VERB_2);
     
     return RET_SUCCESS;
   

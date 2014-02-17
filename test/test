@@ -1,0 +1,63 @@
+#!/bin/bash
+
+G="\033[1;32m"
+R="\033[0;31m"
+N="\033[0m"
+
+
+mkdir data 
+##### Generate files
+# for i in `seq 10 -1 1`
+# do
+#     printf "\rGenerating test file [data/ucp_test$i.dat] ... "
+#     dd if=/dev/urandom of=data/ucp_test$i.dat bs=1M count=$i 2> /dev/null
+# done
+
+# mkdir data/recurse
+# for i in `seq 10 -1 1`
+# do
+#     printf "\rGenerating test file [data/recurse/ucp_test$i.dat] ... "
+#     dd if=/dev/urandom of=data/recurse/ucp_test$i.dat bs=1M count=$i 2> /dev/null
+# done
+
+##### Transfer files
+echo -e "\nucp *.dat localhost:/tmp/ucp_test"
+ucp data localhost:/tmp/ucp_test
+
+##### Validate transfer
+
+for i in `seq 10 -1 1`
+do
+    printf "Testing [data/ucp_test$i.dat] \t\t\t"
+    diff data/ucp_test$i.dat           \
+        /tmp/ucp_test/ucp_test$i.dat   \
+        2> /dev/null > /dev/null
+    stat=$?
+    if [ $stat -ne 0 ]; then
+        echo -e "[$R FAILED $N]"
+    else
+        echo -e "[$G PASSED $N]"
+    fi
+done
+
+for i in `seq 10 -1 1`
+do
+    printf "Testing [data/recurse/ucp_test$i.dat] \t\t"
+    diff data/recurse/ucp_test$i.dat           \
+        /tmp/ucp_test/recurse/ucp_test$i.dat   \
+        2> /dev/null > /dev/null
+    stat=$?
+    if [ $stat -ne 0 ]; then
+        echo -e "[$R FAILED $N]"
+    else
+        echo -e "[$G PASSED $N]"
+    fi
+done
+
+##### Cleaning test files
+# echo "Cleaning test files"
+# echo rm -rf /tmp/ucp_tests
+# rm -rf /tmp/ucp_tests
+# echo rm -rf data
+# rm -rf data
+

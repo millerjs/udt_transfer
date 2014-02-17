@@ -80,7 +80,8 @@ typedef enum{
     XFER_FILENAME,
     XFER_DIRNAME,
     XFER_F_SIZE,
-    XFER_COMPLTE
+    XFER_COMPLTE,
+    XFER_WAIT,
 } xfer_t;
 
 /* 
