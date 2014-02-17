@@ -378,8 +378,9 @@ int run_ssh_command(char *remote_dest)
         if (opts.mode == MODE_SEND){
 
             // sprintf(remote_pipe_cmd, "%s -xt %s 2>&1 & %s",
-            sprintf(remote_pipe_cmd, "%s -xt %s", 
-                    remote_args.udpipe_location, 
+            sprintf(remote_pipe_cmd, "%s -xt -p %s", 
+                    remote_args.udpipe_location,
+                    remote_args.pipe_port, 
                     remote_args.remote_dest);
 
             // Redirect output from ssh process to ssh_fd
@@ -608,7 +609,7 @@ int get_options(int argc, char *argv[]){
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -644,6 +645,11 @@ int get_options(int argc, char *argv[]){
         case 'c':
             // specify location of remote binary
             sprintf(remote_args.udpipe_location, "%s", optarg);
+            break;
+
+        case 'p':
+            // specify port
+            sprintf(remote_args.pipe_port, "%s", optarg);
             break;
             
         case 'x':
@@ -784,11 +790,13 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     
     args->ip               = host;
     args->n_crypto_threads = 1;
-    args->port             = remote_args->pipe_port;
+    args->port             = strdup(remote_args->pipe_port);
     args->recv_pipe        = opts.recv_pipe;
     args->send_pipe        = opts.send_pipe;
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
+
+    // fprintf(stderr, "port: %s\n", remote_args->port);
 
     pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(client_thread, NULL, &run_client, args);
