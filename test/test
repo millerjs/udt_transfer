@@ -29,8 +29,9 @@ do
     echo -e "$G""Test round #$k$N"
 
 ##### Transfer files
-    echo -e "running: ucp *.dat localhost:/tmp/ucp_test ..."
-    ucp data localhost:/tmp/ucp_test
+    cmd="ucp data jsmiller@localhost:/tmp/ucp_test"
+    echo -e $cmd
+    $cmd
 
 ##### Validate transfer
     echo -e "Validating transfer ... \n"

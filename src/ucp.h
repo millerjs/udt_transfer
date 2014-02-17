@@ -119,6 +119,8 @@ typedef struct ucp_block{
 
 
 typedef struct ucp_opt_t{
+    int timeout;
+
     int verbosity;
     int recurse;
     int mode;
@@ -133,6 +135,7 @@ typedef struct ucp_opt_t{
     int full_root;
     int socket_ready;
     int ignore_modification;
+
     int *send_pipe;
     int *recv_pipe;
 

@@ -554,6 +554,7 @@ int set_defaults(){
     
     opts.mode           = MODE_SEND;
     opts.verbosity      = VERB_1;
+    opts.timeout        = 30;
     opts.recurse        = 1;
     opts.regular_files  = 1;
     opts.progress       = 1;
@@ -599,6 +600,7 @@ int get_options(int argc, char *argv[]){
             {"all-files"           , no_argument , &opts.regular_files       , 0},
             {"help"             , no_argument           , NULL  , 'h'},
             {"log"              , required_argument     , NULL  , 'l'},
+            {"timeout"          , required_argument     , NULL  , '5'},
             {"restart"          , required_argument     , NULL  , 'r'},
             {"checkpoint"       , required_argument     , NULL  , 'k'},
             {0, 0, 0, 0}
@@ -606,7 +608,7 @@ int get_options(int argc, char *argv[]){
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -620,6 +622,11 @@ int get_options(int argc, char *argv[]){
         case 'n':
             if (sscanf(optarg, "%d", &opts.encryption) != 1)
                 error("unable to parse encryption threads from -n flag");
+            break;
+
+        case '5':
+            if (sscanf(optarg, "%d", &opts.timeout) != 1)
+                error("unable to parse timeout --timeout flag");
             break;
 
         case 'r':
@@ -737,12 +744,20 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
 
     initialize_udpipe_args(args);
 
-    args->ip               = strdup(remote_args->pipe_host);
+    char *host = (char*)malloc(1028*sizeof(char));
+    char *at_ptr = NULL;
+    if (at_ptr = strrchr(remote_args->pipe_host, '@')){
+        sprintf(host, "%s", at_ptr+1);
+    } else {
+        sprintf(host, "%s", remote_args->pipe_host);
+    }
+    
+    args->ip               = host;
     args->n_crypto_threads = 1;
     args->port             = strdup(remote_args->pipe_port);
     args->recv_pipe        = opts.recv_pipe;
     args->send_pipe        = opts.send_pipe;
-    args->timeout          = 30;
+    args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
 
     pthread_t *server_thread = (pthread_t*) malloc(sizeof(pthread_t));
@@ -757,15 +772,22 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
 { 
 
     thread_args *args = (thread_args*) malloc(sizeof(thread_args));
-    
     initialize_udpipe_args(args);
 
-    args->ip               = remote_args->pipe_host;
+    char *host = (char*)malloc(1028*sizeof(char));
+    char *at_ptr = NULL;
+    if (at_ptr = strrchr(remote_args->pipe_host, '@')){
+        sprintf(host, "%s", at_ptr+1);
+    } else {
+        sprintf(host, "%s", remote_args->pipe_host);
+    }
+    
+    args->ip               = host;
     args->n_crypto_threads = 1;
     args->port             = remote_args->pipe_port;
     args->recv_pipe        = opts.recv_pipe;
     args->send_pipe        = opts.send_pipe;
-    args->timeout          = 30;
+    args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
 
     pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
