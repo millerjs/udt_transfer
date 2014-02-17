@@ -6,23 +6,23 @@ N="\033[0m"
 
 mkdir data 
 ##### Generate files
-echo "Generating random test files"
-for i in `seq 10 -1 1`
-do
-    printf "\r\tGenerating test file [data/ucp_test$i.dat] ... "
-    dd if=/dev/urandom of=data/ucp_test$i.dat bs=1M count=$i 2> /dev/null
-done
-echo ""
+# echo "Generating random test files"
+# for i in `seq 10 -1 1`
+# do
+#     printf "\r\tGenerating test file [data/ucp_test$i.dat] ... "
+#     dd if=/dev/urandom of=data/ucp_test$i.dat bs=1M count=$i 2> /dev/null
+# done
+# echo ""
 
-mkdir data/recurse
-for i in `seq 10 -1 1`
-do
-    printf "\r\tGenerating test file [data/recurse/ucp_test$i.dat] ... "
-    dd if=/dev/urandom of=data/recurse/ucp_test$i.dat bs=1M count=$i 2> /dev/null
-done
-echo ""
+# mkdir data/recurse
+# for i in `seq 10 -1 1`
+# do
+#     printf "\r\tGenerating test file [data/recurse/ucp_test$i.dat] ... "
+#     dd if=/dev/urandom of=data/recurse/ucp_test$i.dat bs=1M count=$i 2> /dev/null
+# done
 
 clear
+echo ""
 
 for k in `seq 0 100`
 do
@@ -33,47 +33,52 @@ do
     ucp data localhost:/tmp/ucp_test
 
 ##### Validate transfer
-    echo "Validating transfer ..."
+    echo -e "Validating transfer ... \n"
     for i in `seq 10 -1 1`
     do
-        printf "\tTesting [data/ucp_test$i.dat] \t\t\t"
+        printf "\r\tTesting [ucp_test$i.dat] \t\t"
         diff data/ucp_test$i.dat           \
             /tmp/ucp_test/ucp_test$i.dat   \
-            2> /dev/null > /dev/null
+            > /dev/null
         stat=$?
         if [ $stat -ne 0 ]; then
-            echo -e "[$R FAILED $N]"
+            printf "[$R FAILED $N]"
             exit
         else
-            echo -e "[$G PASSED $N]"
+            printf "[$G PASSED $N]"
         fi
     done
 
     for i in `seq 10 -1 1`
     do
-        printf "\tTesting [data/recurse/ucp_test$i.dat] \t\t"
+        printf "\r\tTesting[$i] [recurse/ucp_test$i.dat] \t"
         diff data/recurse/ucp_test$i.dat           \
             /tmp/ucp_test/recurse/ucp_test$i.dat   \
-            2> /dev/null > /dev/null
+            > /dev/null
         stat=$?
         if [ $stat -ne 0 ]; then
-            echo -e "[$R FAILED $N]"
+            printf "[$R FAILED $N]"
             exit
         else
-            echo -e "[$G PASSED $N]"
+            printf "[$G PASSED $N]"
         fi
     done
 
-    clear
+    rm -r /tmp/ucp_test
+
+    printf "[$G ALL $N]"
+    
+    tput cup 0 0
+    # clear
     echo -e "$G""Previous round #$k passed all tests$N"
     
 done
 
 
 ##### Cleaning test files
-echo -e "\nCleaning test files ..."
-echo -e "\trm -rf /tmp/ucp_tests"
-rm -rf /tmp/ucp_tests
-echo -e "\trm -rf data"
-rm -rf data
+# echo -e "\nCleaning test files ..."
+# echo -e "\trm -rf /tmp/ucp_tests"
+# rm -r /tmp/ucp_tests
+# echo -e "\trm -rf data"
+# rm -r data
 

@@ -442,7 +442,7 @@ int get_remote_pid()
 
     // Read something from the pipe, proceed
     else {
-        verb(VERB_0, "Remote process pid: %d\n", remote_args.remote_pid);
+        verb(VERB_2, "Remote process pid: %d\n", remote_args.remote_pid);
     }
 
     return 0;
@@ -606,7 +606,7 @@ int get_options(int argc, char *argv[]){
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
