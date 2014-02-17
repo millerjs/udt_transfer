@@ -1,5 +1,6 @@
 ucp
 *.dat
+*.log
 udpipe/src/up
 udpipe/udt/src/udt
 udpipe/udt/src/libudt.a

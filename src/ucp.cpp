@@ -434,20 +434,15 @@ int run_ssh_command(char *remote_dest)
  */
 int get_remote_pid()
 {
-    char ssh_pid_str[MAX_PATH_LEN];
-
+    
     // Try and get the pid of the remote process from the ssh pipe input
-    if (read(opts.recv_pipe[0], ssh_pid_str, MAX_PATH_LEN) < 0){
+    if (read(opts.recv_pipe[0], &remote_args.remote_pid, sizeof(pid_t)) < 0){
         perror("WARNING: Unable to read pid from remote process");
     } 
 
     // Read something from the pipe, proceed
     else {
-        remote_args.remote_pid = atoi(ssh_pid_str);
-        if (sscanf(ssh_pid_str, "%d", &remote_args.remote_pid) != 1)
-            warn("unable to parse remote pid.");
-        else
-            verb(VERB_2, "Remote process pid: %d\n", remote_args.remote_pid);
+        verb(VERB_0, "Remote process pid: %d\n", remote_args.remote_pid);
     }
 
     return 0;
@@ -928,7 +923,7 @@ int main(int argc, char *argv[]){
     verb(VERB_2, "Received acknowledgement of completion");
     
 
-    // kill_children(VERB_2);
+    kill_children(VERB_2);
     
     return RET_SUCCESS;
   
