@@ -137,15 +137,12 @@ int send_file(file_object_t *file){
 	int fd;
 	off_t f_size;
 	int o_mode = O_LARGEFILE | O_RDONLY;
-	// int o_mode = O_RDONLY;
 
 	// create header to specify that subsequent data is a regular
 	// filename and send
-
 	header = nheader(XFER_FILENAME, strlen(file->path)+1);
 
 	// remove the root directory from the destination path
-
 	char destination[MAX_PATH_LEN];
 	int root_len = strlen(file->root);
 	
@@ -245,9 +242,7 @@ int handle_files(file_LL* fileList){
 	// While there is a directory, opts.recurse?
 	if (file->mode == S_IFDIR){
 
-
 	    // Tell desination to create a directory 
-
 	    if (opts.full_root)
 		send_file(file);
 
@@ -279,9 +274,7 @@ int handle_files(file_LL* fileList){
 		char*status = "completed";
 		verb(VERB_1, "Logged: %s [%s]", file->path, status);
 	    } else {
-
 		send_file(file);
-
 	    }
 
 
@@ -291,7 +284,6 @@ int handle_files(file_LL* fileList){
 	else if (file->mode == S_IFCHR || file->mode == S_IFIFO){
 
 	    if (opts.regular_files){
-
 		warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
 		     "To enable sending character devices, use --all-files");
 
@@ -299,18 +291,14 @@ int handle_files(file_LL* fileList){
 
 		warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
 		     file->path, file->filetype, file->filetype);
-
-		
 		send_file(file);
 
 	    }
-	    
 	}
 
 	// if it's neither a regular file nor a directory, leave it
 	// for now, maybe send in later version
 	else {
-
 	    verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
 
 	    if (opts.verbosity > VERB_0){
@@ -321,13 +309,10 @@ int handle_files(file_LL* fileList){
 	}
 
 	log_completed_file(file);
-
 	fileList = fileList->next;
 
     }
 
     close_log_file();
-
     return RET_SUCCESS;
-
 }

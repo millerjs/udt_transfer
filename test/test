@@ -4,8 +4,8 @@ G="\033[1;32m"
 R="\033[0;31m"
 N="\033[0m"
 
-mkdir data 
-##### Generate files
+# mkdir data 
+# ##### Generate files
 # echo "Generating random test files"
 # for i in `seq 10 -1 1`
 # do
@@ -75,8 +75,7 @@ do
     
 done
 
-
-##### Cleaning test files
+# ##### Cleaning test files
 # echo -e "\nCleaning test files ..."
 # echo -e "\trm -rf /tmp/ucp_tests"
 # rm -r /tmp/ucp_tests

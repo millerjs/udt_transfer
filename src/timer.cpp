@@ -23,9 +23,9 @@ char descrip[N_TIMERS][MAX_DESCRIP_LEN];
 
 int timer_index = -1;
 
-int init_timers(){
-    int i;
-    for (i = 0; i < N_TIMERS; i++){
+int init_timers()
+{
+    for (int i = 0; i < N_TIMERS; i++){
 	start[i].tv_sec = 0;
 	start[i].tv_nsec = 0;
 	end[i].tv_sec = 0;
@@ -39,7 +39,8 @@ int init_timers(){
 
 int clock_gettime(clockid_t clk_id, struct timespec *tp);
 
-int start_timer(char* str){
+int start_timer(char* str)
+{
     timer_index++;
     if (timer_index > N_TIMERS){
 	fprintf(stderr, "Not enoug timers, increase N_TIMERS\n");
@@ -51,11 +52,13 @@ int start_timer(char* str){
     return timer_index;
 }
 
-int stop_timer(int tag){
+int stop_timer(int tag)
+{
     return clock_gettime(CLOCK_REALTIME, &end[tag]);
 }
 
-double diff(timespec start, timespec end){
+double diff(timespec start, timespec end)
+{
     timespec temp;
     if ((end.tv_nsec-start.tv_nsec)<0) {
 	temp.tv_sec = end.tv_sec-start.tv_sec-1;
@@ -67,8 +70,8 @@ double diff(timespec start, timespec end){
     return temp.tv_sec + temp.tv_nsec/(1.0e9);
 }
 
-
-double timer_elapsed(int tag){
+double timer_elapsed(int tag)
+{
 
     if (start[tag].tv_sec+start[tag].tv_nsec 
 	&&
@@ -79,26 +82,22 @@ double timer_elapsed(int tag){
     }
 
     return 0.0;
-	
 }
 
-
-int print_timer(int tag){
-
+int print_timer(int tag)
+{
     printf("%s\t%f\n", descrip[tag], timer_elapsed(tag));
     return fflush(stdout);
-
 }
 
 
-void print_timers(){
-    int i;
-
-    for (i = 0; i < 70; i++)
+void print_timers()
+{
+    for (int i = 0; i < 70; i++)
 	fprintf(stderr, "-");
     fprintf(stderr, "\nTimers:\n");
 
-    for (i = 0; i < N_TIMERS; i++){
+    for (int i = 0; i < N_TIMERS; i++){
 	print_timer(i);
     }
 }
