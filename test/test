@@ -4,22 +4,22 @@ G="\033[1;32m"
 R="\033[0;31m"
 N="\033[0m"
 
-# mkdir data 
-# ##### Generate files
-# echo "Generating random test files"
-# for i in `seq 10 -1 1`
-# do
-#     printf "\r\tGenerating test file [data/ucp_test$i.dat] ... "
-#     dd if=/dev/urandom of=data/ucp_test$i.dat bs=1M count=$i 2> /dev/null
-# done
-# echo ""
+mkdir data 
+##### Generate files
+echo "Generating random test files"
+for i in `seq 10 -1 1`
+do
+    printf "\r\tGenerating test file [data/ucp_test$i.dat] ... "
+    dd if=/dev/urandom of=data/ucp_test$i.dat bs=1M count=$i 2> /dev/null
+done
+echo ""
 
-# mkdir data/recurse
-# for i in `seq 10 -1 1`
-# do
-#     printf "\r\tGenerating test file [data/recurse/ucp_test$i.dat] ... "
-#     dd if=/dev/urandom of=data/recurse/ucp_test$i.dat bs=1M count=$i 2> /dev/null
-# done
+mkdir data/recurse
+for i in `seq 10 -1 1`
+do
+    printf "\r\tGenerating test file [data/recurse/ucp_test$i.dat] ... "
+    dd if=/dev/urandom of=data/recurse/ucp_test$i.dat bs=1M count=$i 2> /dev/null
+done
 
 clear
 echo ""
@@ -76,9 +76,9 @@ do
 done
 
 # ##### Cleaning test files
-# echo -e "\nCleaning test files ..."
-# echo -e "\trm -rf /tmp/ucp_tests"
-# rm -r /tmp/ucp_tests
-# echo -e "\trm -rf data"
-# rm -r data
+echo -e "\nCleaning test files ..."
+echo -e "\trm -rf /tmp/ucp_tests"
+rm -r /tmp/ucp_tests
+echo -e "\trm -rf data"
+rm -r data
 
