@@ -27,3 +27,10 @@ ucp:
 clean:
 	$(MAKE) clean -C src/
 	$(MAKE) clean -C udt/
+
+INSTALL_PREFIX=/usr/local
+
+install:
+	install ucp $(INSTALL_PREFIX)/bin
+
+.PHONY: install

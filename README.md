@@ -27,7 +27,7 @@ Installation
 From the root ucp directory run the following:
 
     make
-    make install
+    sudo make install
 
 	
 Options
