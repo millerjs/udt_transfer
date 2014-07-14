@@ -37,6 +37,8 @@ and limitations under the License.
 #define pris(x) fprintf(stderr,"debug: %s\n",x)
 #define uc_err(x) {fprintf(stderr,"error:%s\n",x);exit(1);}
 
+#define ENOSERVER 1001
+
 using std::cerr;
 using std::endl;
 
@@ -81,32 +83,46 @@ void *run_client(void *_args_)
 
     
     UDTSOCKET client;
-    client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
+    bool NOT_CONNECTED = true;
+    int connectionAttempts = 0;
+    const int MAX_CONNECTION_ATTEMPTS = 25;
 
-    // UDT Options
-    if (blast)
-	UDT::setsockopt(client, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
+    while (NOT_CONNECTED && connectionAttempts < MAX_CONNECTION_ATTEMPTS){
+
+	client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
+
+	// UDT Options
+	if (blast)
+	    UDT::setsockopt(client, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
 	
-    UDT::setsockopt(client, 0, UDT_MSS, &mss, sizeof(int));
-    UDT::setsockopt(client, 0, UDT_SNDBUF, &udt_buff, sizeof(int));
-    UDT::setsockopt(client, 0, UDP_SNDBUF, &udp_buff, sizeof(int));
+	UDT::setsockopt(client, 0, UDT_MSS, &mss, sizeof(int));
+	UDT::setsockopt(client, 0, UDT_SNDBUF, &udt_buff, sizeof(int));
+	UDT::setsockopt(client, 0, UDP_SNDBUF, &udp_buff, sizeof(int));
 
-    // freeaddrinfo(local);
+	// freeaddrinfo(local);
 
-    if (0 != getaddrinfo(ip, port, &hints, &peer)) {
-	cerr << "incorrect server/peer address. " << ip << ":" << port << endl;
-	return NULL;
-    }
+	if (0 != getaddrinfo(ip, port, &hints, &peer)) {
+	    cerr << "incorrect server/peer address. " << ip << ":" << port << endl;
+	    return NULL;
+	}
 
-    if (args->verbose)
-	fprintf(stderr, "[client] Connecting to server...\n");
+	if (args->verbose)
+	    fprintf(stderr, "[client] Connecting to server...\n");
     
-    if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
+	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
 	
-	// cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
-	cerr << "connect: " << UDT::getlasterror().getErrorMessage() << endl;
+	    // cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
+	    cerr << "connect: " << UDT::getlasterror().getErrorMessage() << endl;
+
+	    if (UDT::getlasterror().getErrorCode() != ENOSERVER)
+		return NULL;
+	    else
+		connectionAttempts ++;
 	    
-	return NULL;
+	} else {
+	    NOT_CONNECTED = false;
+	}
+
     }
 
     if (args->verbose)
@@ -128,7 +144,6 @@ void *run_client(void *_args_)
         fprintf(stderr, "[udpipe_server] send pipe uninitialized\n");
         exit(1);
     }
-
 
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
