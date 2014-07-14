@@ -534,7 +534,7 @@ int set_defaults()
     
     opts.mode           = MODE_SEND;
     opts.verbosity      = VERB_1;
-    opts.timeout        = 30;
+    opts.timeout        = 0;
     opts.recurse        = 1;
     opts.regular_files  = 1;
     opts.progress       = 1;
