@@ -273,9 +273,9 @@ void print_xfer_stats()
 
         double scale = get_scale(TOTAL_XFER, label);
 
-        fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2f s [ %.2f Gb/s ] \n", 
+        fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n", 
                 TOTAL_XFER/scale, label, elapsed, 
-                TOTAL_XFER/elapsed/scale*SIZE_B);
+                TOTAL_XFER*SIZE_B/(elapsed/SIZE_GB), label);
     }
 }
 
@@ -305,8 +305,7 @@ void sig_handler(int signal)
     }
     
     if (signal == SIGSEGV){
-        verb(VERB_0, "\nERROR: [%d] received SIGSEV, cleaning up and exiting...", getpid());
-        perror("Catching SEGFAULT");
+        verb(VERB_0, "\nERROR: [%d] received SIGSEV, caught SEGFAULT cleaning up and exiting...", getpid());
     }
 
     // Kill chiildren and let user know
@@ -366,7 +365,7 @@ int run_ssh_command(char *remote_path)
         return RET_FAILURE;
     }
     
-    verb(VERB_2, "Attempting to run remote command to %s:%s\n", 
+    verb(VERB_2, "Attempting to run remote command to %s:%s", 
          remote_args.pipe_host, remote_args.pipe_port);
 
     // Create pipe and fork
@@ -399,10 +398,12 @@ int run_ssh_command(char *remote_path)
 
         } else if (opts.mode == MODE_RCV){
 
-            sprintf(remote_pipe_cmd, "%s -x -p %s -q %s: %s", 
+	    ERR_IF(!opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
+
+            sprintf(remote_pipe_cmd, "%s -x -q %s -p %s %s", 
                     remote_args.udpipe_location,
-                    remote_args.pipe_port, 
                     remote_args.pipe_host,
+                    remote_args.pipe_port, 
                     remote_args.remote_path);
 
         }
@@ -410,7 +411,6 @@ int run_ssh_command(char *remote_path)
 	verb(VERB_2, "ssh command: ");
 	for (int i = 0; args[i]; i++)
 	    verb(VERB_2, "args[%d]: %s", i, args[i]);
-
 
 	ERR_IF(execvp(args[0], args), "unable to execute ssh process");
 	ERR("premature ssh process exit");
@@ -476,6 +476,10 @@ int parse_destination(char *xfer_cmd)
     int hostlen = -1;
     int cmd_len = strlen(xfer_cmd);
 
+    // we've already set the pipe_host, don't overwrite
+    if (strlen(remote_args.pipe_host))
+	return RET_FAILURE;
+
     // the string appears not to contain a remote destination
     hostlen = strchr(xfer_cmd, ':') - xfer_cmd + 1;
     ERR_IF(!hostlen, "Please specify host [host:destination_file]: %s", xfer_cmd);
@@ -509,7 +513,7 @@ int get_remote_host(int argc, char** argv)
             argv[i] = NULL;
 
             if (i < argc - 1){
-                NOTE(VERB_2, opts.remote_to_local = 1);
+                NOTE(opts.remote_to_local = 1);
 		opts.mode = MODE_RCV;
 	    }
 
@@ -596,7 +600,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -612,10 +616,9 @@ int get_options(int argc, char *argv[])
             break;
 
         case 'q':
-            // sprintf(remote_args.pipe_host, "%s", optarg);
-	    opts.remote_to_local = 1;
+            sprintf(remote_args.pipe_host, "%s", optarg);
+	    NOTE(opts.remote_to_local = 1);
 	    opts.mode |= MODE_SEND;
-            opts.mode ^= MODE_RCV;
             break;
 
         case '5':
@@ -789,11 +792,12 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     return client_thread;
 }
 
+
+
+
 int remote_to_local(int argc, char*argv[], int optind)
 {
-	
-    // fprintf(stderr, "parcel currently only supports local-to-remote transfers\n");
-    // clean_exit(EXIT_FAILURE);
+    file_LL *fileList = NULL;
 
     if (opts.mode & MODE_RCV) {
 
@@ -808,38 +812,75 @@ int remote_to_local(int argc, char*argv[], int optind)
         write(opts.send_pipe[1], &pid, sizeof(pid_t));
         opts.socket_ready = 1;
 
-        verb(VERB_2, "Running with file destination mode\n");
+        verb(VERB_2, "Running with file destination mode");
         pthread_t *server_thread = start_udpipe_server(&remote_args);
 
 	// Find the output path
 	ERR_IF(optind >= argc, "I don't know where to put the files");
 	for (; optind < argc; optind++){
-
 	    // Go through the remaining arguments looking for an output directory path
 	    if (argv[optind]){
-		verb(VERB_2, "Unused %s", argv[optind]);
 		base_path = strdup(argv[optind]);
 		break;
 	    }
 	}
 	
+	ERR_IF(!base_path, "I thought I knew where to put the files, but I really didn't.");
 	verb(VERB_2, "Writing files to: %s", base_path);
 
 	// Listen to sender for files and data, see receiver.cpp
 	receive_files(base_path);
 
+
 	// Wait here for completion
         header_t h = nheader(XFER_COMPLTE, 0);
         write(opts.send_pipe[1], &h, sizeof(header_t));
-        sleep(1);
 
-        pthread_join(*server_thread, NULL);
+	// This causes hanging, commented for now?
+        // pthread_join(*server_thread, NULL);
+
 
     } else if (opts.mode & MODE_SEND) {
 
-	verb(VERB_2, "Starting remote_to_local sender\n");
+	verb(VERB_2, "FLAG: Starting remote_to_local sender\n");
+
+        // delay proceeding for slow ssh connection
+        if (opts.delay){
+            verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
+            sleep(opts.delay);
+        }
+
+        // connect to receiving server
+        start_udpipe_client(&remote_args);
+        // get the pid of the remote process in case we need to kill it
+        get_remote_pid();
 
 
+	ERR_IF(optind >= argc, "Please specify files to send");
+
+	verb(VERB_2, "Running with file source mode.\n");
+            
+	int n_files = argc-optind;
+	char **path_list = argv+optind;
+
+	// Generate a linked list of file objects from path list
+	ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+                
+	// This is where we pass the remainder of the work to the
+	// file handler in sender.cpp
+	handle_files(fileList);
+
+	// signal the end of the transfer
+	complete_xfer();
+	
+	header_t h = nheader(XFER_WAIT, 0);
+	while (read(opts.recv_pipe[0], &h, sizeof(header_t))){
+	    if (h.type == XFER_COMPLTE) 
+		break;
+	    else
+		fprintf(stderr, "received non-end-of-transfer message\n");
+	}
+	verb(VERB_2, "Received acknowledgement of completion");
 
     }
 
@@ -867,31 +908,23 @@ int local_to_remote(int argc, char*argv[], int optind)
         // get the pid of the remote process in case we need to kill it
         get_remote_pid();
 
-        // Did the user pass any files?
-        if (optind < argc){
+	ERR_IF(optind >= argc, "Please specify files to send");
             
-            verb(VERB_2, "Running with file source mode.\n");
+	verb(VERB_2, "Running with file source mode.\n");
             
-            int n_files = argc-optind;
-            char **path_list = argv+optind;
+	int n_files = argc-optind;
+	char **path_list = argv+optind;
 
-            // Generate a linked list of file objects from path list
-            ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+	// Generate a linked list of file objects from path list
+	ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
                 
-            // Visit all directories and send all files
-            timer = start_timer("send_timer");
-            // This is where we pass the remainder of the work to the
-            // file handler in sender.cpp
-            handle_files(fileList);
-            // signal the end of the transfer
-            complete_xfer();
-            
-        }  
-        
-        // if no files were passed by user
-        else {
-            ERR("No files specified.\n");
-        }
+	// Visit all directories and send all files
+	// This is where we pass the remainder of the work to the
+	// file handler in sender.cpp
+	handle_files(fileList);
+	// signal the end of the transfer
+	complete_xfer();
+
     } 
     
     // Otherwise, switch to receiving mode
@@ -937,11 +970,19 @@ int local_to_remote(int argc, char*argv[], int optind)
 
         header_t h = nheader(XFER_COMPLTE, 0);
         write(opts.send_pipe[1], &h, sizeof(header_t));
-        sleep(1);
 
         pthread_join(*server_thread, NULL);
         
     }
+
+    header_t h = nheader(XFER_WAIT, 0);
+    while (read(opts.recv_pipe[0], &h, sizeof(header_t))){
+	if (h.type == XFER_COMPLTE) 
+	    break;
+	else
+	    fprintf(stderr, "received non-end-of-transfer message\n");
+    }
+    verb(VERB_2, "Received acknowledgement of completion");
 
     return RET_SUCCESS;
 }
@@ -966,6 +1007,8 @@ int main(int argc, char *argv[])
 
     get_remote_host(argc, argv);
     initialize_pipes();
+
+    timer = start_timer("send_timer");
     
     if (opts.remote_to_local){
 	remote_to_local(argc, argv, optind);
@@ -974,17 +1017,6 @@ int main(int argc, char *argv[])
     }
 
     print_xfer_stats();    
-
-    // Delay for a predefined interval to account for network latency
-    header_t h = nheader(XFER_WAIT, 0);
-    while (read(opts.recv_pipe[0], &h, sizeof(header_t))){
-        if (h.type == XFER_COMPLTE) 
-            break;
-        else
-            fprintf(stderr, "received non-end-of-transfer message\n");
-    }
-
-    verb(VERB_2, "Received acknowledgement of completion");
     
     kill_children(VERB_2);
     
