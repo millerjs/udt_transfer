@@ -275,7 +275,7 @@ void print_xfer_stats()
 
         fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n", 
                 TOTAL_XFER/scale, label, elapsed, 
-                TOTAL_XFER*SIZE_B/(elapsed/SIZE_GB), label);
+                TOTAL_XFER*SIZE_B/(elapsed*SIZE_GB));
     }
 }
 
@@ -837,7 +837,7 @@ int remote_to_local(int argc, char*argv[], int optind)
         write(opts.send_pipe[1], &h, sizeof(header_t));
 
 	// This causes hanging, commented for now?
-        // pthread_join(*server_thread, NULL);
+        pthread_kill(*server_thread, 0);
 
 
     } else if (opts.mode & MODE_SEND) {
@@ -996,11 +996,14 @@ int main(int argc, char *argv[])
     set_defaults();
     // parse user command line input and get the remaining argument index
     optind = get_options(argc, argv);
-    // if logging is enabled, opent he log/checkpoint file
-    open_log_file();
 
+    if (!opts.remote_to_local){
+    	// if logging is enabled, opent the log/checkpoint file
+    	open_log_file();
+    }
+    
     // if user selected to restart a previous transfer
-    if (opts.restart){
+    if (opts.restart & !opts.remote_to_local){
         verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
         read_checkpoint(opts.restart_path);
     }
