@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-	      This file is part of ucp by Joshua Miller
+	      This file is part of parcel by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
-#include "ucp.h"
+#include "parcel.h"
 #include "files.h"
 
 // send header specifying that the sending stream is complete
 
-ucp_block block;
+parcel_block block;
 
 // int allocate_block
 // - allocates the block that encapsulates the header and data buffer
@@ -29,7 +29,7 @@ ucp_block block;
 //   Format of buffer:
 //     [header --> sizeof(header_t)] [data --> BUFFER_LEN]
 // - returns: RET_SUCCESS on success, RET_FAILURE on failure
-int allocate_block(ucp_block *block){
+int allocate_block(parcel_block *block){
 
     // Calculate length of block based on optimal buffer size and
     // header length

@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-This file is part of ucp
+This file is part of parcel
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
-#ifndef UCP_H
-#define UCP_H
+#ifndef PARCEL_H
+#define PARCEL_H
 
 /* #define _LARGE_FILES */
 #define _FILE_OFFSET_BITS  64
@@ -111,14 +111,14 @@ typedef struct header{
     off_t data_len;
 } header_t;
 
-typedef struct ucp_block{
+typedef struct parcel_block{
     char*buffer;
     char*data;
     int dlen;
-} ucp_block;
+} parcel_block;
 
 
-typedef struct ucp_opt_t{
+typedef struct parcel_opt_t{
     int timeout;
 
     int verbosity;
@@ -144,7 +144,7 @@ typedef struct ucp_opt_t{
 
     char restart_path[MAX_PATH_LEN];
 
-} ucp_opts_t;
+} parcel_opts_t;
 
 typedef struct remote_arg_t{
 
@@ -165,7 +165,7 @@ typedef struct remote_arg_t{
 } remote_arg_t;
 
 extern remote_arg_t remote_args;
-extern ucp_opt_t opts;
+extern parcel_opt_t opts;
 
 
 void usage(int EXIT_STAT);
@@ -220,11 +220,11 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 
 int generate_pipe_cmd(char*pipe_cmd, int pipe_mode);
 
-// execute a pipe process i.e. udpipe and redirect ucp output
+// execute a pipe process i.e. udpipe and redirect parcel output
 
 int run_pipe(char* pipe_cmd);
 
-// run the ssh command that will create a remote ucp process
+// run the ssh command that will create a remote parcel process
 
 int run_ssh_command(char *remote_dest);
 

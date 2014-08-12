@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-              This file is part of ucp by Joshua Miller
+              This file is part of parcel by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
-#include "ucp.h"
+#include "parcel.h"
 #include "timer.h"
 #include "sender.h"
 #include "receiver.h"
@@ -39,7 +39,7 @@ off_t TOTAL_XFER = 0;
 #include "udpipe_client.h"
 
 remote_arg_t remote_args;
-ucp_opt_t opts;
+parcel_opt_t opts;
 
 using std::cerr;
 using std::endl;
@@ -81,7 +81,7 @@ void usage(int EXIT_STAT)
 
     char* options[] = {
         "--help \t\t\t print this message",
-        "--remote (-r) host:dest \t immitate scp with ucp and udpipe",
+        "--remote (-r) host:dest \t immitate scp with parcel and udpipe",
         "--checkpoint (-k) log_file \t log transfer to file log_file.  If log_file exists",
         "\t\t\t\t from previous transfer, resume transfer at last completed file.",
         "--verbose \t\t\t verbose, notify of files being sent. Same as -v2",
@@ -98,7 +98,7 @@ void usage(int EXIT_STAT)
         "",
 
         "Remote transfers: --remote (-r) host:dest",
-        "\tThis option requires udpipe [up] to be in your path. ucp",
+        "\tThis option requires udpipe [up] to be in your path. parcel",
         "\twill attempt to execute udpipe on the specified host over",
         "\tssh.  If successful, it will transfer file list to",
         "\tdirectory dest.",
@@ -112,7 +112,7 @@ void usage(int EXIT_STAT)
         NULL
     };
     
-    fprintf(stderr, "Basic usage: \n\tucp source_dir | ucp -l dest_dir\n");
+    fprintf(stderr, "Basic usage: \n\tparcel source_dir | parcel -l dest_dir\n");
     fprintf(stderr, "Options:\n");
     
     for (int i = 0; options[i]; i++)
@@ -198,7 +198,7 @@ int kill_children(int verbosity)
         if (ssh_kill_pid == 0) {
 
             if (opt_verbosity >= verbosity) 
-                fprintf(stderr, "Killing remote ucp process... ");
+                fprintf(stderr, "Killing remote parcel process... ");
 
             char kill_cmd[MAX_PATH_LEN];
             sprintf(kill_cmd, "kill -s SIGINT %d 2> /dev/null", remote_args.remote_pid);
@@ -292,7 +292,7 @@ void clean_exit(int status)
 
 /* 
  * void sig_handler
- * called when signals are passed to ucp
+ * called when signals are passed to parcel
  * - note: set by set_handlers
  */
 void sig_handler(int signal)
@@ -301,7 +301,7 @@ void sig_handler(int signal)
     if (signal == SIGINT){
         verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
     }
-
+    
     if (signal == SIGSEGV){
         verb(VERB_0, "\nERROR: [%d] received SIGSEV, cleaning up and exiting...", getpid());
         perror("Catching SEGFAULT");
@@ -351,7 +351,7 @@ int print_progress(char* descrip, off_t read, off_t total)
 
 /* 
  * int run_ssh_command
- * - run the ssh command that will create a remote ucp process
+ * - run the ssh command that will create a remote parcel process
  * - returns: RET_SUCCESS on success, RET_FAILURE on failure
  */
 int run_ssh_command(char *remote_dest)
@@ -518,7 +518,7 @@ int get_remote_host(int argc, char** argv)
 /* 
  * int set_defaults
  * - sets the defaults for the two global option structs, 
- *    [ucp_opt_t opts] and [remote_arg_t remote_args]
+ *    [parcel_opt_t opts] and [remote_arg_t remote_args]
  * - returns: RET_SUCCESS on success, RET_FAILURE on failure
  */
 int set_defaults()
@@ -529,7 +529,7 @@ int set_defaults()
     bzero(remote_args.pipe_port,   MAX_PATH_LEN);
     bzero(remote_args.remote_dest, MAX_PATH_LEN);
     
-    sprintf(remote_args.udpipe_location, "ucp");
+    sprintf(remote_args.udpipe_location, "parcel");
     sprintf(remote_args.pipe_port,       "9000");
     
     opts.mode           = MODE_SEND;
@@ -804,7 +804,7 @@ int main(int argc, char *argv[]){
     get_remote_host(argc, argv);
 
     if (opts.remote_to_local){
-        fprintf(stderr, "ucp currently only supports local-to-remote transfers\n");
+        fprintf(stderr, "parcel currently only supports local-to-remote transfers\n");
         clean_exit(EXIT_FAILURE);
     }
 

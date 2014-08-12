@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-	      This file is part of ucp by Joshua Miller
+	      This file is part of parcel by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
-#include "ucp.h"
+#include "parcel.h"
 #include "files.h"
 #include "receiver.h"
 

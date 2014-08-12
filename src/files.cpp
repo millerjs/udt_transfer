@@ -1,7 +1,7 @@
 /*****************************************************************************
 Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-	      This file is part of ucp by Joshua Miller
+	      This file is part of parcel by Joshua Miller
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ and limitations under the License.
 
 #define _FILE_OFFSET_BITS 64
 
-#include "ucp.h"
+#include "parcel.h"
 
 int flogfd = 0;
 char *f_map = NULL;

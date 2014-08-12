@@ -38,15 +38,15 @@ endif
 
 DIR = $(shell pwd)
 
-APP = ucp
-APPOUT = ../ucp  
+APP = parcel
+APPOUT = ../parcel
 
 all: $(APP) 
 
 %.o: %.cpp 
 	$(C++) $(CCFLAGS) $< -c
 
-ucp: ucp.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o 
+parcel: parcel.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o 
 	$(C++) $^ -o $(APPOUT) $(LDFLAGS)
 
 clean:

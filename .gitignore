@@ -1,4 +1,4 @@
-ucp
+parcel
 *.dat
 *.log
 udpipe/src/up
@@ -6,4 +6,5 @@ udpipe/udt/src/udt
 udpipe/udt/src/libudt.a
 udpipe/udt/src/libudt.so
 *.o
+src/*.o
 *.d

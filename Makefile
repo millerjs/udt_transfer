@@ -1,7 +1,7 @@
 ##############################################################################
 # Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
 
-# 	      This file is part of ucp by Joshua Miller
+# 	      This file is part of Freight by Joshua Miller
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,11 +16,9 @@
 # and limitations under the License.
 ##############################################################################
 
-all: ucp
+all: parcel
 
-.PHONY: ucp
-
-ucp:
+parcel:
 	$(MAKE) -C udt/src/
 	$(MAKE) -C src/
 
@@ -31,6 +29,6 @@ clean:
 INSTALL_PREFIX=/usr/local
 
 install:
-	install ucp $(INSTALL_PREFIX)/bin
+	install parcel $(INSTALL_PREFIX)/bin
 
 .PHONY: install

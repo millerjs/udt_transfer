@@ -1,4 +1,4 @@
-ucp
+Parcel
 ===
 
 High performance recursive directory file transfer using UDT with restart capabilities. _Remote to local transfers currently under development_.
@@ -11,20 +11,20 @@ Basic usage
 -----------
 Basic usage is similar to scp 
 
-    ucp list of files or directories host:destdir
+    parcel list of files or directories host:destdir
     
-will transfer the the files or directories {ucp, list, of, files, or, directories} into the remote directory destdir recursively.  
+will transfer the the files or directories {parcel, list, of, files, or, directories} into the remote directory destdir recursively.  
 
-As an added functionality, ucp has the ability to restart/rerun previous transers. If a file has been modified since the last it was logged, then ucp will by default resend the file. You have the option of logging without restarting, restarting without logging, or doing both (-k). The command
+As an added functionality, parcel has the ability to restart/rerun previous transers. If a file has been modified since the last it was logged, then parcel will by default resend the file. You have the option of logging without restarting, restarting without logging, or doing both (-k). The command
 
-    ucp -k xfer.log source host:dest
+    parcel -k xfer.log source host:dest
     
 Will restart a transfer logged in xfer.log from directory source to directory dest on remote host.
 
 Installation
 ------------
 
-From the root ucp directory run the following:
+From the root parcel directory run the following:
 
     make
     sudo make install
@@ -32,10 +32,10 @@ From the root ucp directory run the following:
 	
 Options
 -------
-The following options are currently supported by ucp:
+The following options are currently supported by parcel:
 
     --help                   print uasge message
-    --all-files              allows ucp to send all file types, i.e. character devices, named pipes, etc.
+    --all-files              allows parcel to send all file types, i.e. character devices, named pipes, etc.
     --checkpoint l_file      same as (-r xfer.log -l xfer.log).  Restart and write to checkpoint.
     --ignore-modification    will not resend logged files that have been since modified
     --log xfer.log           will output completed file report to l_file
@@ -45,7 +45,7 @@ The following options are currently supported by ucp:
     --quiet                  silence all warnings. Same as -v0
     
 
-    -c ucp_src               specify the ucp source binary path
+    -c parcel_src               specify the parcel source binary path
     -k                       same as --checkpoint
     -l xfer.log              same as --log 
     -r xfer.log              same as --restart
