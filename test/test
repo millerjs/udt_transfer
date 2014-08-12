@@ -28,12 +28,9 @@ echo ""
 
 nfiles=10
 
-for k in `seq 0 $N_TESTS`
-do
-    echo -e "$G""Test round #$k$N"
-
+run_test(){
 ##### Transfer files
-    cmd="ucp data `whoami`@localhost:/tmp/ucp_test"
+    cmd=$@
     echo -e $cmd
     $cmd
 
@@ -43,14 +40,14 @@ do
     do
         printf "\r\tTesting [ucp_test$i.dat] \t\t"
         diff data/ucp_test$i.dat           \
-            /tmp/ucp_test/ucp_test$i.dat   \
-            > /dev/null
+	    /tmp/ucp_test/ucp_test$i.dat   \
+	    > /dev/null
         stat=$?
         if [ $stat -ne 0 ]; then
-            printf "\n\n\tTest[$i] [recurse/ucp_test$i.dat] \t[$R FAILED $N]"
-            exit
+	    printf "\n\n\tTest[$i] [recurse/ucp_test$i.dat] \t[$R FAILED $N]"
+	    exit
         else
-            printf "[$G PASSED $N]"
+	    printf "[$G PASSED $N]"
         fi
     done
 
@@ -58,14 +55,14 @@ do
     do
         printf "\r\tTesting[$i] [recurse/ucp_test$i.dat] \t"
         diff data/recurse/ucp_test$i.dat           \
-            /tmp/ucp_test/recurse/ucp_test$i.dat   \
-            > /dev/null
+	    /tmp/ucp_test/recurse/ucp_test$i.dat   \
+	    > /dev/null
         stat=$?
         if [ $stat -ne 0 ]; then
-            printf "\n\n\tTest[$i] [recurse/ucp_test$i.dat] \t[$R FAILED $N]"
-            exit
+	    printf "\n\n\tTest[$i] [recurse/ucp_test$i.dat] \t[$R FAILED $N]"
+	    exit
         else
-            printf "[$G PASSED $N]"
+	    printf "[$G PASSED $N]"
         fi
     done
 
@@ -75,7 +72,19 @@ do
     # clear
     echo -e "$G""Previous round #$k passed all tests$N"
     
+}
+
+for k in `seq 0 $N_TESTS`
+do
+    echo -e "$G""Test round #$k$N"
+    
+    # LOCAL TO REMOTE
+    run_test "parcel data `whoami`@localhost:/tmp/ucp_test"
+
+    # REMOTE TO LOCAL
+    run_test "parcel `whoami`@localhost:`pwd`/data /tmp/ucp_test"
 done
+
 
 # ##### Cleaning test files
 echo -e "\nCleaning test files ..."
