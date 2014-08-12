@@ -75,7 +75,7 @@ extern int timer;
 extern off_t TOTAL_XFER;
 extern int opt_verbosity;
 
-typedef enum{
+typedef enum {
     XFER_DATA,
     XFER_FILENAME,
     XFER_DIRNAME,
@@ -83,6 +83,7 @@ typedef enum{
     XFER_COMPLTE,
     XFER_WAIT,
 } xfer_t;
+
 
 /* 
 Levels of Verbosity:

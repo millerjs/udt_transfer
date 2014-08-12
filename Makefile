@@ -28,6 +28,7 @@ clean:
 
 INSTALL_PREFIX=/usr/local
 
+# Should we install to binaries or add to path
 install:
 	install parcel $(INSTALL_PREFIX)/bin
 

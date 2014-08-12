@@ -778,7 +778,8 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     return client_thread;
 }
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
 
     int optind;
     file_LL *fileList = NULL;

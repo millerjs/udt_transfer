@@ -8,3 +8,6 @@ udpipe/udt/src/libudt.so
 *.o
 src/*.o
 *.d
+test/data
+udt/src/libudt.a
+udt/src/libudt.so
