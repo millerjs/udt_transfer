@@ -53,4 +53,4 @@ clean:
 	rm -f *.o $(APPOUT) 
 
 install:
-	export PATH=$(DIR):$$PATH
+	install $(APPOUT) $(INSTALL_PREFIX)/bin	

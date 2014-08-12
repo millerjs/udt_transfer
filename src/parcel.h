@@ -153,7 +153,7 @@ typedef struct remote_arg_t{
     int ssh_pid;
     int remote_pid;
 
-    char remote_dest[MAX_PATH_LEN];
+    char remote_path[MAX_PATH_LEN];
     char pipe_port[MAX_PATH_LEN];
     char pipe_host[MAX_PATH_LEN];
     char udpipe_location[MAX_PATH_LEN];

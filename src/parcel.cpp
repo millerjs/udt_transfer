@@ -354,10 +354,10 @@ int print_progress(char* descrip, off_t read, off_t total)
  * - run the ssh command that will create a remote parcel process
  * - returns: RET_SUCCESS on success, RET_FAILURE on failure
  */
-int run_ssh_command(char *remote_dest)
+int run_ssh_command(char *remote_path)
 {
 
-    if (!remote_dest){
+    if (!remote_path){
         warn("remote destination was not set");
         return RET_FAILURE;
     }
@@ -374,38 +374,48 @@ int run_ssh_command(char *remote_dest)
         char remote_pipe_cmd[MAX_PATH_LEN];     
         bzero(remote_pipe_cmd, MAX_PATH_LEN);
 
+	// Redirect output from ssh process to ssh_fd
+	char *args[] = {
+	    "ssh",
+	    "-A", 
+	    remote_args.pipe_host, 
+	    remote_pipe_cmd, 
+	    NULL
+	};
+
         if (opts.mode == MODE_SEND){
+
+	    if (opts.remote_to_local)
+		error("Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
             sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
                     remote_args.udpipe_location,
                     remote_args.pipe_port, 
-                    remote_args.remote_dest);
+                    remote_args.remote_path);
 
-            // Redirect output from ssh process to ssh_fd
-            char *args[] = {
-                "ssh",
-                "-A", 
-                remote_args.pipe_host, 
-                remote_pipe_cmd, 
-                NULL
-            };
-
-            verb(VERB_2, "ssh command: ");
-            for (int i = 0; args[i]; i++)
-                verb(VERB_2, "args[%d]: %s\n", i, args[i]);
-
-            if (execvp(args[0], args)){
-                fprintf(stderr, "ERROR: unable to execute ssh process\n");
-                clean_exit(EXIT_FAILURE);
-            } else {
-                fprintf(stderr, "ERROR: premature ssh process exit\n");
-                clean_exit(EXIT_FAILURE);
-            }
 
         } else if (opts.mode == MODE_RCV){
-            // TODO
-            error("Remote -> Local transfers not currently supported\n");
+
+            sprintf(remote_pipe_cmd, "%s -x -p %s -q %s: %s", 
+                    remote_args.udpipe_location,
+                    remote_args.pipe_port, 
+                    remote_args.pipe_host,
+                    remote_args.remote_path);
+
+            // error("Remote -> Local transfers not currently supported\n");
         }
+
+	verb(VERB_2, "ssh command: ");
+	for (int i = 0; args[i]; i++)
+	    verb(VERB_2, "args[%d]: %s", i, args[i]);
+
+	if (execvp(args[0], args)){
+	    fprintf(stderr, "ERROR: unable to execute ssh process\n");
+	    clean_exit(EXIT_FAILURE);
+	} else {
+	    fprintf(stderr, "ERROR: premature ssh process exit\n");
+	    clean_exit(EXIT_FAILURE);
+	}
 
     }
 
@@ -463,7 +473,7 @@ void initialize_udpipe_args(thread_args *args)
  * - parse argument xfer_cmd for host:destination
  * - returns: RET_SUCCESS on success, RET_FAILURE on failure
  */
-int parse_destination(char*xfer_cmd)
+int parse_destination(char *xfer_cmd)
 {
     int hostlen = -1;
     int cmd_len = strlen(xfer_cmd);
@@ -477,7 +487,7 @@ int parse_destination(char*xfer_cmd)
     // the string appeasrs to contain a remote destination
     else {
         snprintf(remote_args.pipe_host, hostlen, "%s", xfer_cmd);
-        snprintf(remote_args.remote_dest, cmd_len-hostlen+1,"%s", xfer_cmd+hostlen);
+        snprintf(remote_args.remote_path, cmd_len-hostlen+1,"%s", xfer_cmd+hostlen);	
     }
 
     return RET_SUCCESS;
@@ -496,7 +506,7 @@ int get_remote_host(int argc, char** argv)
 
         if (strchr(argv[i], ':')){
 
-            verb(VERB_2, "Found remote destination [%s]\n", argv[i]);
+            verb(VERB_2, "Found remote host [%s]\n", argv[i]);
 
             sprintf(remote_args.xfer_cmd, "%s", argv[i]);
             opts.remote = 1;
@@ -504,8 +514,10 @@ int get_remote_host(int argc, char** argv)
             // Set this argument to NULL because it is not a file to send
             argv[i] = NULL;
 
-            if (i < argc - 1)
+            if (i < argc - 1){
                 opts.remote_to_local = 1;
+		opts.mode = MODE_RCV;
+	    }
 
             return RET_SUCCESS;
 
@@ -527,7 +539,7 @@ int set_defaults()
     bzero(remote_args.xfer_cmd,    MAX_PATH_LEN);
     bzero(remote_args.pipe_host,   MAX_PATH_LEN);
     bzero(remote_args.pipe_port,   MAX_PATH_LEN);
-    bzero(remote_args.remote_dest, MAX_PATH_LEN);
+    bzero(remote_args.remote_path, MAX_PATH_LEN);
     
     sprintf(remote_args.udpipe_location, "parcel");
     sprintf(remote_args.pipe_port,       "9000");
@@ -578,6 +590,8 @@ int get_options(int argc, char *argv[])
             {"full-root"           , no_argument , &opts.full_root           , 1},
             {"ignore-modification" , no_argument , &opts.ignore_modification , 1},
             {"all-files"           , no_argument , &opts.regular_files       , 0},
+            {"remote-to-local"     , no_argument , &opts.remote_to_local     , 1},
+            {"sender"           , no_argument           , NULL  , 'q'},
             {"help"             , no_argument           , NULL  , 'h'},
             {"log"              , required_argument     , NULL  , 'l'},
             {"timeout"          , required_argument     , NULL  , '5'},
@@ -588,7 +602,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -602,6 +616,13 @@ int get_options(int argc, char *argv[])
         case 'n':
             if (sscanf(optarg, "%d", &opts.encryption) != 1)
                 error("unable to parse encryption threads from -n flag");
+            break;
+
+        case 'q':
+            // sprintf(remote_args.pipe_host, "%s", optarg);
+	    opts.remote_to_local = 1;
+	    opts.mode |= MODE_SEND;
+            opts.mode ^= MODE_RCV;
             break;
 
         case '5':
@@ -638,6 +659,7 @@ int get_options(int argc, char *argv[])
 
         case 't':
             // specify receive mode
+	    opts.remote_to_local = 1;
             opts.mode |= MODE_RCV;
             opts.mode ^= MODE_SEND;
             break;
@@ -729,7 +751,7 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
 
     char *host = (char*)malloc(1028*sizeof(char));
     char *at_ptr = NULL;
-    if (at_ptr = strrchr(remote_args->pipe_host, '@')){
+    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))){
         sprintf(host, "%s", at_ptr+1);
     } else {
         sprintf(host, "%s", remote_args->pipe_host);
@@ -758,7 +780,7 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
 
     char *host = (char*)malloc(1028*sizeof(char));
     char *at_ptr = NULL;
-    if (at_ptr = strrchr(remote_args->pipe_host, '@')){
+    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))){
         sprintf(host, "%s", at_ptr+1);
     } else {
         sprintf(host, "%s", remote_args->pipe_host);
@@ -803,20 +825,30 @@ int main(int argc, char *argv[])
     }
 
     get_remote_host(argc, argv);
-
-    if (opts.remote_to_local){
-        fprintf(stderr, "parcel currently only supports local-to-remote transfers\n");
-        clean_exit(EXIT_FAILURE);
-    }
-
     initialize_pipes();
 
-    if (opts.mode & MODE_SEND){
+    parse_destination(remote_args.xfer_cmd);
+    
+    // ======== REMOTE TO LOCAL TRANSFER ======== 
+    if (opts.remote_to_local){
+        // fprintf(stderr, "parcel currently only supports local-to-remote transfers\n");
+        // clean_exit(EXIT_FAILURE);
+	if (opts.mode == MODE_SEND){
+	    fprintf(stderr, "This is a remote to local spawned sender\n");
 
-        parse_destination(remote_args.xfer_cmd);
+	} else {
+	    // spawn process on remote host and let it create the server
+	    fprintf(stderr, "This is a remote to local spawned receiver\n");
+	    run_ssh_command(remote_args.remote_path);
+	}
 
-        // spawn process on remote host and let it create the server
-        run_ssh_command(remote_args.remote_dest);
+    }
+
+    //  ======== LOCAL TO REMOTE TRANSFER ======== 
+    else if (opts.mode & MODE_SEND){
+
+	// spawn process on remote host and let it create the server
+	run_ssh_command(remote_args.remote_path);
 
         // delay proceeding for slow ssh connection
         if (opts.delay){

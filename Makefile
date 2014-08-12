@@ -28,8 +28,8 @@ clean:
 
 INSTALL_PREFIX=/usr/local
 
-# Should we install to binaries or add to path
+# Should we install to bin or add to path
 install:
-	install parcel $(INSTALL_PREFIX)/bin
+	make -C src install
 
-.PHONY: install
+.PHONY: install all parcel
