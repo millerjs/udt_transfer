@@ -168,6 +168,7 @@ typedef struct remote_arg_t{
 extern remote_arg_t remote_args;
 extern parcel_opt_t opts;
 
+int parse_destination(char *xfer_cmd);
 
 void usage(int EXIT_STAT);
 

@@ -18,6 +18,7 @@ and limitations under the License.
 
 #include "parcel.h"
 #include "files.h"
+#include "util.h"
 
 // send header specifying that the sending stream is complete
 
@@ -38,7 +39,7 @@ int allocate_block(parcel_block *block){
     block->buffer = (char*) malloc(alloc_len*sizeof(char));
 
     if (!block->buffer)
-	error("unable to allocate data");
+	ERR("unable to allocate data");
 
     // record parameters in block
 
@@ -75,7 +76,7 @@ off_t write_block(header_t header, int len){
     memcpy(block.buffer, &header, sizeof(header_t));
 
     if (len > BUFFER_LEN)
-	error("data out of bounds");
+	ERR("data out of bounds");
 
     int send_len = len + sizeof(header_t);
 
@@ -83,7 +84,7 @@ off_t write_block(header_t header, int len){
     int ret = write(opts.send_pipe[1], block.buffer, send_len);
 
     if (ret < 0){
-	error("unable to write to send_pipe");
+	ERR("unable to write to send_pipe");
     }
 
     TOTAL_XFER += ret;
@@ -197,7 +198,7 @@ int send_file(file_object_t *file){
 	    // Check for file read error
 
 	    if (rs < 0)
-		error("Error reading from file");
+		ERR("Error reading from file");
 
 	    // create header to specify that we are also sending file data
 
@@ -303,7 +304,7 @@ int handle_files(file_LL* fileList){
 
 	    if (opts.verbosity > VERB_0){
 		warn("File %s is a %s", file->path, file->filetype);
-		error("This filetype is not currently supported.");
+		ERR("This filetype is not currently supported.");
 	    }
 
 	}

@@ -46,7 +46,7 @@ all: $(APP)
 %.o: %.cpp 
 	$(C++) $(CCFLAGS) $< -c
 
-parcel: parcel.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o 
+parcel: parcel.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o util.h
 	$(C++) $^ -o $(APPOUT) $(LDFLAGS)
 
 clean:

@@ -33,6 +33,8 @@ int opt_verbosity = 1;
 int timer = 0;
 off_t TOTAL_XFER = 0;
 
+#include "util.h"
+
 #include "udpipe.h"
 #include "udpipe_threads.h"
 #include "udpipe_server.h"
@@ -152,22 +154,22 @@ void warn(char* fmt, ... )
     }
 }
 
-/* 
- * void error
- * - print error to stdout and quit
- * - note: error() takes a variable number of arguments with 
- *   format string (like printf)
- */
-void error(char* fmt, ... )
-{
-    va_list args; va_start(args, fmt);
-    fprintf(stderr, "%s: error:", __func__);
-    vfprintf(stderr, fmt, args);
-    if (errno) perror(" ");
-    fprintf(stderr, "\n");
-    va_end(args);
-    clean_exit(EXIT_FAILURE);
-}
+// /* 
+//  * void error
+//  * - print error to stdout and quit
+//  * - note: error() takes a variable number of arguments with 
+//  *   format string (like printf)
+//  */
+// void error(char* fmt, ... )
+// {
+//     va_list args; va_start(args, fmt);
+//     fprintf(stderr, "%s: error:", __func__);
+//     vfprintf(stderr, fmt, args);
+//     if (errno) perror(" ");
+//     fprintf(stderr, "\n");
+//     va_end(args);
+//     clean_exit(EXIT_FAILURE);
+// }
 
 
 /* 
@@ -357,6 +359,8 @@ int print_progress(char* descrip, off_t read, off_t total)
 int run_ssh_command(char *remote_path)
 {
 
+    parse_destination(remote_args.xfer_cmd);
+
     if (!remote_path){
         warn("remote destination was not set");
         return RET_FAILURE;
@@ -385,8 +389,7 @@ int run_ssh_command(char *remote_path)
 
         if (opts.mode == MODE_SEND){
 
-	    if (opts.remote_to_local)
-		error("Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
+	    ERR_IF(opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
             sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
                     remote_args.udpipe_location,
@@ -402,20 +405,15 @@ int run_ssh_command(char *remote_path)
                     remote_args.pipe_host,
                     remote_args.remote_path);
 
-            // error("Remote -> Local transfers not currently supported\n");
         }
 
 	verb(VERB_2, "ssh command: ");
 	for (int i = 0; args[i]; i++)
 	    verb(VERB_2, "args[%d]: %s", i, args[i]);
 
-	if (execvp(args[0], args)){
-	    fprintf(stderr, "ERROR: unable to execute ssh process\n");
-	    clean_exit(EXIT_FAILURE);
-	} else {
-	    fprintf(stderr, "ERROR: premature ssh process exit\n");
-	    clean_exit(EXIT_FAILURE);
-	}
+
+	ERR_IF(execvp(args[0], args), "unable to execute ssh process");
+	ERR("premature ssh process exit");
 
     }
 
@@ -479,16 +477,12 @@ int parse_destination(char *xfer_cmd)
     int cmd_len = strlen(xfer_cmd);
 
     // the string appears not to contain a remote destination
-    if ((hostlen = strchr(xfer_cmd, ':') - xfer_cmd + 1) < 0){
-        error("Please specify host [host:destination_file]");
-        return RET_FAILURE;
-    }
+    hostlen = strchr(xfer_cmd, ':') - xfer_cmd + 1;
+    ERR_IF(!hostlen, "Please specify host [host:destination_file]: %s", xfer_cmd);
 
     // the string appeasrs to contain a remote destination
-    else {
-        snprintf(remote_args.pipe_host, hostlen, "%s", xfer_cmd);
-        snprintf(remote_args.remote_path, cmd_len-hostlen+1,"%s", xfer_cmd+hostlen);	
-    }
+    snprintf(remote_args.pipe_host, hostlen, "%s", xfer_cmd);
+    snprintf(remote_args.remote_path, cmd_len-hostlen+1,"%s", xfer_cmd+hostlen);	
 
     return RET_SUCCESS;
 }
@@ -506,7 +500,7 @@ int get_remote_host(int argc, char** argv)
 
         if (strchr(argv[i], ':')){
 
-            verb(VERB_2, "Found remote host [%s]\n", argv[i]);
+            verb(VERB_2, "Found remote host [%s]", argv[i]);
 
             sprintf(remote_args.xfer_cmd, "%s", argv[i]);
             opts.remote = 1;
@@ -515,7 +509,7 @@ int get_remote_host(int argc, char** argv)
             argv[i] = NULL;
 
             if (i < argc - 1){
-                opts.remote_to_local = 1;
+                NOTE(VERB_2, opts.remote_to_local = 1);
 		opts.mode = MODE_RCV;
 	    }
 
@@ -614,8 +608,7 @@ int get_options(int argc, char *argv[])
             break;
 
         case 'n':
-            if (sscanf(optarg, "%d", &opts.encryption) != 1)
-                error("unable to parse encryption threads from -n flag");
+            ERR_IF(sscanf(optarg, "%d", &opts.encryption) != 1, "unable to parse encryption threads from -n flag");
             break;
 
         case 'q':
@@ -626,8 +619,7 @@ int get_options(int argc, char *argv[])
             break;
 
         case '5':
-            if (sscanf(optarg, "%d", &opts.timeout) != 1)
-                error("unable to parse timeout --timeout flag");
+            ERR_IF(sscanf(optarg, "%d", &opts.timeout) != 1, "unable to parse timeout --timeout flag");
             break;
 
         case 'r':
@@ -659,7 +651,6 @@ int get_options(int argc, char *argv[])
 
         case 't':
             // specify receive mode
-	    opts.remote_to_local = 1;
             opts.mode |= MODE_RCV;
             opts.mode ^= MODE_SEND;
             break;
@@ -734,10 +725,8 @@ int initialize_pipes()
     opts.send_pipe = (int*) malloc(2*sizeof(int));
     opts.recv_pipe = (int*) malloc(2*sizeof(int));
 
-    if (pipe(opts.send_pipe))
-        error("unable to create server's send pipe");
-    if (pipe(opts.recv_pipe))
-        error("unable to create server's receiver pipe");
+    ERR_IF(pipe(opts.send_pipe), "unable to create server's send pipe");
+    ERR_IF(pipe(opts.recv_pipe), "unable to create server's receiver pipe");
 
     return RET_SUCCESS;
 }
@@ -800,52 +789,69 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     return client_thread;
 }
 
-int main(int argc, char *argv[])
+int remote_to_local(int argc, char*argv[], int optind)
 {
+	
+    // fprintf(stderr, "parcel currently only supports local-to-remote transfers\n");
+    // clean_exit(EXIT_FAILURE);
 
-    int optind;
+    if (opts.mode & MODE_RCV) {
+
+	char *base_path = NULL;
+
+	verb(VERB_2, "Starting remote_to_local receiver\n");
+
+	// spawn process on remote host and let it create the server
+	run_ssh_command(remote_args.remote_path);
+
+        pid_t pid = getpid();
+        write(opts.send_pipe[1], &pid, sizeof(pid_t));
+        opts.socket_ready = 1;
+
+        verb(VERB_2, "Running with file destination mode\n");
+        pthread_t *server_thread = start_udpipe_server(&remote_args);
+
+	// Find the output path
+	ERR_IF(optind >= argc, "I don't know where to put the files");
+	for (; optind < argc; optind++){
+
+	    // Go through the remaining arguments looking for an output directory path
+	    if (argv[optind]){
+		verb(VERB_2, "Unused %s", argv[optind]);
+		base_path = strdup(argv[optind]);
+		break;
+	    }
+	}
+	
+	verb(VERB_2, "Writing files to: %s", base_path);
+
+	// Listen to sender for files and data, see receiver.cpp
+	receive_files(base_path);
+
+	// Wait here for completion
+        header_t h = nheader(XFER_COMPLTE, 0);
+        write(opts.send_pipe[1], &h, sizeof(header_t));
+        sleep(1);
+
+        pthread_join(*server_thread, NULL);
+
+    } else if (opts.mode & MODE_SEND) {
+
+	verb(VERB_2, "Starting remote_to_local sender\n");
+
+
+
+    }
+
+    return RET_SUCCESS;
+}
+
+
+int local_to_remote(int argc, char*argv[], int optind)
+{
     file_LL *fileList = NULL;
 
-    // specify how to catch signals
-    set_handlers();
-
-    // set structs opts and remote_args to their default values
-    set_defaults();
-
-    // parse user command line input and get the remaining argument index
-    optind = get_options(argc, argv);
-
-    // if logging is enabled, opent he log/checkpoint file
-    open_log_file();
-
-    // if user selected to restart a previous transfer
-    if (opts.restart){
-        verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
-        read_checkpoint(opts.restart_path);
-    }
-
-    get_remote_host(argc, argv);
-    initialize_pipes();
-
-    parse_destination(remote_args.xfer_cmd);
-    
-    // ======== REMOTE TO LOCAL TRANSFER ======== 
-    if (opts.remote_to_local){
-        // fprintf(stderr, "parcel currently only supports local-to-remote transfers\n");
-        // clean_exit(EXIT_FAILURE);
-	if (opts.mode == MODE_SEND){
-	    fprintf(stderr, "This is a remote to local spawned sender\n");
-
-	} else {
-	    // spawn process on remote host and let it create the server
-	    fprintf(stderr, "This is a remote to local spawned receiver\n");
-	    run_ssh_command(remote_args.remote_path);
-	}
-
-    }
-
-    //  ======== LOCAL TO REMOTE TRANSFER ======== 
-    else if (opts.mode & MODE_SEND){
+    if (opts.mode & MODE_SEND) {
 
 	// spawn process on remote host and let it create the server
 	run_ssh_command(remote_args.remote_path);
@@ -858,7 +864,6 @@ int main(int argc, char *argv[])
 
         // connect to receiving server
         start_udpipe_client(&remote_args);
-
         // get the pid of the remote process in case we need to kill it
         get_remote_pid();
 
@@ -871,16 +876,13 @@ int main(int argc, char *argv[])
             char **path_list = argv+optind;
 
             // Generate a linked list of file objects from path list
-            if (!(fileList = build_filelist(n_files, path_list)))
-                error("Filelist empty. Please specify files to send.\n");
+            ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
                 
             // Visit all directories and send all files
             timer = start_timer("send_timer");
-
             // This is where we pass the remainder of the work to the
             // file handler in sender.cpp
             handle_files(fileList);
-            
             // signal the end of the transfer
             complete_xfer();
             
@@ -888,7 +890,7 @@ int main(int argc, char *argv[])
         
         // if no files were passed by user
         else {
-            error("No files specified.\n");
+            ERR("No files specified.\n");
         }
     } 
     
@@ -939,6 +941,36 @@ int main(int argc, char *argv[])
 
         pthread_join(*server_thread, NULL);
         
+    }
+
+    return RET_SUCCESS;
+}
+
+int main(int argc, char *argv[])
+{
+
+    // specify how to catch signals
+    set_handlers();
+    // set structs opts and remote_args to their default values
+    set_defaults();
+    // parse user command line input and get the remaining argument index
+    optind = get_options(argc, argv);
+    // if logging is enabled, opent he log/checkpoint file
+    open_log_file();
+
+    // if user selected to restart a previous transfer
+    if (opts.restart){
+        verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
+        read_checkpoint(opts.restart_path);
+    }
+
+    get_remote_host(argc, argv);
+    initialize_pipes();
+    
+    if (opts.remote_to_local){
+	remote_to_local(argc, argv, optind);
+    } else {
+	local_to_remote(argc, argv, optind);
     }
 
     print_xfer_stats();    

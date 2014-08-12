@@ -28,9 +28,9 @@ and limitations under the License.
 
 #include <udt.h>
 
+#include "util.h"
 #include "udpipe.h"
 #include "udpipe_client.h"
-
 #include "parcel.h"
 
 #define prii(x) fprintf(stderr,"debug:%d\n",x)

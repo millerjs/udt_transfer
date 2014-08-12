@@ -18,6 +18,7 @@ and limitations under the License.
 
 #define _FILE_OFFSET_BITS 64
 
+#include "util.h"
 #include "parcel.h"
 
 int flogfd = 0;
@@ -41,19 +42,19 @@ int map_fd(int fd, off_t size)
     // bad file descriptor?
     if (fd < 0){
 	close(fd);
-	error("bad file descriptor");
+	ERR("bad file descriptor");
     }
 
     // seek to end of file
     if (lseek(fd, size-1, SEEK_SET) < 0){
 	close(fd);
-	error("Error setting file length");
+	ERR("Error setting file length");
     }
 
      // and write bit to actually set file size
     if (write(fd, "", 1) < 0){
 	close(fd);
-	error("Error verifying file length");
+	ERR("Error verifying file length");
     }
 
     // Map the file to memory
@@ -61,7 +62,7 @@ int map_fd(int fd, off_t size)
 
     if (f_map == MAP_FAILED) {
 	close(fd);
-	error("unable to map file");
+	ERR("unable to map file");
     }
 
     // Tell the system our intent with the file, no error check, if it
@@ -77,7 +78,7 @@ int map_fd(int fd, off_t size)
 int unmap_fd(int fd, off_t size)
 {
     if (munmap(f_map, size) < 0) {
-	// error("unable to un-mmap the file");
+	// ERR("unable to un-mmap the file");
     }
     return RET_SUCCESS;
 }
@@ -149,7 +150,7 @@ int read_checkpoint(char *path)
     char linebuf[MAX_PATH_LEN];
 
     if(!(restart_f = fopen(path, "r")))
-	error("Unable to open restart file [%s]", path);
+	ERR("Unable to open restart file [%s]", path);
 
     struct timespec mtime = {0, 0};
     while (fscanf(restart_f, "%s %li", linebuf, &mtime.tv_sec) == 2){
@@ -175,7 +176,7 @@ int open_log_file()
     int f_perm = 0666;
 
     if((flogfd = open(log_path, f_mode, f_perm)) < 0)
-	error("Unable to open log file [%s]", log_path);
+	ERR("Unable to open log file [%s]", log_path);
 
     return RET_SUCCESS;
 }
@@ -246,7 +247,7 @@ file_object_t* new_file_object(char*path, char*root)
     file->root = root;
 
     if (stat(path, &file->stats) == -1){
-	error("unable to stat file [%s]", file->path);
+	ERR("unable to stat file [%s]", file->path);
     }
 
     switch (file->stats.st_mode & S_IFMT) {
@@ -311,7 +312,7 @@ file_LL* build_filelist(int n, char *paths[])
 	if (paths[i]){
 
 	    if (stat(paths[i], &stats) == -1)
-		error("unable to stat file [%s]", paths[i]);
+		ERR("unable to stat file [%s]", paths[i]);
 
 	    if ((stats.st_mode & S_IFMT) == S_IFDIR){
 
