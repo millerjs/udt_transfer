@@ -275,7 +275,7 @@ void print_xfer_stats()
 
         fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n", 
                 TOTAL_XFER/scale, label, elapsed, 
-                TOTAL_XFER*SIZE_B/(elapsed*SIZE_GB));
+                TOTAL_XFER/(elapsed*SIZE_GB));
     }
 }
 
@@ -303,7 +303,7 @@ void sig_handler(int signal)
     if (signal == SIGINT){
         verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
     }
-    
+
     if (signal == SIGSEGV){
         verb(VERB_0, "\nERROR: [%d] received SIGSEV, caught SEGFAULT cleaning up and exiting...", getpid());
     }
@@ -601,7 +601,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "05:6:c:d:hi:k:l:p:qn:r:tv:x", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -676,7 +676,7 @@ int get_options(int argc, char *argv[])
 
         case 'v':
             // default verbose
-            opts.verbosity = 1;
+            opts.verbosity = 2;
             break;
 
         case '6':
@@ -1005,7 +1005,6 @@ int local_to_remote(int argc, char*argv[], int optind)
 
 int main(int argc, char *argv[])
 {
-
     // specify how to catch signals
     set_handlers();
     // set structs opts and remote_args to their default values

@@ -107,9 +107,12 @@ typedef enum{
 #define MODE_CLIENT 1<<2
 #define MODE_SERVER 1<<3
 
+#define HEADER_TYPE_LEN     4 
+#define HEADER_DATA_LEN_LEN 8
+
 typedef struct header{
-    xfer_t type;
-    off_t data_len;
+    xfer_t type : HEADER_TYPE_LEN;
+    off_t data_len : HEADER_DATA_LEN_LEN;
 } header_t;
 
 typedef struct parcel_block{
