@@ -593,6 +593,7 @@ int get_options(int argc, char *argv[])
             {"help"             , no_argument           , NULL  , 'h'},
             {"log"              , required_argument     , NULL  , 'l'},
             {"timeout"          , required_argument     , NULL  , '5'},
+            {"verbosity"        , required_argument     , NULL  , '6'},
             {"restart"          , required_argument     , NULL  , 'r'},
             {"checkpoint"       , required_argument     , NULL  , 'k'},
             {0, 0, 0, 0}
@@ -600,7 +601,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:", 
+    while ((opt = getopt_long(argc, argv, "05:6:c:d:hi:k:l:p:qn:r:tv:x", 
                               long_options, &option_index)) != -1){
         switch (opt){
         case 'k':
@@ -674,8 +675,13 @@ int get_options(int argc, char *argv[])
             break;
 
         case 'v':
+            // default verbose
+            opts.verbosity = 1;
+            break;
+
+        case '6':
             // verbosity
-            opts.verbosity = atoi(optarg);
+            ERR_IF(sscanf(optarg, "%d", &opts.verbosity) != 1, "unable to parse verbosity level");
             break;
             
         case 'h':
@@ -892,6 +898,16 @@ int local_to_remote(int argc, char*argv[], int optind)
 {
     file_LL *fileList = NULL;
 
+    // if logging is enabled, opent the log/checkpoint file
+    open_log_file();
+
+    // if user selected to restart a previous transfer
+    if (opts.restart){
+        verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
+        read_checkpoint(opts.restart_path);
+    }
+
+
     if (opts.mode & MODE_SEND) {
 
 	// spawn process on remote host and let it create the server
@@ -996,17 +1012,6 @@ int main(int argc, char *argv[])
     set_defaults();
     // parse user command line input and get the remaining argument index
     optind = get_options(argc, argv);
-
-    if (!opts.remote_to_local){
-    	// if logging is enabled, opent the log/checkpoint file
-    	open_log_file();
-    }
-    
-    // if user selected to restart a previous transfer
-    if (opts.restart & !opts.remote_to_local){
-        verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
-        read_checkpoint(opts.restart_path);
-    }
 
     get_remote_host(argc, argv);
     initialize_pipes();
