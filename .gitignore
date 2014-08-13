@@ -2,6 +2,7 @@ parcel
 *.dat
 *.log
 src/up
+test/data
 udt/src/udt
 udt/src/libudt.a
 udt/src/libudt.so

@@ -16,6 +16,7 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
+#include "util.h"
 #include "parcel.h"
 #include "files.h"
 #include "receiver.h"
@@ -80,7 +81,7 @@ int receive_files(char*base_path){
 	if (read_new_header){
 
 	    if ((rs = read_header(&header)) <= 0)
-		error("Bad header read");
+		ERR("Bad header read");
 		
 	}
 
@@ -216,12 +217,12 @@ int receive_files(char*base_path){
 
 
 			if ((rs = read_data(f_map+total, len)) < 0)
-			    error("Unable to read stdin");
+			    ERR("Unable to read stdin");
 
 		    } else {
 
 			if ((rs = read_data(data, len)) < 0)
-			    error("Unable to read stdin");
+			    ERR("Unable to read stdin");
 
 			// Write to file
 
@@ -259,7 +260,7 @@ int receive_files(char*base_path){
 		}
 
 		if (ftruncate64(fout, f_size)){
-		    error("unable to truncate file to correct size");
+		    ERR("unable to truncate file to correct size");
 		}
 
 		// On the next loop, use the header that was just read in

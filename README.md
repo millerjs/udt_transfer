@@ -1,7 +1,12 @@
 Parcel
 ===
 
-High performance recursive directory file transfer using UDT with restart capabilities. _Remote to local transfers currently under development_.
+High performance recursive directory file transfer using UDT with restart capabilities. 
+
+****** 
+_NEW_
+****** 
+Remote to local transfers are implemented but not tested, remote to local transfers do not currently support checkpoint restarts.
 
 ******
 _WARNING: In early stages of development._ 

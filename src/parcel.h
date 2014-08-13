@@ -75,7 +75,7 @@ extern int timer;
 extern off_t TOTAL_XFER;
 extern int opt_verbosity;
 
-typedef enum{
+typedef enum {
     XFER_DATA,
     XFER_FILENAME,
     XFER_DIRNAME,
@@ -83,6 +83,7 @@ typedef enum{
     XFER_COMPLTE,
     XFER_WAIT,
 } xfer_t;
+
 
 /* 
 Levels of Verbosity:
@@ -152,7 +153,7 @@ typedef struct remote_arg_t{
     int ssh_pid;
     int remote_pid;
 
-    char remote_dest[MAX_PATH_LEN];
+    char remote_path[MAX_PATH_LEN];
     char pipe_port[MAX_PATH_LEN];
     char pipe_host[MAX_PATH_LEN];
     char udpipe_location[MAX_PATH_LEN];
@@ -167,6 +168,7 @@ typedef struct remote_arg_t{
 extern remote_arg_t remote_args;
 extern parcel_opt_t opts;
 
+int parse_destination(char *xfer_cmd);
 
 void usage(int EXIT_STAT);
 

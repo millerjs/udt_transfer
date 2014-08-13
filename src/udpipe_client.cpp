@@ -28,9 +28,9 @@ and limitations under the License.
 
 #include <udt.h>
 
+#include "util.h"
 #include "udpipe.h"
 #include "udpipe_client.h"
-
 #include "parcel.h"
 
 #define prii(x) fprintf(stderr,"debug:%d\n",x)
@@ -111,7 +111,8 @@ void *run_client(void *_args_)
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
 	
 	    // cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
-	    cerr << "connect: " << UDT::getlasterror().getErrorMessage() << endl;
+	    if (args->verbose)
+		cerr << "connect: " << UDT::getlasterror().getErrorMessage() << endl;
 
 	    if (UDT::getlasterror().getErrorCode() != ENOSERVER)
 		return NULL;
