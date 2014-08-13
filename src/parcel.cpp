@@ -229,32 +229,37 @@ int kill_children(int verbosity)
  * double get_scale
  * - takes the transfer size and an allocated label string
  * - returns: the ratio to scale the transfer size to be human readable
- * - state  : writes the label fro the scale to char*label
+ * - state  : writes the label for the scale to char*label
  */
 double get_scale(off_t size, char*label)
 {
+    char    tmpLabel[8];
+    double  tmpSize = 1.0;
+    
     if (size < SIZE_KB){
-        sprintf(label, "B");
-        return SIZE_B;
+        sprintf(tmpLabel, "B");
+        tmpSize = SIZE_B;
     } else if (size < SIZE_MB){
-        sprintf(label, "KB");
-        return SIZE_KB;
+        sprintf(tmpLabel, "KB");
+        tmpSize = SIZE_KB;
     } else if (size < SIZE_GB){
-        sprintf(label, "MB");
-        return SIZE_MB;
+        sprintf(tmpLabel, "MB");
+        tmpSize = SIZE_MB;
     } else if (size < SIZE_TB){
-        sprintf(label, "GB");
-        return SIZE_GB;
+        sprintf(tmpLabel, "GB");
+        tmpSize = SIZE_GB;
     } else if (size < SIZE_PB){
-        sprintf(label, "TB");
-        return SIZE_TB;
+        sprintf(tmpLabel, "TB");
+        tmpSize = SIZE_TB;
     } else {
-        sprintf(label, "PB");
-        return SIZE_PB;
+        sprintf(tmpLabel, "PB");
+        tmpSize = SIZE_PB;
     } 
 
-    label = "[?]";
-    return 1.0;
+    sprintf(label, tmpLabel);
+    fprintf(stderr, "get_scale: size = %d, label = %s, newSize = %f\n", size, label, tmpSize);
+//    label = "[?]";
+    return tmpSize;
 }
 
 
@@ -270,17 +275,16 @@ void print_xfer_stats()
         double elapsed = timer_elapsed(timer);
 
         double scale = get_scale(TOTAL_XFER, label);
-
-        fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2f s [ %.2f Gb/s ] \n", 
+        fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2f s [ %.2f Gb/s ] (scale = %f)\n", 
                 TOTAL_XFER/scale, label, elapsed, 
-                TOTAL_XFER/elapsed/scale*SIZE_B);
+               ((TOTAL_XFER/elapsed) * ((scale * SIZE_B) / SIZE_GB)), scale);
     }
 }
 
 /* 
  * void clean_exit
  * - a wrapper for exit 
- * - note: this is important or subsequent transfers will encounter zomibe children
+ * - note: this is important or subsequent transfers will encounter zombie children
  */
 void clean_exit(int status)
 {
@@ -307,7 +311,7 @@ void sig_handler(int signal)
         perror("Catching SEGFAULT");
     }
 
-    // Kill chiildren and let user know
+    // Kill children and let user know
     kill_children(VERB_2);
     clean_exit(EXIT_FAILURE);
 }
@@ -792,7 +796,7 @@ int main(int argc, char *argv[]){
     // parse user command line input and get the remaining argument index
     optind = get_options(argc, argv);
 
-    // if logging is enabled, opent he log/checkpoint file
+    // if logging is enabled, open the log/checkpoint file
     open_log_file();
 
     // if user selected to restart a previous transfer
