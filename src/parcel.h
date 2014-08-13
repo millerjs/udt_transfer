@@ -80,7 +80,7 @@ typedef enum {
     XFER_FILENAME,
     XFER_DIRNAME,
     XFER_F_SIZE,
-    XFER_COMPLTE,
+    XFER_COMPLETE,
     XFER_WAIT,
 } xfer_t;
 
@@ -107,12 +107,16 @@ typedef enum{
 #define MODE_CLIENT 1<<2
 #define MODE_SERVER 1<<3
 
-#define HEADER_TYPE_LEN     4 
-#define HEADER_DATA_LEN_LEN 8
+#define HEADER_TYPE_LEN         32
+#define HEADER_DATA_LEN_LEN     64
+#define HEADER_TYPE_MTIME_SEC   32
+#define HEADER_TYPE_MTIME_NSEC  64
 
 typedef struct header{
-    xfer_t type : HEADER_TYPE_LEN;
-    off_t data_len : HEADER_DATA_LEN_LEN;
+    xfer_t type                     : HEADER_TYPE_LEN;
+    unsigned int mtime_sec          : HEADER_TYPE_MTIME_SEC;        // modification time, seconds
+    unsigned long int mtime_nsec    : HEADER_TYPE_MTIME_NSEC;       // modification time, nanoseconds
+    off_t data_len                  : HEADER_DATA_LEN_LEN;
 } header_t;
 
 typedef struct parcel_block{

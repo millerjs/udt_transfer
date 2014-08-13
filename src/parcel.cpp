@@ -71,6 +71,8 @@ header_t nheader(xfer_t type, off_t size)
     header_t header;
     header.type = type;
     header.data_len = size;
+    header.mtime_sec = 88;
+    header.mtime_nsec = 88;
     return header;
 }
 
@@ -259,7 +261,7 @@ double get_scale(off_t size, char*label)
     } 
 
     sprintf(label, tmpLabel);
-    fprintf(stderr, "get_scale: size = %d, label = %s, newSize = %f\n", size, label, tmpSize);
+//    fprintf(stderr, "get_scale: size = %ld, label = %s, newSize = %f\n", size, label, tmpSize);
 //    label = "[?]";
     return tmpSize;
 }
@@ -547,28 +549,28 @@ int set_defaults()
     sprintf(remote_args.udpipe_location, "parcel");
     sprintf(remote_args.pipe_port,       "9000");
     
-    opts.mode           = MODE_SEND;
-    opts.verbosity      = VERB_1;
-    opts.timeout        = 0;
-    opts.recurse        = 1;
-    opts.regular_files  = 1;
-    opts.progress       = 1;
-    opts.default_udpipe = 0;
-    opts.remote         = 0;
-    opts.delay          = 0;
-    opts.log            = 0;
-    opts.restart        = 0;
-    opts.mmap           = 0;
-    opts.full_root      = 0;
+    opts.mode                   = MODE_SEND;
+    opts.verbosity              = VERB_1;
+    opts.timeout                = 0;
+    opts.recurse                = 1;
+    opts.regular_files          = 1;
+    opts.progress               = 1;
+    opts.default_udpipe         = 0;
+    opts.remote                 = 0;
+    opts.delay                  = 0;
+    opts.log                    = 0;
+    opts.restart                = 0;
+    opts.mmap                   = 0;
+    opts.full_root              = 0;
 
-    opts.remote_to_local = 0;
-    opts.ignore_modification = 0;
+    opts.remote_to_local        = 0;
+    opts.ignore_modification    = 0;
 
-    opts.socket_ready = 0;
-    opts.encryption   = 0;
+    opts.socket_ready           = 0;
+    opts.encryption             = 0;
 
-    opts.send_pipe      = NULL;
-    opts.recv_pipe      = NULL;
+    opts.send_pipe              = NULL;
+    opts.recv_pipe              = NULL;
 
     return RET_SUCCESS;
 }
@@ -586,127 +588,129 @@ int get_options(int argc, char *argv[])
     // Read in options
 
     static struct option long_options[] =
-        {
-            {"verbosity"           , no_argument , &opts.verbosity           , VERB_2},
-            {"quiet"               , no_argument , &opts.verbosity           , VERB_0},
-            {"no-mmap"             , no_argument , &opts.mmap                , 1},
-            {"full-root"           , no_argument , &opts.full_root           , 1},
-            {"ignore-modification" , no_argument , &opts.ignore_modification , 1},
-            {"all-files"           , no_argument , &opts.regular_files       , 0},
-            {"remote-to-local"     , no_argument , &opts.remote_to_local     , 1},
-            {"sender"           , no_argument           , NULL  , 'q'},
-            {"help"             , no_argument           , NULL  , 'h'},
-            {"log"              , required_argument     , NULL  , 'l'},
-            {"timeout"          , required_argument     , NULL  , '5'},
-            {"verbosity"        , required_argument     , NULL  , '6'},
-            {"restart"          , required_argument     , NULL  , 'r'},
-            {"checkpoint"       , required_argument     , NULL  , 'k'},
-            {0, 0, 0, 0}
-        };
+    {
+        {"verbosity"            , no_argument           , &opts.verbosity           , VERB_2},
+        {"quiet"                , no_argument           , &opts.verbosity           , VERB_0},
+        {"no-mmap"              , no_argument           , &opts.mmap                , 1},
+        {"full-root"            , no_argument           , &opts.full_root           , 1},
+        {"ignore-modification"  , no_argument           , &opts.ignore_modification , 1},
+        {"all-files"            , no_argument           , &opts.regular_files       , 0},
+        {"remote-to-local"      , no_argument           , &opts.remote_to_local     , 1},
+        {"sender"               , no_argument           , NULL                      , 'q'},
+        {"help"                 , no_argument           , NULL                      , 'h'},
+        {"log"                  , required_argument     , NULL                      , 'l'},
+        {"timeout"              , required_argument     , NULL                      , '5'},
+        {"verbosity"            , required_argument     , NULL                      , '6'},
+        {"restart"              , required_argument     , NULL                      , 'r'},
+        {"checkpoint"           , required_argument     , NULL                      , 'k'},
+        {0, 0, 0, 0}
+    };
 
     int option_index = 0;
 
     while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:", 
-                              long_options, &option_index)) != -1){
-        switch (opt){
-        case 'k':
-            // restart from and log to file argument
-            opts.restart = 1;
-            opts.log = 1;
-            sprintf(log_path, "%s", optarg);
-            sprintf(opts.restart_path, "%s", optarg);
-            break;
+                              long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'k':
+                // restart from and log to file argument
+                opts.restart = 1;
+                opts.log = 1;
+                sprintf(log_path, "%s", optarg);
+                sprintf(opts.restart_path, "%s", optarg);
+                break;
 
-        case 'n':
-            ERR_IF(sscanf(optarg, "%d", &opts.encryption) != 1, "unable to parse encryption threads from -n flag");
-            break;
+            case 'n':
+                ERR_IF(sscanf(optarg, "%d", &opts.encryption) != 1, "unable to parse encryption threads from -n flag");
+                break;
 
-        case 'q':
-            sprintf(remote_args.pipe_host, "%s", optarg);
-	    NOTE(opts.remote_to_local = 1);
-	    opts.mode |= MODE_SEND;
-            break;
+            case 'q':
+                sprintf(remote_args.pipe_host, "%s", optarg);
+                NOTE(opts.remote_to_local = 1);
+                opts.mode |= MODE_SEND;
+                break;
 
-        case '5':
-            ERR_IF(sscanf(optarg, "%d", &opts.timeout) != 1, "unable to parse timeout --timeout flag");
-            break;
+            case '5':
+                ERR_IF(sscanf(optarg, "%d", &opts.timeout) != 1, "unable to parse timeout --timeout flag");
+                break;
 
-        case 'r':
-            // restart but do not log to file
-            opts.restart = 1;
-            sprintf(opts.restart_path, "%s", optarg);
-            break;
+            case 'r':
+                // restart but do not log to file
+                opts.restart = 1;
+                sprintf(opts.restart_path, "%s", optarg);
+                break;
 
-        case 'l':
-            // log to file but do not restart from file
-            opts.log = 1;
-            sprintf(log_path, "%s", optarg);
-            break;
+            case 'l':
+                // log to file but do not restart from file
+                opts.log = 1;
+                sprintf(log_path, "%s", optarg);
+                break;
 
-        case 'c':
-            // specify location of remote binary
-            sprintf(remote_args.udpipe_location, "%s", optarg);
-            break;
+            case 'c':
+                // specify location of remote binary
+                sprintf(remote_args.udpipe_location, "%s", optarg);
+                break;
 
-        case 'p':
-            // specify port
-            sprintf(remote_args.pipe_port, "%s", optarg);
-            break;
-            
-        case 'x':
-            // disable printing progress
-            opts.progress = 0;
-            break;
+            case 'p':
+                // specify port
+                sprintf(remote_args.pipe_port, "%s", optarg);
+                break;
+                
+            case 'x':
+                // disable printing progress
+                opts.progress = 0;
+                break;
 
-        case 't':
-            // specify receive mode
-            opts.mode |= MODE_RCV;
-            opts.mode ^= MODE_SEND;
-            break;
+            case 't':
+                // specify receive mode
+                opts.mode |= MODE_RCV;
+                opts.mode ^= MODE_SEND;
+                break;
 
-        case 'i':
-            // specify the host, [i]p address
-            sprintf(remote_args.pipe_host, "%s", optarg);
-            break;
+            case 'i':
+                // specify the host, [i]p address
+                sprintf(remote_args.pipe_host, "%s", optarg);
+                break;
 
-        case 'd':
-            // in the case of slow ssh initiation, delay binding to
-            // remote by optarg seconds
-            opts.delay = atoi(optarg);
-            break;
+            case 'd':
+                // in the case of slow ssh initiation, delay binding to
+                // remote by optarg seconds
+                opts.delay = atoi(optarg);
+                break;
 
-        case '0':
-            
-            break;
+            case '0':
+                
+                break;
 
-        case 'v':
-            // default verbose
-            opts.verbosity = 2;
-            break;
+            case 'v':
+                // default verbose
+                opts.verbosity = 2;
+                break;
 
-        case '6':
-            // verbosity
-            ERR_IF(sscanf(optarg, "%d", &opts.verbosity) != 1, "unable to parse verbosity level");
-            break;
-            
-        case 'h':
-            // help
-            usage(0);
-            break;
-            
-        case '\0':
-            break;
-            
-        default:
-            fprintf(stderr, "Unknown command line option: [%c].\n", opt);
-            usage(EXIT_FAILURE);
+            case '6':
+                // verbosity
+                ERR_IF(sscanf(optarg, "%d", &opts.verbosity) != 1, "unable to parse verbosity level");
+                break;
+                
+            case 'h':
+                // help
+                usage(0);
+                break;
+                
+            case '\0':
+                break;
+                
+            default:
+                fprintf(stderr, "Unknown command line option: [%c].\n", opt);
+                usage(EXIT_FAILURE);
+                break;
             
         }
     }
 
     opt_verbosity = opts.verbosity;
-    if (opt_verbosity < VERB_1)
+    if (opt_verbosity < VERB_1) {
         opts.progress = 0;
+    }
 
     return optind;
 
@@ -721,12 +725,12 @@ int set_handlers()
 {
     // Catch interupt signals
 
-    if (signal(SIGINT, sig_handler) == SIG_ERR){
+    if (signal(SIGINT, sig_handler) == SIG_ERR) {
         warn("[set_handlers] unable to set SIGINT handler");
         return RET_FAILURE;
     }
 
-    if (signal(SIGSEGV, sig_handler) == SIG_ERR){
+    if (signal(SIGSEGV, sig_handler) == SIG_ERR) {
         warn("[set_handlers] unable to set SIGSEGV handler\n");
         return RET_FAILURE;
     }
@@ -754,7 +758,7 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
 
     char *host = (char*)malloc(1028*sizeof(char));
     char *at_ptr = NULL;
-    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))){
+    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))) {
         sprintf(host, "%s", at_ptr+1);
     } else {
         sprintf(host, "%s", remote_args->pipe_host);
@@ -783,7 +787,7 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
 
     char *host = (char*)malloc(1028*sizeof(char));
     char *at_ptr = NULL;
-    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))){
+    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))) {
         sprintf(host, "%s", at_ptr+1);
     } else {
         sprintf(host, "%s", remote_args->pipe_host);
@@ -812,12 +816,12 @@ int remote_to_local(int argc, char*argv[], int optind)
 
     if (opts.mode & MODE_RCV) {
 
-	char *base_path = NULL;
+        char *base_path = NULL;
 
-	verb(VERB_2, "Starting remote_to_local receiver\n");
+        verb(VERB_2, "Starting remote_to_local receiver\n");
 
-	// spawn process on remote host and let it create the server
-	run_ssh_command(remote_args.remote_path);
+        // spawn process on remote host and let it create the server
+        run_ssh_command(remote_args.remote_path);
 
         pid_t pid = getpid();
         write(opts.send_pipe[1], &pid, sizeof(pid_t));
@@ -826,25 +830,25 @@ int remote_to_local(int argc, char*argv[], int optind)
         verb(VERB_2, "Running with file destination mode");
         pthread_t *server_thread = start_udpipe_server(&remote_args);
 
-	// Find the output path
-	ERR_IF(optind >= argc, "I don't know where to put the files");
-	for (; optind < argc; optind++){
-	    // Go through the remaining arguments looking for an output directory path
-	    if (argv[optind]){
-		base_path = strdup(argv[optind]);
-		break;
-	    }
-	}
+        // Find the output path
+        ERR_IF(optind >= argc, "I don't know where to put the files");
+        for (; optind < argc; optind++) {
+            // Go through the remaining arguments looking for an output directory path
+            if (argv[optind]) {
+                base_path = strdup(argv[optind]);
+                break;
+            }
+        }
 	
-	ERR_IF(!base_path, "I thought I knew where to put the files, but I really didn't.");
-	verb(VERB_2, "Writing files to: %s", base_path);
+        ERR_IF(!base_path, "I thought I knew where to put the files, but I really didn't.");
+        verb(VERB_2, "Writing files to: %s", base_path);
 
-	// Listen to sender for files and data, see receiver.cpp
-	receive_files(base_path);
+        // Listen to sender for files and data, see receiver.cpp
+        receive_files(base_path);
 
 
 	// Wait here for completion
-        header_t h = nheader(XFER_COMPLTE, 0);
+        header_t h = nheader(XFER_COMPLETE, 0);
         write(opts.send_pipe[1], &h, sizeof(header_t));
 
 	// This causes hanging, commented for now?
@@ -853,10 +857,10 @@ int remote_to_local(int argc, char*argv[], int optind)
 
     } else if (opts.mode & MODE_SEND) {
 
-	verb(VERB_2, "FLAG: Starting remote_to_local sender\n");
+        verb(VERB_2, "FLAG: Starting remote_to_local sender\n");
 
         // delay proceeding for slow ssh connection
-        if (opts.delay){
+        if (opts.delay) {
             verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
             sleep(opts.delay);
         }
@@ -867,31 +871,33 @@ int remote_to_local(int argc, char*argv[], int optind)
         get_remote_pid();
 
 
-	ERR_IF(optind >= argc, "Please specify files to send");
+        ERR_IF(optind >= argc, "Please specify files to send");
 
-	verb(VERB_2, "Running with file source mode.\n");
-            
-	int n_files = argc-optind;
-	char **path_list = argv+optind;
-
-	// Generate a linked list of file objects from path list
-	ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+        verb(VERB_2, "Running with file source mode.\n");
                 
-	// This is where we pass the remainder of the work to the
-	// file handler in sender.cpp
-	handle_files(fileList);
+        int n_files = argc-optind;
+        char **path_list = argv+optind;
 
-	// signal the end of the transfer
-	complete_xfer();
-	
-	header_t h = nheader(XFER_WAIT, 0);
-	while (read(opts.recv_pipe[0], &h, sizeof(header_t))){
-	    if (h.type == XFER_COMPLTE) 
-		break;
-	    else
-		fprintf(stderr, "received non-end-of-transfer message\n");
-	}
-	verb(VERB_2, "Received acknowledgement of completion");
+        // Generate a linked list of file objects from path list
+        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+                    
+        // This is where we pass the remainder of the work to the
+        // file handler in sender.cpp
+        handle_files(fileList);
+
+        // signal the end of the transfer
+        complete_xfer();
+        
+        header_t h = nheader(XFER_WAIT, 0);
+        while (read(opts.recv_pipe[0], &h, sizeof(header_t))) {
+            if (h.type == XFER_COMPLETE) {
+                break;
+            }
+            else {
+                fprintf(stderr, "received non-end-of-transfer message\n");
+            }
+        }
+        verb(VERB_2, "Received acknowledgement of completion");
 
     }
 
@@ -907,7 +913,7 @@ int local_to_remote(int argc, char*argv[], int optind)
     open_log_file();
 
     // if user selected to restart a previous transfer
-    if (opts.restart){
+    if (opts.restart) {
         verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
         read_checkpoint(opts.restart_path);
     }
@@ -915,11 +921,11 @@ int local_to_remote(int argc, char*argv[], int optind)
 
     if (opts.mode & MODE_SEND) {
 
-	// spawn process on remote host and let it create the server
-	run_ssh_command(remote_args.remote_path);
+        // spawn process on remote host and let it create the server
+        run_ssh_command(remote_args.remote_path);
 
         // delay proceeding for slow ssh connection
-        if (opts.delay){
+        if (opts.delay) {
             verb(VERB_1, "Delaying %ds for slow connection\n", opts.delay);
             sleep(opts.delay);
         }
@@ -929,27 +935,25 @@ int local_to_remote(int argc, char*argv[], int optind)
         // get the pid of the remote process in case we need to kill it
         get_remote_pid();
 
-	ERR_IF(optind >= argc, "Please specify files to send");
-            
-	verb(VERB_2, "Running with file source mode.\n");
-            
-	int n_files = argc-optind;
-	char **path_list = argv+optind;
-
-	// Generate a linked list of file objects from path list
-	ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+        ERR_IF(optind >= argc, "Please specify files to send");
                 
-	// Visit all directories and send all files
-	// This is where we pass the remainder of the work to the
-	// file handler in sender.cpp
-	handle_files(fileList);
-	// signal the end of the transfer
-	complete_xfer();
+        verb(VERB_2, "Running with file source mode.\n");
+                
+        int n_files = argc-optind;
+        char **path_list = argv+optind;
 
-    } 
-    
+        // Generate a linked list of file objects from path list
+        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+                    
+        // Visit all directories and send all files
+        // This is where we pass the remainder of the work to the
+        // file handler in sender.cpp
+        handle_files(fileList);
+        // signal the end of the transfer
+        complete_xfer();
+
     // Otherwise, switch to receiving mode
-    else if (opts.mode & MODE_RCV) {
+    } else if (opts.mode & MODE_RCV) {
 
         pid_t pid = getpid();
         write(opts.send_pipe[1], &pid, sizeof(pid_t));
@@ -973,23 +977,22 @@ int local_to_remote(int argc, char*argv[], int optind)
             
             // Are there any remaining command line args? Warn user
             verb(VERB_2, "Unused command line args:");
-            for (; optind < argc-1; optind++)
+            for (; optind < argc-1; optind++) {
                 verb(VERB_2, "Unused %s\n", argv[optind]);
+            }
             
             timer = start_timer("receive_timer");
 
             // Listen to sender for files and data, see receiver.cpp
             receive_files(base_path);
             
-        }
-
         // If no destination directory was passed, default to current dir
-        else {
+        } else {
             timer = start_timer("receive_timer");
             receive_files("");
         }
 
-        header_t h = nheader(XFER_COMPLTE, 0);
+        header_t h = nheader(XFER_COMPLETE, 0);
         write(opts.send_pipe[1], &h, sizeof(header_t));
 
         pthread_join(*server_thread, NULL);
@@ -997,11 +1000,12 @@ int local_to_remote(int argc, char*argv[], int optind)
     }
 
     header_t h = nheader(XFER_WAIT, 0);
-    while (read(opts.recv_pipe[0], &h, sizeof(header_t))){
-	if (h.type == XFER_COMPLTE) 
-	    break;
-	else
-	    fprintf(stderr, "received non-end-of-transfer message\n");
+    while (read(opts.recv_pipe[0], &h, sizeof(header_t))) {
+        if (h.type == XFER_COMPLETE) {
+            break;
+        } else {
+            fprintf(stderr, "received non-end-of-transfer message\n");
+        }
     }
     verb(VERB_2, "Received acknowledgement of completion");
 
@@ -1022,10 +1026,10 @@ int main(int argc, char *argv[])
 
     timer = start_timer("send_timer");
     
-    if (opts.remote_to_local){
-	remote_to_local(argc, argv, optind);
+    if (opts.remote_to_local) {
+        remote_to_local(argc, argv, optind);
     } else {
-	local_to_remote(argc, argv, optind);
+        local_to_remote(argc, argv, optind);
     }
 
     print_xfer_stats();    

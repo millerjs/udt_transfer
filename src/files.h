@@ -80,11 +80,11 @@ file_LL* add_file_to_list(file_LL *fileList, char*path, char*root);
 
 file_LL* init_filelist(int n, char *paths[]);
 
-/* Buils a linked list of file_object_t given path array of length n */
+/* Builds a linked list of file_object_t given path array of length n */
 
 file_LL* build_filelist(int n, char* paths[]);
 
-/* Buils a linked list of file_object_t given directory file object */
+/* Builds a linked list of file_object_t given directory file object */
 
 file_LL* lsdir(file_object_t *file);
     
@@ -106,7 +106,10 @@ int unmap_fd(int fd, off_t size);
 
 int mwrite(char* buff, off_t pos, int len);
 
+// Set the mtime for a given file
+int set_mod_time(char* filename, long int mtime_nsec, int mtime);
 
-
+// Get the mtime for a given file
+int get_mod_time(char* filename, long int* mtime_nsec, int* mtime);
 
 #endif
