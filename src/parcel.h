@@ -120,8 +120,8 @@ typedef struct header{
 } header_t;
 
 typedef struct parcel_block{
-    uint8_t *buffer;
-    uint8_t *data;
+    char *buffer;
+    char *data;
     uint64_t dlen;
 } parcel_block;
 
