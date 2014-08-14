@@ -20,18 +20,20 @@ and limitations under the License.
 #include "parcel.h"
 #include "files.h"
 #include "receiver.h"
+#include "postmaster.h"
 
 // main loop for receiving mode, listens for headers and sorts out
 // stream into files
 
-int fout;
-off_t total, rs, ds, f_size = 0;
-int complete = 0;
-int expecting_data = 0;
-int read_new_header = 1;
-char data_path[MAX_PATH_LEN];
-int mtime_sec;
-long int mtime_nsec;
+int             fout;
+off_t           total, rs, ds, f_size = 0;
+int             complete = 0;
+int             expecting_data = 0;
+int             read_new_header = 1;
+char            data_path[MAX_PATH_LEN];
+int             mtime_sec;
+long int        mtime_nsec;
+postmaster_t*   receive_postmaster;
 
 
 int read_header(header_t *header) 
@@ -61,7 +63,6 @@ off_t read_data(void* b, int len)
     return total;
 
 }
-
 
 int receive_files(char*base_path) 
 {
@@ -287,4 +288,261 @@ int receive_files(char*base_path)
     
     return RET_SUCCESS;
 
+}
+
+
+int receive_files2(char*base_path) 
+{
+
+    return 0;
+}
+
+
+//
+// pst_callback_dirname
+//
+// routine to handle XFER_DIRNAME message
+
+int pst_callback_dirname(header_t header, parcel_block package)
+{
+    verb(VERB_4, "Received directory header");
+    
+    // Read directory name from stream
+    read_data(data_path+bl, header.data_len);
+
+    if (opts.verbosity > VERB_1) {
+        fprintf(stderr, "making directory: %s\n", data_path);
+    }
+    
+    // make directory, if any parent in directory path
+    // doesnt exist, make that as well
+    mkdir_parent(data_path);
+
+    // safety reset, data block after this will fault, expect a header
+    expecting_data = 0;
+    read_new_header = 1;
+    
+    return 0;
+}
+
+//
+// pst_callback_filename
+//
+// routine to handle XFER_FILENAME message
+
+int pst_callback_filename(header_t header, parcel_block package)
+{
+    verb(VERB_4, "Received file header");
+    
+    // int f_mode = O_CREAT| O_WRONLY;
+    int f_mode = O_CREAT| O_RDWR;
+    int f_perm = 0666;
+
+    // hang on to mtime data until we're done
+    mtime_sec = header.mtime_sec;
+    mtime_nsec = header.mtime_nsec;
+    verb(VERB_2, "Header mtime: %d, mtime_nsec: %ld\n", mtime_sec, mtime_nsec);
+    
+    // Read filename from stream
+    read_data(data_path+bl, header.data_len);
+
+    verb(VERB_2, "Initializing file receive: %s\n", data_path+bl);
+
+
+    fout = open(data_path, f_mode, f_perm);
+
+    if (fout < 0) {
+
+        // If we can't open the file, try building a
+        // directory tree to it
+        
+        // Try and get a parent directory from file
+        char parent_dir[MAX_PATH_LEN];
+        get_parent_dir(parent_dir, data_path);
+        
+        if (opts.verbosity > VERB_2) {
+            fprintf(stderr, "Using %s as parent directory.\n", parent_dir);
+        }
+        
+        // Build parent directory recursively
+        if (mkdir_parent(parent_dir) < 0) {
+            perror("ERROR: recursive directory build failed");
+        }
+
+    }
+
+    // If we had to build the directory path then retry file open
+    if (fout < 0) {
+        fout = open(data_path, f_mode, 0666);
+    }
+
+    if (fout < 0) {
+        fprintf(stderr, "ERROR: %s ", data_path);
+        perror("file open");
+        clean_exit(EXIT_FAILURE);
+    }
+
+    // Attempt to optimize simple sequential write
+    if (posix_fadvise64(fout, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE)) {
+        if (opts.verbosity > VERB_3) {
+            perror("WARNING: Unable to advise file write");
+        }
+    }		
+
+    read_new_header = 1;
+    expecting_data = 1;
+    total = 0;
+
+    return 0;
+
+}
+
+//
+// pst_callback_f_size
+//
+// routine to handle XFER_F_SIZE message
+
+int pst_callback_f_size(header_t header, parcel_block package)
+{
+
+    // read in the size of the file
+    read_data(&f_size, header.data_len);
+
+    // Memory map attempt
+    if (opts.mmap) {
+        map_fd(fout, f_size);
+    }
+
+    return 0;
+
+}
+
+
+//
+// pst_callback_complete
+//
+// routine to handle XFER_COMPLETE message
+
+int pst_callback_complete(header_t header, parcel_block package)
+{
+    if (opts.verbosity > VERB_1) {
+        fprintf(stderr, "Receive completed.\n");
+    }
+    
+    complete = 1;
+    
+    return 0;
+}
+
+
+//
+// pst_callback_data
+//
+// routine to handle XFER_DATA message
+
+int pst_callback_data(header_t header, parcel_block package)
+{
+    off_t rs, len;
+    
+    if (!expecting_data) {
+        fprintf(stderr, "ERROR: Out of order data block.\n");
+        clean_exit(EXIT_FAILURE);
+    }
+
+    while (header.type == XFER_DATA) {
+
+        // Either look to receive a whole buffer of
+        // however much remains in the data block
+        len = (BUFFER_LEN < f_size-total) ? BUFFER_LEN : f_size-total;
+
+        // read data buffer from stdin
+        // use the memory map
+        if (opts.mmap) {
+            if ((rs = read_data(f_map+total, len)) < 0) {
+                ERR("Unable to read stdin");
+            }
+
+        } else {
+            if ((rs = read_data(data, len)) < 0) {
+                ERR("Unable to read stdin");
+            }
+
+            // Write to file
+            if ((write(fout, data, rs) < 0)) {
+                perror("ERROR: unable to write to file");
+                clean_exit(EXIT_FAILURE);
+            }
+        }
+
+        total += rs;
+
+        read_header(&header);
+
+        // Update user on progress if opts.progress set to true		    
+        if (opts.progress) {
+            print_progress(data_path, total, f_size);
+        }
+
+    }
+
+    // Formatting
+    if (opts.progress) {
+        fprintf(stderr, "\n");
+    }
+
+    // Check to see if we received full file
+    if (f_size) {
+        if (total == f_size) {
+            verb(VERB_3, "Received full file [%li B]", total);
+        } else {
+            warn("Did not receive full file: %s", data_path);
+        }
+
+    } else {
+        warn("Completed stream of known size");
+    }
+
+    if (ftruncate64(fout, f_size)) {
+        ERR("unable to truncate file to correct size");
+    }
+
+    // On the next loop, use the header that was just read in
+    read_new_header = 0;
+    expecting_data = 0;
+    f_size = 0;
+
+}
+
+//
+// pst_callback_data_complete
+//
+// routine to handle XFER_DATA_COMPLETE message
+
+int pst_callback_data_complete(header_t header, parcel_block package)
+{
+    // Truncate the file in case it already exists and remove extra data
+    if (opts.mmap) {
+        unmap_fd(fout, f_size);
+    }
+
+    close(fout);
+    
+    // fly - now is the time when we set the timestamps
+    set_mod_time(data_path, mtime_nsec, mtime_sec);
+    
+}
+
+void init_receiver()
+{
+    // create the postmaster
+    receive_postmaster = create_postmaster();
+
+    // register the callbacks
+    register_callback(receive_postmaster, XFER_DIRNAME, pst_callback_dirname);
+    register_callback(receive_postmaster, XFER_FILENAME, pst_callback_filename);
+    register_callback(receive_postmaster, XFER_F_SIZE, pst_callback_f_size);
+    register_callback(receive_postmaster, XFER_COMPLETE, pst_callback_complete);
+    register_callback(receive_postmaster, XFER_DATA, pst_callback_data);
+    register_callback(receive_postmaster, XFER_DATA_COMPLETE, pst_callback_data_complete);
+    
 }

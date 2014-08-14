@@ -19,6 +19,7 @@ and limitations under the License.
 #include "parcel.h"
 #include "files.h"
 #include "util.h"
+#include "postmaster.h"
 
 // send header specifying that the sending stream is complete
 
@@ -222,7 +223,12 @@ int send_file(file_object_t *file)
 
         // Done with fd
         close(fd);
-
+        
+        // fly - tell the other side we're done with the file
+        header_t header;
+        header.type = XFER_DATA_COMPLETE;
+        header.data_len = 0;
+        write_header(header);
     }
 
     return RET_SUCCESS;

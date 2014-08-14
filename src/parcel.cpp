@@ -21,6 +21,7 @@ and limitations under the License.
 #include "sender.h"
 #include "receiver.h"
 #include "files.h"
+#include "postmaster.h"
 
 #include <ifaddrs.h>
 #include <arpa/inet.h>

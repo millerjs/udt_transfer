@@ -82,8 +82,18 @@ typedef enum : uint8_t {
     XFER_F_SIZE,
     XFER_COMPLETE,
     XFER_WAIT,
+    XFER_DATA_COMPLETE,
+    XFER_CONTROL,
+    NUM_XFER_CMDS
 } xfer_t;
 
+
+typedef enum : uint8_t {
+    CTRL_ACK,
+    NUM_CTRL_MSGS
+    
+    
+} ctrl_t;
 
 /* 
 Levels of Verbosity:
