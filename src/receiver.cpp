@@ -121,14 +121,13 @@ int receive_files(char*base_path)
                 // hang on to mtime data until we're done
                 mtime_sec = header.mtime_sec;
                 mtime_nsec = header.mtime_nsec;
-                fprintf(stderr, "Header mtime: %d, mtime_nsec: %ld\n", mtime_sec, mtime_nsec);
+                verb(VERB_2, "Header mtime: %d, mtime_nsec: %ld\n", mtime_sec, mtime_nsec);
                 
                 // Read filename from stream
                 read_data(data_path+bl, header.data_len);
 
-                if (opts.verbosity > VERB_1) {
-                    fprintf(stderr, "Initializing file receive: %s\n", data_path+bl);
-                }
+                verb(VERB_2, "Initializing file receive: %s\n", data_path+bl);
+
 
                 fout = open(data_path, f_mode, f_perm);
 
