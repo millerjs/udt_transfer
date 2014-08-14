@@ -37,7 +37,7 @@ and limitations under the License.
 #include <signal.h>
 #include <time.h>
 #include <sys/wait.h>
-
+#include <inttypes.h>
 
 #include "files.h"
 
@@ -75,7 +75,7 @@ extern int timer;
 extern off_t TOTAL_XFER;
 extern int opt_verbosity;
 
-typedef enum {
+typedef enum : uint8_t {
     XFER_DATA,
     XFER_FILENAME,
     XFER_DIRNAME,
@@ -107,24 +107,23 @@ typedef enum{
 #define MODE_CLIENT 1<<2
 #define MODE_SERVER 1<<3
 
-#define HEADER_TYPE_LEN         32
-#define HEADER_DATA_LEN_LEN     64
-#define HEADER_TYPE_MTIME_SEC   32
-#define HEADER_TYPE_MTIME_NSEC  64
+#define HEADER_TYPE_LEN         4
+#define HEADER_DATA_LEN_LEN     4
+#define HEADER_TYPE_MTIME_SEC   4
+#define HEADER_TYPE_MTIME_NSEC  4
 
 typedef struct header{
-    xfer_t type                     : HEADER_TYPE_LEN;
-    unsigned int mtime_sec          : HEADER_TYPE_MTIME_SEC;        // modification time, seconds
-    unsigned long int mtime_nsec    : HEADER_TYPE_MTIME_NSEC;       // modification time, nanoseconds
-    off_t data_len                  : HEADER_DATA_LEN_LEN;
+    xfer_t type;
+    uint32_t mtime_sec;
+    uint64_t mtime_nsec;
+    uint64_t data_len;
 } header_t;
 
 typedef struct parcel_block{
-    char*buffer;
-    char*data;
-    int dlen;
+    uint8_t *buffer;
+    uint8_t *data;
+    uint64_t dlen;
 } parcel_block;
-
 
 typedef struct parcel_opt_t{
     int timeout;
@@ -167,8 +166,6 @@ typedef struct remote_arg_t{
 
     char pipe_cmd[MAX_PATH_LEN];
     char xfer_cmd[MAX_PATH_LEN];
-
-
 
 } remote_arg_t;
 

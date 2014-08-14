@@ -512,5 +512,3 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 
     
 }
-
-
