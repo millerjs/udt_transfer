@@ -334,7 +334,7 @@ file_LL* build_filelist(int n, char *paths[])
         if (paths[i]) {
 
             if (stat(paths[i], &stats) == -1) {
-                ERR("unable to stat file [%s]", paths[i]);
+                ERR("unable to stat file [%s], error = %d", paths[i], errno);
             }
 
             if ((stats.st_mode & S_IFMT) == S_IFDIR) {

@@ -30,29 +30,46 @@ typedef enum : uint8_t {
     NUM_POSTMASTER_STATUSES
 } postmaster_error_t;
 
+typedef struct global_data_t {
+    
+    int         fout;                                       // file handle for output
+    off_t       total, rs, ds, f_size;
+    int         bl;
+    char*       data;
+    char*       f_map;
+    char        data_path[MAX_PATH_LEN];
+    int         complete, expecting_data, read_new_header;
+    int         mtime_sec;
+    long int    mtime_nsec;
+    void*       user_def;                                   // whatever else might be needed, stuff in here
+    
+} global_data_t;
+
+/*
 typedef struct message_t {
     
     xfer_t messageType;
     int (*callback) (header_t header, parcel_block package);
     
 } message_t;
+*/
 
 typedef struct postmaster_t {
     
-    int (*callback[NUM_XFER_CMDS]) (header_t header, parcel_block package);
+    int (*callback[NUM_XFER_CMDS]) (header_t header, global_data_t* global_data);
     
 } postmaster_t;
 
 // creates a postmaster for later use
 postmaster_t* create_postmaster();
 
-// destroys an existing postmaster
+// destroys an existing postmaster, returning the customData pointer
 void destroy_postmaster(postmaster_t* postmaster);
 
 // register a callback with a postmaster for a given message type
-int register_callback(postmaster_t* postmaster, xfer_t messageType, int (*callback)(header_t header, parcel_block package));
+int register_callback(postmaster_t* postmaster, xfer_t messageType, int (*callback)(header_t header, global_data_t* global_data));
 
 // dispatch a message to a given postmaster
-int dispatch_message(postmaster_t* postmaster, xfer_t messageType, header_t header, parcel_block package);
+int dispatch_message(postmaster_t* postmaster, header_t header, global_data_t* global_data);
 
 #endif //POSTMASTER_H

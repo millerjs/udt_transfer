@@ -38,11 +38,13 @@ and limitations under the License.
 
 typedef struct file_object_t{
     struct stat stats;
-    int mode;
-    char *filetype;
-    char *path;
-    char *root;
-    int length;
+    int         mode;
+    char        *filetype;
+    char        *path;
+    char        *root;
+    int         length;
+    int         mtime_sec;
+    long int    mtime_nsec;    
 } file_object_t;
 
 typedef struct file_LL file_LL;

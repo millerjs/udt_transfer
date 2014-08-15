@@ -1024,6 +1024,7 @@ int main(int argc, char *argv[])
 
     get_remote_host(argc, argv);
     initialize_pipes();
+    init_receiver();
 
     timer = start_timer("send_timer");
     

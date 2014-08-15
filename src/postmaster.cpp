@@ -23,11 +23,13 @@ and limitations under the License.
 //
 // create_postmaster
 //
-// malloc's a postmaster to be used to handle messages
+// mallocs a postmaster to be used to handle messages
+//
 // NOTES: for now, since there are so few header types, we're just creating
 // an array of callback pointers, giving us a fast lookup for message type.
 // however, if we ever got a bunch, probably better to have a lookup and 
 // allocate them dynamically
+
 
 postmaster_t* create_postmaster()
 {
@@ -49,10 +51,13 @@ postmaster_t* create_postmaster()
 // destroy_postmaster
 //
 // frees the postmaster to go on to other careers, because without a pension,
-// really, who'd be a postmaster?
+// really, who'd be a postmaster?  
+// WARNING: nothing is done with the customData, so that's left up to the creator
+// to clean up
 
 void destroy_postmaster(postmaster_t* postmaster)
 {
+    
     if ( postmaster != NULL ) {
         free(postmaster);
     }
@@ -65,7 +70,7 @@ void destroy_postmaster(postmaster_t* postmaster)
 // given a callback in the form int foo(header_t header, parcel_block package),
 // adds it to the callback array by message_type
 
-int register_callback(postmaster_t* postmaster, xfer_t message_type, int (*callback)(header_t header, parcel_block package))
+int register_callback(postmaster_t* postmaster, xfer_t message_type, int (*callback)(header_t header, global_data_t* global_data))
 {
     int ret_val = POSTMASTER_OK;
     
@@ -90,15 +95,15 @@ int register_callback(postmaster_t* postmaster, xfer_t message_type, int (*callb
 //
 // dispatches a message type with the data required (header and parcel block)
 
-int dispatch_message(postmaster_t* postmaster, xfer_t message_type, header_t header, parcel_block package)
+int dispatch_message(postmaster_t* postmaster, header_t header, global_data_t* global_data)
 {
     int ret_val = POSTMASTER_OK;
     
     if ( postmaster != NULL ) {
         // verify message type
-        if ( message_type < NUM_XFER_CMDS ) {
-            if ( postmaster->callback[message_type] != NULL ) {
-                postmaster->callback[message_type](header, package);
+        if ( header.type < NUM_XFER_CMDS ) {
+            if ( postmaster->callback[header.type] != NULL ) {
+                postmaster->callback[header.type](header, global_data);
             } else {
                 ret_val = POSTMASTER_ERROR_CALLBACK_NULL;
             }
@@ -114,7 +119,7 @@ int dispatch_message(postmaster_t* postmaster, xfer_t message_type, header_t hea
 
 
 
-int message_handle_data(header_t header, parcel_block package)
+int message_handle_data(header_t header)
 {
     
     

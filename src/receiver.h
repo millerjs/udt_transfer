@@ -26,5 +26,8 @@ and limitations under the License.
 
 int receive_files(char*base_path);
 
+// have to call this to initialize the callbacks and such
+
+void init_receiver();
 
 #endif
