@@ -397,11 +397,18 @@ int run_ssh_command(char *remote_path)
 
 	    ERR_IF(opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
-            sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
-                    remote_args.udpipe_location,
-                    remote_args.pipe_port, 
-                    remote_args.remote_path);
-
+            if (remote_args.remote_ip){
+                sprintf(remote_pipe_cmd, "%s --interface %s -xt -p %s %s", 
+                        remote_args.udpipe_location,
+                        remote_args.remote_ip,
+                        remote_args.pipe_port, 
+                        remote_args.remote_path);
+            } else {
+                sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
+                        remote_args.udpipe_location,
+                        remote_args.pipe_port, 
+                        remote_args.remote_path);
+            }
 
         } else if (opts.mode == MODE_RCV){
 
@@ -571,7 +578,8 @@ int set_defaults()
 
     opts.send_pipe              = NULL;
     opts.recv_pipe              = NULL;
-    remote_args.specific_ip     = NULL;
+    remote_args.local_ip        = NULL;
+    remote_args.remote_ip       = NULL;
 
     return RET_SUCCESS;
 }
@@ -603,6 +611,7 @@ int get_options(int argc, char *argv[])
         {"timeout"              , required_argument     , NULL                      , '5'},
         {"verbosity"            , required_argument     , NULL                      , '6'},
         {"interface"            , required_argument     , NULL                      , '7'},
+        {"remote-interface"     , required_argument     , NULL                      , '8'},
         {"restart"              , required_argument     , NULL                      , 'r'},
         {"checkpoint"           , required_argument     , NULL                      , 'k'},
         {0, 0, 0, 0}
@@ -610,7 +619,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:7:8:", 
                               long_options, &option_index)) != -1) {
         switch (opt) {
             case 'k':
@@ -695,8 +704,12 @@ int get_options(int argc, char *argv[])
 
             case '7':
                 // verbosity
-                ERR_IF(!(remote_args.specific_ip = strdup(optarg)), "unable to parse specific ip");
-                fprintf(stderr, "SPECIFIC IP: %s\n", remote_args.specific_ip);
+                ERR_IF(!(remote_args.local_ip = strdup(optarg)), "unable to parse local ip");
+                break;
+
+            case '8':
+                // verbosity
+                ERR_IF(!(remote_args.remote_ip = strdup(optarg)), "unable to parse remote ip");
                 break;
 
                 
@@ -780,7 +793,7 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
     args->send_pipe        = opts.send_pipe;
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
-    args->listen_ip      = remote_args->specific_ip;
+    args->listen_ip        = remote_args->local_ip;
 
     pthread_t *server_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(server_thread, NULL, &run_server, args);
@@ -810,7 +823,7 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     args->send_pipe        = opts.send_pipe;
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
-    args->listen_ip      = remote_args->specific_ip;
+    args->listen_ip      = remote_args->local_ip;
 
     pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(client_thread, NULL, &run_client, args);
