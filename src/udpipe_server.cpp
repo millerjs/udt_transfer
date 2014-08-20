@@ -62,7 +62,7 @@ void *run_server(void *_args_){
     // switch to turn on ip specification or not
     int specify_ip = !(args->listen_ip == NULL);
 
-    if (args->verbose)
+    if (specify_ip)
 	fprintf(stderr, "Listening on specific ip: %s\n", args->listen_ip);
 
     // char* ip;

@@ -571,6 +571,7 @@ int set_defaults()
 
     opts.send_pipe              = NULL;
     opts.recv_pipe              = NULL;
+    remote_args.specific_ip     = NULL;
 
     return RET_SUCCESS;
 }
@@ -601,6 +602,7 @@ int get_options(int argc, char *argv[])
         {"log"                  , required_argument     , NULL                      , 'l'},
         {"timeout"              , required_argument     , NULL                      , '5'},
         {"verbosity"            , required_argument     , NULL                      , '6'},
+        {"interface"            , required_argument     , NULL                      , '7'},
         {"restart"              , required_argument     , NULL                      , 'r'},
         {"checkpoint"           , required_argument     , NULL                      , 'k'},
         {0, 0, 0, 0}
@@ -690,6 +692,13 @@ int get_options(int argc, char *argv[])
                 // verbosity
                 ERR_IF(sscanf(optarg, "%d", &opts.verbosity) != 1, "unable to parse verbosity level");
                 break;
+
+            case '7':
+                // verbosity
+                ERR_IF(!(remote_args.specific_ip = strdup(optarg)), "unable to parse specific ip");
+                fprintf(stderr, "SPECIFIC IP: %s\n", remote_args.specific_ip);
+                break;
+
                 
             case 'h':
                 // help
@@ -771,6 +780,7 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
     args->send_pipe        = opts.send_pipe;
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
+    args->listen_ip      = remote_args->specific_ip;
 
     pthread_t *server_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(server_thread, NULL, &run_server, args);
@@ -800,6 +810,7 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     args->send_pipe        = opts.send_pipe;
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
+    args->listen_ip      = remote_args->specific_ip;
 
     pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(client_thread, NULL, &run_client, args);
