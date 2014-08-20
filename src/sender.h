@@ -32,10 +32,18 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 
 int send_file(file_object_t *file);
 
+// sends a file list across the wire
+
+int send_filelist(file_LL* fileList, int totalSize);
+
 // main loop for send mode, takes a linked list of files and streams
 // them
 
 int handle_files(file_LL* fileList);
+
+// sends a list of files to the receiver and waits for a response
+
+int send_and_wait_for_filelist(file_LL* fileList);
 
 // send header specifying that the sending stream is complete
 

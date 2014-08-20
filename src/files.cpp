@@ -282,7 +282,7 @@ file_object_t* new_file_object(char*path, char*root)
     file->filetype = (char*)NULL;
     
     file->path = strdup(path);
-    file->root = root;
+    file->root = strdup(root);
 
     if (stat(path, &file->stats) == -1) {
         ERR("unable to stat file [%s]", file->path);
@@ -396,7 +396,7 @@ file_LL* build_full_filelist(int n, char *paths[])
         // fileList = add_file_to_list(fileList, paths[i]);
     }
 
-    verb(VERB_2, "build_full_filelist: complete\n");
+    verb(VERB_2, "build_full_filelist: complete, %d items in list\n", fileList->count);
     return fileList;
     
     
@@ -447,6 +447,7 @@ void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
     DIR *dirp = opendir(dir);
     struct dirent * entry;
     if ( dirp != NULL ) {
+        struct stat tmpStats;
 
         // Iterate through each file in the directory
         while ((entry = readdir(dirp)) != NULL) {
@@ -457,6 +458,15 @@ void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
                 sprintf(path, "%s/%s", dir, entry->d_name);
 //                ls_fileList = add_file_to_list(ls_fileList, path, root);
                 add_file_to_list(ls_fileList, path, root);
+                
+                if (stat(path, &tmpStats) == -1) {
+                    ERR("unable to stat file [%s]", path);
+                }
+
+                // if it's a directory, recurse
+                if ( (tmpStats.st_mode & S_IFMT) == S_IFDIR ) {
+                    lsdir_to_list(ls_fileList, path, root);
+                }                    
             }
         }
 
@@ -633,18 +643,21 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
     
 }
 
-
 // Returns the size of a file list (total, in bytes)
 int get_filelist_size(file_LL *fileList)
 {
     int total_size = 0;
+    verb(VERB_2, "get_filelist_size: walking");
     
     if ( fileList != NULL ) {
+        verb(VERB_2, "get_filelist_size: setting head");
         file_node_t* cursor = fileList->head;
         int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
         
+        verb(VERB_2, "get_filelist_size: calculating size");
         while ( cursor != NULL ) {
-            total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root));
+            total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root) + 3);  // 3 is for 3 null terminators of strings
+            verb(VERB_2, "get_filelist_size: setting next");
             cursor = cursor->next;
         }
     }
@@ -652,6 +665,116 @@ int get_filelist_size(file_LL *fileList)
     return total_size;
     
 }
+
+
+char* pack_filelist(file_LL* fileList, int total_size)
+{
+    // malloc the space to make everything continuous
+    char* packed_data = (char*)malloc(sizeof(char) * total_size);
+    char* packed_data_ptr = packed_data;
+    
+    if ( fileList != NULL ) {
+    
+        file_node_t* cursor = fileList->head;
+        int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
+        while ( cursor != NULL ) {
+            // copy over the static data
+            memcpy(packed_data_ptr, cursor->curr, static_file_size);
+            packed_data_ptr += static_file_size;
+            strncpy(packed_data_ptr, cursor->curr->filetype, strlen(cursor->curr->filetype) + 1);
+            packed_data_ptr += strlen(cursor->curr->filetype);
+            strncpy(packed_data_ptr, cursor->curr->path, strlen(cursor->curr->path) + 1);
+            packed_data_ptr += strlen(cursor->curr->path);
+            strncpy(packed_data_ptr, cursor->curr->root, strlen(cursor->curr->root) + 1);
+            packed_data_ptr += strlen(cursor->curr->root);
+            cursor = cursor->next;
+        }
+
+    }
+
+    return packed_data;
+}
+
+// NOTE: we may have some 32/64 bit issues here, so they might
+// need to be addressed at some point
+file_LL* unpack_filelist(char* fileList_data, int data_length)
+{
+    file_LL* file_list = (file_LL*)malloc(sizeof(file_LL));
+    file_list->head = NULL;
+    file_list->tail = NULL;
+    file_list->count = 0;
+    int tmp_len;
+ 
+    // unpack each entry
+    while ( data_length ) {
+        file_node_t *file_node = (file_node_t*)malloc(sizeof(file_node_t));
+        file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
+
+        file_node->curr = file;
+        file_node->next = NULL;
+        
+        memset(file, 0, sizeof(file_object_t));
+        file->filetype = (char*)NULL;
+
+        // copy the stat struct
+        memcpy(&(file->stats), fileList_data, sizeof(struct stat));
+        fileList_data += sizeof(struct stat);
+        data_length -= sizeof(struct stat);
+
+        // copy the mode
+        memcpy(&(file->mode), fileList_data, sizeof(int));
+        fileList_data += sizeof(int);
+        data_length -= sizeof(int);
+
+        // copy the length
+        memcpy(&(file->length), fileList_data, sizeof(int));
+        fileList_data += sizeof(int);
+        data_length -= sizeof(int);
+        
+        // copy the mtime in seconds
+        memcpy(&(file->mtime_sec), fileList_data, sizeof(int));
+        fileList_data += sizeof(int);
+        data_length -= sizeof(int);
+        
+        // copy the mtime in seconds
+        memcpy(&(file->mtime_nsec), fileList_data, sizeof(long int));
+        fileList_data += sizeof(long int);
+        data_length -= sizeof(long int);
+        
+        // copy the strings
+        file->filetype = strdup(fileList_data);
+        tmp_len = strlen(fileList_data) + 1;
+        fileList_data += tmp_len;
+        data_length -= tmp_len;
+        
+        file->path = strdup(fileList_data);
+        tmp_len = strlen(fileList_data) + 1;
+        fileList_data += tmp_len;
+        data_length -= tmp_len;
+
+        file->root = strdup(fileList_data);
+        tmp_len = strlen(fileList_data) + 1;
+        fileList_data += tmp_len;
+        data_length -= tmp_len;
+        
+        // add data to list
+        
+        // if we're first, just make it head & tail
+        if ( file_list->head == NULL ) {
+            file_list->head = file_node;
+            file_list->tail = file_node;
+        // otherwise, tack us on the end
+        } else {
+            file_list->tail->next = file_node;
+            file_list->tail = file_node;
+        }
+        file_list->count++;
+    }    
+
+    return file_list;
+    
+}
+
 
 
 

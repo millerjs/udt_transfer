@@ -44,6 +44,12 @@ off_t TOTAL_XFER = 0;
 remote_arg_t remote_args;
 parcel_opt_t opts;
 
+typedef enum : uint8_t {
+    UDPIPE_SERVER,
+    UDPIPE_CLIENT,
+    NUM_UDPIPE_TYPES
+} udpipe_t;
+
 using std::cerr;
 using std::endl;
 
@@ -751,38 +757,8 @@ int initialize_pipes()
 }
 
 
-pthread_t *start_udpipe_server(remote_arg_t *remote_args)
-{ 
-    thread_args *args = (thread_args*) malloc(sizeof(thread_args));
-
-    initialize_udpipe_args(args);
-
-    char *host = (char*)malloc(1028*sizeof(char));
-    char *at_ptr = NULL;
-    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))) {
-        sprintf(host, "%s", at_ptr+1);
-    } else {
-        sprintf(host, "%s", remote_args->pipe_host);
-    }
-    
-    args->ip               = host;
-    args->n_crypto_threads = 1;
-    args->port             = strdup(remote_args->pipe_port);
-    args->recv_pipe        = opts.recv_pipe;
-    args->send_pipe        = opts.send_pipe;
-    args->timeout          = opts.timeout;
-    args->verbose          = (opts.verbosity > VERB_1);
-
-    pthread_t *server_thread = (pthread_t*) malloc(sizeof(pthread_t));
-    pthread_create(server_thread, NULL, &run_server, args);
-    
-    return server_thread;
-
-}
-
-
-pthread_t *start_udpipe_client(remote_arg_t *remote_args)
-{ 
+pthread_t *start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_type)
+{
     thread_args *args = (thread_args*) malloc(sizeof(thread_args));
     initialize_udpipe_args(args);
 
@@ -802,13 +778,15 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
 
-    pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
-    pthread_create(client_thread, NULL, &run_client, args);
-
-    return client_thread;
+    pthread_t *udpipe_thread = (pthread_t*) malloc(sizeof(pthread_t));
+    if ( udpipe_server_type == UDPIPE_SERVER ) {
+        pthread_create(udpipe_thread, NULL, &run_server, args);
+    } else {
+        pthread_create(udpipe_thread, NULL, &run_client, args);
+    }
+    
+    return udpipe_thread;    
 }
-
-
 
 
 int remote_to_local(int argc, char*argv[], int optind)
@@ -829,7 +807,8 @@ int remote_to_local(int argc, char*argv[], int optind)
         opts.socket_ready = 1;
 
         verb(VERB_2, "Running with file destination mode");
-        pthread_t *server_thread = start_udpipe_server(&remote_args);
+//        pthread_t *server_thread = start_udpipe_server(&remote_args);
+        pthread_t *server_thread = start_udpipe_thread(&remote_args, UDPIPE_SERVER);
 
         // Find the output path
         ERR_IF(optind >= argc, "I don't know where to put the files");
@@ -867,7 +846,10 @@ int remote_to_local(int argc, char*argv[], int optind)
         }
 
         // connect to receiving server
-        start_udpipe_client(&remote_args);
+//        start_udpipe_client(&remote_args);
+        start_udpipe_thread(&remote_args, UDPIPE_CLIENT);
+
+
         // get the pid of the remote process in case we need to kill it
         get_remote_pid();
 
@@ -880,12 +862,11 @@ int remote_to_local(int argc, char*argv[], int optind)
         char **path_list = argv+optind;
 
         // Generate a linked list of file objects from path list
-        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-        
-        int totalSize;
-        // get size of list and such
-        totalSize = get_filelist_size(fileList);
+//        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+        ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
 
+        send_and_wait_for_filelist(fileList);
+        
         // send the file list, requesting version from dest
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
@@ -939,7 +920,9 @@ int local_to_remote(int argc, char*argv[], int optind)
         }
 
         // connect to receiving server
-        start_udpipe_client(&remote_args);
+//        start_udpipe_client(&remote_args);
+        start_udpipe_thread(&remote_args, UDPIPE_CLIENT);
+        
         // get the pid of the remote process in case we need to kill it
         get_remote_pid();
 
@@ -954,9 +937,7 @@ int local_to_remote(int argc, char*argv[], int optind)
 //        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
         ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
 
-        // get size of list and such
-        int totalSize;
-        totalSize = get_filelist_size(fileList);
+        send_and_wait_for_filelist(fileList);
         
         // Visit all directories and send all files
         // This is where we pass the remainder of the work to the
@@ -977,7 +958,8 @@ int local_to_remote(int argc, char*argv[], int optind)
 
         verb(VERB_2, "Running with file destination mode\n");
 
-        pthread_t *server_thread = start_udpipe_server(&remote_args);
+//        pthread_t *server_thread = start_udpipe_server(&remote_args);
+        pthread_t *server_thread = start_udpipe_thread(&remote_args, UDPIPE_SERVER);
 
         // Check to see if user specified a pipe, if so, run it
         // run_pipe(remote_args.pipe_cmd);

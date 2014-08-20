@@ -24,7 +24,7 @@ and limitations under the License.
 
 // send header specifying that the sending stream is complete
 
-parcel_block block;
+parcel_block    sender_block;
 
 postmaster_t*    send_postmaster;
 global_data_t    global_send_data;
@@ -42,10 +42,13 @@ int allocate_block(parcel_block *block)
     // header length
     int alloc_len = BUFFER_LEN + sizeof(header_t);
 
-    block->buffer = (char*) malloc(alloc_len*sizeof(char));
-
-    if (!block->buffer)
-	ERR("unable to allocate data");
+    if ( block->buffer == NULL ) {
+        block->buffer = (char*) malloc(alloc_len*sizeof(char));
+    }
+    
+    if (!block->buffer) {
+        ERR("unable to allocate data");
+    }
 
     // record parameters in block
 
@@ -55,12 +58,26 @@ int allocate_block(parcel_block *block)
     return RET_SUCCESS;
 }
 
+
+void free_block(parcel_block *block)
+{
+    if ( block != NULL ) {
+        if ( block->buffer != NULL ) {
+            free(block->buffer);
+            block->buffer = NULL;
+        }
+        block = NULL;
+    }
+    
+    
+}
+
 // int fill_data
 // - copy a small amount of data into the buffer, this is not used
 //   for data blocks
 int fill_data(void* data, size_t len) 
 {
-    return (!!memcpy(block.data, data, len));
+    return (!!memcpy(sender_block.data, data, len));
 }
 
 // write header data to out fd
@@ -80,7 +97,7 @@ int write_header(header_t header)
 off_t write_block(header_t header, int len) 
 {
 
-    memcpy(block.buffer, &header, sizeof(header_t));
+    memcpy(sender_block.buffer, &header, sizeof(header_t));
 
     if (len > BUFFER_LEN)
 	ERR("data out of bounds");
@@ -88,7 +105,7 @@ off_t write_block(header_t header, int len)
     int send_len = len + sizeof(header_t);
 
     // int ret = write(fileno(stdout), block.buffer, send_len);
-    int ret = write(opts.send_pipe[1], block.buffer, send_len);
+    int ret = write(opts.send_pipe[1], sender_block.buffer, send_len);
 
     if (ret < 0) {
         ERR("unable to write to send_pipe");
@@ -140,7 +157,7 @@ int send_file(file_object_t *file)
         // create a header to specify that the subsequent data is a
         // directory name and send
         header = nheader(XFER_DIRNAME, strlen(file->path)+1);
-        memcpy(block.data, file->path, header.data_len);
+        memcpy(sender_block.data, file->path, header.data_len);
         write_block(header, header.data_len);
 
     } else {
@@ -201,7 +218,7 @@ int send_file(file_object_t *file)
         int rs;
         off_t sent = 0;
 
-        while ((rs = read(fd, block.data, BUFFER_LEN))) {
+        while ((rs = read(fd, sender_block.data, BUFFER_LEN))) {
 
             verb(VERB_3, "Read in %d bytes", rs);
 
@@ -239,16 +256,61 @@ int send_file(file_object_t *file)
     
 }
 
-int send_filelist(file_LL* fileList)
+int send_filelist(file_LL* fileList, int totalSize)
 {
     header_t header;
-    int listSize;
-    listSize = get_filelist_size(fileList);
-    header = nheader(XFER_FILELIST, listSize + 1);
-    memcpy(block.data, fileList, header.data_len);
-    write_block(header, header.data_len);
-
+//    totalSize = get_filelist_size(fileList);
+    header = nheader(XFER_FILELIST, totalSize);
+    verb(VERB_2, "send_filelist: sending");
+    
+    if ( sender_block.data != NULL ) {
+        char* tmp_file_list = pack_filelist(fileList, header.data_len);
+        // fly - this is stupid, I should do this in one step
+        memcpy(sender_block.data, tmp_file_list, header.data_len);
+        free(tmp_file_list);
+        write_block(header, header.data_len);
+    } else {
+        ERR("send_filelist: unable to copy to sender_block.data, value NULL");        
+    }
+    
     return RET_SUCCESS;
+    
+}
+
+
+int send_and_wait_for_filelist(file_LL* fileList)
+{
+    header_t header;
+    int totalSize = get_filelist_size(fileList);
+
+    while (!opts.socket_ready) {
+        usleep(10000);
+    }
+
+    int alloc_len = BUFFER_LEN - sizeof(header_t);
+    global_send_data.data = (char*) malloc( alloc_len * sizeof(char));
+    
+    send_filelist(fileList, totalSize);
+    
+    // Read in headers and data until signalled completion
+    while ( !global_send_data.complete ) {
+
+        if (global_send_data.read_new_header) {
+            if ((global_send_data.rs = read_header(&header)) <= 0) {
+                ERR("Bad header read");
+            }
+        }
+        
+        if (global_send_data.rs) {
+            verb(VERB_2, "Dispatching message to sender: %d", header.type);
+            dispatch_message(send_postmaster, header, &global_send_data);
+        }
+    }
+
+    // free up the memory on the way out
+    free(global_send_data.data);
+
+    return 0;
     
 }
 
@@ -259,108 +321,105 @@ int send_filelist(file_LL* fileList)
 int handle_files(file_LL* fileList)
 {
 
-    allocate_block(&block);
+//    allocate_block(&block);
+    file_node_t* cursor = fileList->head;
     
-    if ( fileList != NULL ) {
     
-        file_node_t *cursor = fileList->head;
-        
-        // Send each file or directory
-        while (cursor) {
+    // Send each file or directory
+    while (fileList) {
 
-            file_object_t *file = cursor->curr;
+        file_object_t *file = cursor->curr;
 
-            // While there is a directory, opts.recurse?
-            if (file->mode == S_IFDIR) {
+        // While there is a directory, opts.recurse?
+        if (file->mode == S_IFDIR) {
 
-                // Tell desination to create a directory 
-                if (opts.full_root) {
-                    send_file(file);
-                }
+            // Tell desination to create a directory 
+            if (opts.full_root) {
+                send_file(file);
+            }
 
-                // Recursively enter directory
-    /*            if (opts.recurse) {
+            // Recursively enter directory
+/*            if (opts.recurse) {
 
-                    verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
-                    
-                    // Get a linked list of all the files in the directory 
-                    file_LL* internal_fileList = lsdir(file);
+                verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
+                
+                // Get a linked list of all the files in the directory 
+                file_LL* internal_fileList = lsdir(file);
 
-                    // if directory is non-empty then recurse 
-                    if (internal_fileList) {
-                        handle_files(internal_fileList);
-                    }
-                }
-
-                // If user chose not to recurse into directories
-                else {
-                    verb(VERB_1, " --- SKIPPING [%s]  %s", file->filetype, file->path);
-                } */
-
-            } 
-
-            // if it is a regular file, then send it
-            else if (file->mode == S_IFREG) {
-
-                if (is_in_checkpoint(file)) {
-                    char*status = "completed";
-                    verb(VERB_1, "Logged: %s [%s]", file->path, status);
-                } else {
-                    send_file(file);
-                }
-
-            } 
-
-            // If the file is a character device or a named pipe, warn user
-            else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
-
-                if (opts.regular_files) {
-                    warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
-                         "To enable sending character devices, use --all-files");
-
-                } else {
-
-                    warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
-                         file->path, file->filetype, file->filetype);
-                    send_file(file);
-
+                // if directory is non-empty then recurse 
+                if (internal_fileList) {
+                    handle_files(internal_fileList);
                 }
             }
 
-            // if it's neither a regular file nor a directory, leave it
-            // for now, maybe send in later version
+            // If user chose not to recurse into directories
             else {
-                verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
+                verb(VERB_1, " --- SKIPPING [%s]  %s", file->filetype, file->path);
+            } */
 
-                if (opts.verbosity > VERB_0) {
-                    warn("File %s is a %s", file->path, file->filetype);
-                    ERR("This filetype is not currently supported.");
-                }
+        } 
 
+        // if it is a regular file, then send it
+        else if (file->mode == S_IFREG) {
+
+            if (is_in_checkpoint(file)) {
+                char*status = "completed";
+                verb(VERB_1, "Logged: %s [%s]", file->path, status);
+            } else {
+                send_file(file);
             }
 
-            log_completed_file(file);
-            cursor = cursor->next;
+        } 
+
+        // If the file is a character device or a named pipe, warn user
+        else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
+
+            if (opts.regular_files) {
+                warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
+                     "To enable sending character devices, use --all-files");
+
+            } else {
+
+                warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
+                     file->path, file->filetype, file->filetype);
+                send_file(file);
+
+            }
+        }
+
+        // if it's neither a regular file nor a directory, leave it
+        // for now, maybe send in later version
+        else {
+            verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
+
+            if (opts.verbosity > VERB_0) {
+                warn("File %s is a %s", file->path, file->filetype);
+                ERR("This filetype is not currently supported.");
+            }
 
         }
 
-        close_log_file();
-        
+        log_completed_file(file);
+        cursor = cursor->next;
+
     }
-    
+
+    close_log_file();
     return RET_SUCCESS;
 }
 
 
 int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
 {
+    global_data->complete = 1;
+    
     return 0;
 }
 
 void init_sender()
 {
     
-    allocate_block(&block);
+    allocate_block(&sender_block);
 
     // initialize the data
     global_send_data.f_size = 0;
@@ -379,7 +438,9 @@ void init_sender()
 
 void cleanup_sender()
 {
-    
-    
+    if ( send_postmaster != NULL ) {
+        free(send_postmaster);
+    }
+    free_block(&sender_block);
 }
 

@@ -21,6 +21,7 @@ and limitations under the License.
 #include "files.h"
 #include "receiver.h"
 #include "postmaster.h"
+#include "sender.h"
 
 // main loop for receiving mode, listens for headers and sorts out
 // stream into files
@@ -87,6 +88,8 @@ int receive_files(char*base_path)
         }
     }
     
+    // free up the memory on the way out
+    free(global_receive_data.data);
 
     return 0;
 }
@@ -337,10 +340,33 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
 
 int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 {
+    file_LL*    fileList;
+    
+//    fileList = (file_LL*)malloc(header.data_len);
+    char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
+    
+    read_data(tmp_file_list, header.data_len);
+    fileList = unpack_filelist(tmp_file_list, header.data_len);
+    free(tmp_file_list);
+
+    verb(VERB_2, "pst_rec_callback_filelist: list of size %d received", fileList->count);
+    
     // repopulate the list with our timestamps
     
     // return the list
+    // get size of list and such
+    int totalSize = get_filelist_size(fileList);
     
+
+    while (!opts.socket_ready) {
+        usleep(10000);
+    }
+
+    int alloc_len = BUFFER_LEN - sizeof(header_t);
+    global_data->data = (char*) malloc( alloc_len * sizeof(char));
+    
+    verb(VERB_2, "pst_rec_callback_filelist: sending back");
+    send_filelist(fileList, totalSize);    
     
     return 0;
 }

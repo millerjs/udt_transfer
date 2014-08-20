@@ -39,12 +39,12 @@ and limitations under the License.
 typedef struct file_object_t{
     struct stat stats;
     int         mode;
+    int         length;
+    int         mtime_sec;
+    long int    mtime_nsec;  
     char        *filetype;
     char        *path;
     char        *root;
-    int         length;
-    int         mtime_sec;
-    long int    mtime_nsec;    
 } file_object_t;
 
 typedef struct file_LL file_LL;
@@ -132,5 +132,11 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime);
 
 // Gets the size of a file list (total, in bytes) in list_size, returns the count of files in list
 int get_filelist_size(file_LL *fileList);
+
+// Pack a file list into a byte array to send across
+char* pack_filelist(file_LL* fileList, int total_size);
+
+// Unpack sent file list byte array back into a file list struct
+file_LL* unpack_filelist(char* fileList_data, int data_length);
 
 #endif
