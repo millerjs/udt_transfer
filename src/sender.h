@@ -19,6 +19,12 @@ and limitations under the License.
 #ifndef SENDER_H
 #define SENDER_H
 
+// initializes everything needed for sender
+void init_sender();
+
+// cleanup everything for sender
+void cleanup_sender();
+
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 
 // sends a file to out fd by creating an appropriate header and

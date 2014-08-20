@@ -94,8 +94,14 @@ int mwrite(char* buff, off_t pos, int len)
     return RET_SUCCESS;
 }
 
-file_object_t *get_file_LL_tail(file_LL *list)
+// NOTE: this walks the list, which shouldn't need to be done as the list
+// now holds/updates its tail. Left here for a sanity walk just in case
+// it's needed later.
+
+file_object_t *get_file_LL_tail(file_LL *main_list)
 {
+    file_node_t* list = main_list->head;
+    
     if (!list) {
         return NULL;
     }
@@ -109,11 +115,17 @@ file_object_t *get_file_LL_tail(file_LL *list)
 file_object_t *find_last_instance(file_LL *list, file_object_t *file)
 {
     file_object_t *last = NULL;
+    file_node_t *cursor = NULL;
+    
+    if ( list != NULL ) {
+        cursor = list->head;
+    }
+    
     while (list) {
-        if (!strcmp(list->curr->path, file->path)) {
-            last = list->curr;
+        if (!strcmp(cursor->curr->path, file->path)) {
+            last = cursor->curr;
         }
-        list = list->next;
+        cursor = cursor->next;
     }   
     return last;
 }
@@ -163,7 +175,8 @@ int read_checkpoint(char *path)
     struct timespec mtime = {0, 0};
     while (fscanf(restart_f, "%s %li", linebuf, &mtime.tv_sec) == 2) {
         checkpoint = add_file_to_list(checkpoint, linebuf, NULL);
-        file_object_t *last = get_file_LL_tail(checkpoint);
+//        file_object_t *last = get_file_LL_tail(checkpoint);
+        file_object_t *last = checkpoint->tail->curr;
         if (last) {
             last->stats.st_mtime = mtime.tv_sec;
             verb(VERB_2, "Checkpoint completed and unmodified: %s [%li]", 
@@ -245,9 +258,15 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN])
 
 int print_file_LL(file_LL *list)
 {
-    while (list) {
-        fprintf(stderr, "%s, ", list->curr->path);
-        list = list->next;
+    file_node_t* cursor = NULL;
+    
+    if ( list != NULL ) {
+        cursor = list->head;
+    }
+    
+    while (cursor) {
+        fprintf(stderr, "%s, ", cursor->curr->path);
+        cursor = cursor->next;
     }
 
     return RET_SUCCESS;
@@ -256,6 +275,12 @@ int print_file_LL(file_LL *list)
 file_object_t* new_file_object(char*path, char*root)
 {
     file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
+
+    // fly - zeroing in case we ever check the wrong one, but not sure how 
+    // best to handle with pointers...calloc isn't proper for that
+    memset(file, 0, sizeof(file_object_t));
+    file->filetype = (char*)NULL;
+    
     file->path = strdup(path);
     file->root = root;
 
@@ -275,6 +300,8 @@ file_object_t* new_file_object(char*path, char*root)
         case S_IFDIR:  
             file->mode = S_IFDIR;     
             file->filetype = (char*) "directory";
+            file->mtime_sec = file->stats.st_mtime;
+            file->mtime_nsec = file->stats.st_mtim.tv_nsec;
             break;
         case S_IFIFO:  
             file->mode = S_IFIFO;     
@@ -287,6 +314,9 @@ file_object_t* new_file_object(char*path, char*root)
         case S_IFREG:  
             file->mode = S_IFREG;     
             file->filetype = (char*) "regular file";
+            file->length = file->stats.st_size;
+            file->mtime_sec = file->stats.st_mtime;
+            file->mtime_nsec = file->stats.st_mtim.tv_nsec;
             break;
         case S_IFSOCK: 
             file->mode = S_IFSOCK;    
@@ -302,32 +332,83 @@ file_object_t* new_file_object(char*path, char*root)
 
 file_LL* add_file_to_list(file_LL *fileList, char*path, char*root)
 {
+    verb(VERB_2, "add_file_to_list: path = %s, root = %s\n", path, root);
+
     // make a file object out of the path
     file_object_t* new_file = new_file_object(path, root);
-    file_LL *cursor = fileList;
 
-    // create a new file list
-    file_LL * new_list = (file_LL*) malloc(sizeof(file_LL));
-    new_list->curr = new_file;
-    new_list->next = NULL;
-
+    // create a new node
+    file_node_t* new_node = (file_node_t*)malloc(sizeof(file_node_t));
+    new_node->curr = new_file;
+    new_node->next = NULL;
+    
     if (!fileList) {
+        // create a new list if we don't have one
+        file_LL * new_list = (file_LL*) malloc(sizeof(file_LL));
+        new_list->head = new_node;
+        new_list->tail = new_node;
+        new_list->count = 1;
         return new_list;
     } else {
-        // move to end of file list
-        while (cursor->next) {
-            cursor = cursor->next;
-        }
-        cursor->next = new_list;
+        // add to end of file list
+        fileList->tail->next = new_node;
+        fileList->tail = new_node;
+        fileList->count++;
     }
 
     return fileList;
 }
 
+// part the first: get all elements in the top level path
+// part the second: 
+
+
+file_LL* build_full_filelist(int n, char *paths[])
+{
+    file_LL *fileList = NULL;
+    struct stat stats;
+
+    verb(VERB_2, "build_full_filelist: %d paths\n", n);
+
+    for (int i = 0; i < n ; i++) {
+
+        if (paths[i]) {
+            verb(VERB_2, "build_full_filelist: trying %s\n", paths[i]);
+
+            if (stat(paths[i], &stats) == -1) {
+                ERR("unable to stat file [%s], error = %d", paths[i], errno);
+            }
+
+            if ((stats.st_mode & S_IFMT) == S_IFDIR) {
+                verb(VERB_2, "build_full_filelist: dir found, traversing %s\n", paths[i]);
+                fileList = add_file_to_list(fileList, paths[i], paths[i]);
+                char parent_dir[MAX_PATH_LEN];
+                get_parent_dir(parent_dir, paths[i]);
+                lsdir_to_list(fileList, paths[i], parent_dir);
+            } else {
+                char parent_dir[MAX_PATH_LEN];
+                get_parent_dir(parent_dir, paths[i]);
+                
+                fileList = add_file_to_list(fileList, paths[i], parent_dir);
+            }
+        }
+
+        // fileList = add_file_to_list(fileList, paths[i]);
+    }
+
+    verb(VERB_2, "build_full_filelist: complete\n");
+    return fileList;
+    
+    
+}
+
+
 file_LL* build_filelist(int n, char *paths[])
 {
     file_LL *fileList = NULL;
     struct stat stats;
+
+    verb(VERB_2, "build_filelist: %d paths\n", n);
 
     for (int i = 0; i < n ; i++) {
 
@@ -350,8 +431,41 @@ file_LL* build_filelist(int n, char *paths[])
         // fileList = add_file_to_list(fileList, paths[i]);
     }
 
+    verb(VERB_2, "build_filelist: complete\n");
     return fileList;
 }
+
+void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
+{
+    // Verify that we were actually passed a directory file
+/*    if ( !(file->mode == S_IFDIR) ){
+        warn("attemped to enter a non-directory file");
+        return NULL;
+    } */
+    verb(VERB_2, "lsdir_to_list: %s %s\n", dir, root);
+
+    DIR *dirp = opendir(dir);
+    struct dirent * entry;
+    if ( dirp != NULL ) {
+
+        // Iterate through each file in the directory
+        while ((entry = readdir(dirp)) != NULL) {
+
+            // If given, ignore the current and parent directories 
+            if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
+                char path[MAX_PATH_LEN];
+                sprintf(path, "%s/%s", dir, entry->d_name);
+//                ls_fileList = add_file_to_list(ls_fileList, path, root);
+                add_file_to_list(ls_fileList, path, root);
+            }
+        }
+
+        closedir(dirp);
+    } else {
+        warn("attemped to enter a non-directory file");
+    }
+}
+
 
 file_LL* lsdir(file_object_t *file)
 {
@@ -489,6 +603,12 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime)
   
 }
 
+//
+// get_mod_time 
+//
+// gets the modification time given a file name
+// returns 0 on success, or non-zero error code in errno.h on fail
+//
 int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 {
     struct stat tmpStat;
@@ -512,3 +632,26 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 
     
 }
+
+
+// Returns the size of a file list (total, in bytes)
+int get_filelist_size(file_LL *fileList)
+{
+    int total_size = 0;
+    
+    if ( fileList != NULL ) {
+        file_node_t* cursor = fileList->head;
+        int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
+        
+        while ( cursor != NULL ) {
+            total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root));
+            cursor = cursor->next;
+        }
+    }
+    
+    return total_size;
+    
+}
+
+
+

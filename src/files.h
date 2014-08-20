@@ -49,10 +49,19 @@ typedef struct file_object_t{
 
 typedef struct file_LL file_LL;
 
-struct file_LL{
+typedef struct file_node_t {
     file_object_t *curr;
-    file_LL *next;
+    struct file_node_t* next;
+} file_node_t;
+
+struct file_LL {
+    file_node_t* head;
+    file_node_t* tail;
+    unsigned int count;
+//    file_object_t *curr;
+//    file_LL *next;
 };
+
 
 extern char *f_map;
 extern int flogfd;
@@ -82,6 +91,10 @@ file_LL* add_file_to_list(file_LL *fileList, char*path, char*root);
 
 file_LL* init_filelist(int n, char *paths[]);
 
+/* Builds a linked list of file_object_t given path array of length n, recursing in all directories */
+
+file_LL* build_full_filelist(int n, char *paths[]);
+
 /* Builds a linked list of file_object_t given path array of length n */
 
 file_LL* build_filelist(int n, char* paths[]);
@@ -89,7 +102,11 @@ file_LL* build_filelist(int n, char* paths[]);
 /* Builds a linked list of file_object_t given directory file object */
 
 file_LL* lsdir(file_object_t *file);
-    
+
+/* Builds a linked list of file_object_t given directory file object, adding it to given file_LL */
+
+void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root);
+
 /* make a new directory, but recurse through dir tree until this is possible */
 
 int mkdir_parent(char* path);
@@ -103,7 +120,6 @@ int generate_base_path(char *perlim_path, char *data_path);
 
 int map_fd(int fd, off_t size);
 
-
 int unmap_fd(int fd, off_t size);
 
 int mwrite(char* buff, off_t pos, int len);
@@ -113,5 +129,8 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime);
 
 // Get the mtime for a given file
 int get_mod_time(char* filename, long int* mtime_nsec, int* mtime);
+
+// Gets the size of a file list (total, in bytes) in list_size, returns the count of files in list
+int get_filelist_size(file_LL *fileList);
 
 #endif

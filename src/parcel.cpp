@@ -881,7 +881,12 @@ int remote_to_local(int argc, char*argv[], int optind)
 
         // Generate a linked list of file objects from path list
         ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-                    
+        
+        int totalSize;
+        // get size of list and such
+        totalSize = get_filelist_size(fileList);
+
+        // send the file list, requesting version from dest
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
         handle_files(fileList);
@@ -922,6 +927,8 @@ int local_to_remote(int argc, char*argv[], int optind)
 
     if (opts.mode & MODE_SEND) {
 
+        verb(VERB_2, "Starting local_to_remote sender\n");
+        
         // spawn process on remote host and let it create the server
         run_ssh_command(remote_args.remote_path);
 
@@ -944,8 +951,13 @@ int local_to_remote(int argc, char*argv[], int optind)
         char **path_list = argv+optind;
 
         // Generate a linked list of file objects from path list
-        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-                    
+//        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+        ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+
+        // get size of list and such
+        int totalSize;
+        totalSize = get_filelist_size(fileList);
+        
         // Visit all directories and send all files
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
@@ -956,6 +968,8 @@ int local_to_remote(int argc, char*argv[], int optind)
     // Otherwise, switch to receiving mode
     } else if (opts.mode & MODE_RCV) {
 
+        verb(VERB_2, "Starting local_to_remote receiver\n");
+        
         pid_t pid = getpid();
         write(opts.send_pipe[1], &pid, sizeof(pid_t));
 
@@ -1013,7 +1027,7 @@ int local_to_remote(int argc, char*argv[], int optind)
     return RET_SUCCESS;
 }
 
-int main(int argc, char *argv[])
+void init_parcel(int argc, char *argv[])
 {
     // specify how to catch signals
     set_handlers();
@@ -1024,8 +1038,26 @@ int main(int argc, char *argv[])
 
     get_remote_host(argc, argv);
     initialize_pipes();
+    init_sender();
     init_receiver();
+    
+}
 
+void cleanup_parcel()
+{
+    kill_children(VERB_2);
+    
+    cleanup_receiver();    
+    cleanup_sender();
+    
+}
+
+
+int main(int argc, char *argv[])
+{
+
+    init_parcel(argc, argv);
+    
     timer = start_timer("send_timer");
     
     if (opts.remote_to_local) {
@@ -1036,7 +1068,7 @@ int main(int argc, char *argv[])
 
     print_xfer_stats();    
     
-    kill_children(VERB_2);
+
     
     return RET_SUCCESS;
 }

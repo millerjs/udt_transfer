@@ -20,10 +20,14 @@ and limitations under the License.
 #include "files.h"
 #include "util.h"
 #include "postmaster.h"
+#include "sender.h"
 
 // send header specifying that the sending stream is complete
 
 parcel_block block;
+
+postmaster_t*    send_postmaster;
+global_data_t    global_send_data;
 
 // int allocate_block
 // - allocates the block that encapsulates the header and data buffer
@@ -235,6 +239,19 @@ int send_file(file_object_t *file)
     
 }
 
+int send_filelist(file_LL* fileList)
+{
+    header_t header;
+    int listSize;
+    listSize = get_filelist_size(fileList);
+    header = nheader(XFER_FILELIST, listSize + 1);
+    memcpy(block.data, fileList, header.data_len);
+    write_block(header, header.data_len);
+
+    return RET_SUCCESS;
+    
+}
+
 
 // main loop for send mode, takes a linked list of files and streams
 // them
@@ -243,86 +260,126 @@ int handle_files(file_LL* fileList)
 {
 
     allocate_block(&block);
+    
+    if ( fileList != NULL ) {
+    
+        file_node_t *cursor = fileList->head;
         
-    // Send each file or directory
-    while (fileList) {
+        // Send each file or directory
+        while (cursor) {
 
-        file_object_t *file = fileList->curr;
+            file_object_t *file = cursor->curr;
 
-        // While there is a directory, opts.recurse?
-        if (file->mode == S_IFDIR) {
+            // While there is a directory, opts.recurse?
+            if (file->mode == S_IFDIR) {
 
-            // Tell desination to create a directory 
-            if (opts.full_root) {
-                send_file(file);
-            }
+                // Tell desination to create a directory 
+                if (opts.full_root) {
+                    send_file(file);
+                }
 
-            // Recursively enter directory
-            if (opts.recurse) {
+                // Recursively enter directory
+    /*            if (opts.recurse) {
 
-                verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
-                
-                // Get a linked list of all the files in the directory 
-                file_LL* internal_fileList = lsdir(file);
+                    verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
+                    
+                    // Get a linked list of all the files in the directory 
+                    file_LL* internal_fileList = lsdir(file);
 
-                // if directory is non-empty then recurse 
-                if (internal_fileList) {
-                    handle_files(internal_fileList);
+                    // if directory is non-empty then recurse 
+                    if (internal_fileList) {
+                        handle_files(internal_fileList);
+                    }
+                }
+
+                // If user chose not to recurse into directories
+                else {
+                    verb(VERB_1, " --- SKIPPING [%s]  %s", file->filetype, file->path);
+                } */
+
+            } 
+
+            // if it is a regular file, then send it
+            else if (file->mode == S_IFREG) {
+
+                if (is_in_checkpoint(file)) {
+                    char*status = "completed";
+                    verb(VERB_1, "Logged: %s [%s]", file->path, status);
+                } else {
+                    send_file(file);
+                }
+
+            } 
+
+            // If the file is a character device or a named pipe, warn user
+            else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
+
+                if (opts.regular_files) {
+                    warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
+                         "To enable sending character devices, use --all-files");
+
+                } else {
+
+                    warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
+                         file->path, file->filetype, file->filetype);
+                    send_file(file);
+
                 }
             }
 
-            // If user chose not to recurse into directories
+            // if it's neither a regular file nor a directory, leave it
+            // for now, maybe send in later version
             else {
-                verb(VERB_1, " --- SKIPPING [%s]  %s", file->filetype, file->path);
-            }
+                verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
 
-        } 
-
-        // if it is a regular file, then send it
-        else if (file->mode == S_IFREG) {
-
-            if (is_in_checkpoint(file)) {
-                char*status = "completed";
-                verb(VERB_1, "Logged: %s [%s]", file->path, status);
-            } else {
-                send_file(file);
-            }
-
-        } 
-
-        // If the file is a character device or a named pipe, warn user
-        else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
-
-            if (opts.regular_files) {
-                warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
-                     "To enable sending character devices, use --all-files");
-
-            } else {
-
-                warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
-                     file->path, file->filetype, file->filetype);
-                send_file(file);
+                if (opts.verbosity > VERB_0) {
+                    warn("File %s is a %s", file->path, file->filetype);
+                    ERR("This filetype is not currently supported.");
+                }
 
             }
-        }
 
-        // if it's neither a regular file nor a directory, leave it
-        // for now, maybe send in later version
-        else {
-            verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
-
-            if (opts.verbosity > VERB_0) {
-                warn("File %s is a %s", file->path, file->filetype);
-                ERR("This filetype is not currently supported.");
-            }
+            log_completed_file(file);
+            cursor = cursor->next;
 
         }
 
-        log_completed_file(file);
-        fileList = fileList->next;
-
+        close_log_file();
+        
     }
-
-    close_log_file();
+    
     return RET_SUCCESS;
 }
+
+
+int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
+{
+    return 0;
+}
+
+void init_sender()
+{
+    
+    allocate_block(&block);
+
+    // initialize the data
+    global_send_data.f_size = 0;
+    global_send_data.complete = 0;
+    global_send_data.expecting_data = 0;
+    global_send_data.read_new_header = 1;
+    
+    // create the postmaster
+    send_postmaster = create_postmaster();
+
+    // register the callbacks
+    register_callback(send_postmaster, XFER_FILELIST, pst_snd_callback_filelist);
+    
+}
+
+
+void cleanup_sender()
+{
+    
+    
+}
+

@@ -26,7 +26,7 @@ and limitations under the License.
 // stream into files
 
 postmaster_t*    receive_postmaster;
-global_data_t    receive_data;
+global_data_t    global_receive_data;
 
 
 int read_header(header_t *header) 
@@ -66,24 +66,24 @@ int receive_files(char*base_path)
     }
 
     int alloc_len = BUFFER_LEN - sizeof(header_t);
-    receive_data.data = (char*) malloc( alloc_len * sizeof(char));
+    global_receive_data.data = (char*) malloc( alloc_len * sizeof(char));
 
     // generate a base path for all destination files and get the
     // length
-    receive_data.bl = generate_base_path(base_path, receive_data.data_path);
+    global_receive_data.bl = generate_base_path(base_path, global_receive_data.data_path);
     
     // Read in headers and data until signalled completion
-    while ( !receive_data.complete ) {
+    while ( !global_receive_data.complete ) {
 
-        if (receive_data.read_new_header) {
-            if ((receive_data.rs = read_header(&header)) <= 0) {
+        if (global_receive_data.read_new_header) {
+            if ((global_receive_data.rs = read_header(&header)) <= 0) {
                 ERR("Bad header read");
             }
         }
         
-        if (receive_data.rs) {
+        if (global_receive_data.rs) {
 //            verb(VERB_2, "Dispatching message: %d", header.type);
-            dispatch_message(receive_postmaster, header, &receive_data);
+            dispatch_message(receive_postmaster, header, &global_receive_data);
         }
     }
     
@@ -102,7 +102,7 @@ int receive_files(char*base_path)
 //
 // routine to handle XFER_DIRNAME message
 
-int pst_callback_dirname(header_t header, global_data_t* global_data)
+int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 {
     
     verb(VERB_4, "Received directory header");
@@ -130,7 +130,7 @@ int pst_callback_dirname(header_t header, global_data_t* global_data)
 //
 // routine to handle XFER_FILENAME message
 
-int pst_callback_filename(header_t header, global_data_t* global_data)
+int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 {
     
     verb(VERB_4, "Received file header");
@@ -203,7 +203,7 @@ int pst_callback_filename(header_t header, global_data_t* global_data)
 //
 // routine to handle XFER_F_SIZE message
 
-int pst_callback_f_size(header_t header, global_data_t* global_data)
+int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 {
 
     // read in the size of the file
@@ -224,7 +224,7 @@ int pst_callback_f_size(header_t header, global_data_t* global_data)
 //
 // routine to handle XFER_COMPLETE message
 
-int pst_callback_complete(header_t header, global_data_t* global_data)
+int pst_rec_callback_complete(header_t header, global_data_t* global_data)
 {
     if (opts.verbosity > VERB_1) {
         fprintf(stderr, "Receive completed.\n");
@@ -241,7 +241,7 @@ int pst_callback_complete(header_t header, global_data_t* global_data)
 //
 // routine to handle XFER_DATA message
 
-int pst_callback_data(header_t header, global_data_t* global_data)
+int pst_rec_callback_data(header_t header, global_data_t* global_data)
 {
     off_t rs, len;
     
@@ -292,7 +292,7 @@ int pst_callback_data(header_t header, global_data_t* global_data)
 //
 // routine to handle XFER_DATA_COMPLETE message
 
-int pst_callback_data_complete(header_t header, global_data_t* global_data)
+int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
 {
     // On the next loop, use the header that was just read in
    
@@ -334,24 +334,45 @@ int pst_callback_data_complete(header_t header, global_data_t* global_data)
     return 0;
 }
 
+
+int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
+{
+    // repopulate the list with our timestamps
+    
+    // return the list
+    
+    
+    return 0;
+}
+
 void init_receiver()
 {
     
     // initialize the data
-    receive_data.f_size = 0;
-    receive_data.complete = 0;
-    receive_data.expecting_data = 0;
-    receive_data.read_new_header = 1;
+    global_receive_data.f_size = 0;
+    global_receive_data.complete = 0;
+    global_receive_data.expecting_data = 0;
+    global_receive_data.read_new_header = 1;
     
     // create the postmaster
     receive_postmaster = create_postmaster();
 
     // register the callbacks
-    register_callback(receive_postmaster, XFER_DIRNAME, pst_callback_dirname);
-    register_callback(receive_postmaster, XFER_FILENAME, pst_callback_filename);
-    register_callback(receive_postmaster, XFER_F_SIZE, pst_callback_f_size);
-    register_callback(receive_postmaster, XFER_COMPLETE, pst_callback_complete);
-    register_callback(receive_postmaster, XFER_DATA, pst_callback_data);
-    register_callback(receive_postmaster, XFER_DATA_COMPLETE, pst_callback_data_complete);
+    register_callback(receive_postmaster, XFER_DIRNAME, pst_rec_callback_dirname);
+    register_callback(receive_postmaster, XFER_FILENAME, pst_rec_callback_filename);
+    register_callback(receive_postmaster, XFER_F_SIZE, pst_rec_callback_f_size);
+    register_callback(receive_postmaster, XFER_COMPLETE, pst_rec_callback_complete);
+    register_callback(receive_postmaster, XFER_DATA, pst_rec_callback_data);
+    register_callback(receive_postmaster, XFER_DATA_COMPLETE, pst_rec_callback_data_complete);
+    register_callback(receive_postmaster, XFER_FILELIST, pst_rec_callback_filelist);
     
 }
+
+void cleanup_receiver()
+{
+    if ( receive_postmaster != NULL ) {
+        free(receive_postmaster);
+    }
+    
+}
+

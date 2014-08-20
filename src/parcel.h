@@ -83,6 +83,7 @@ typedef enum : uint8_t {
     XFER_COMPLETE,
     XFER_WAIT,
     XFER_DATA_COMPLETE,
+    XFER_FILELIST,
     XFER_CONTROL,
     NUM_XFER_CMDS
 } xfer_t;

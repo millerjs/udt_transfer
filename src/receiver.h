@@ -26,8 +26,11 @@ and limitations under the License.
 
 int receive_files(char*base_path);
 
-// have to call this to initialize the callbacks and such
-
+// initializes everything needed to receive
 void init_receiver();
+
+// cleanup everything for receiver
+void cleanup_receiver();
+
 
 #endif
