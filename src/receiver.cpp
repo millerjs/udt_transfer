@@ -342,6 +342,8 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 {
     file_LL*    fileList;
     
+    verb(VERB_2, "pst_rec_callback_filelist: received list data of size %d", header.data_len);
+    
 //    fileList = (file_LL*)malloc(header.data_len);
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
     
@@ -349,9 +351,10 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     fileList = unpack_filelist(tmp_file_list, header.data_len);
     free(tmp_file_list);
 
-    verb(VERB_2, "pst_rec_callback_filelist: list of size %d received", fileList->count);
+    verb(VERB_2, "pst_rec_callback_filelist: list of %d elements received", fileList->count);
     
     // repopulate the list with our timestamps
+    
     
     // return the list
     // get size of list and such

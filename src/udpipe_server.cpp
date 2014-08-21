@@ -37,22 +37,26 @@ void* senddata(void*);
 
 int buffer_size;
 
-void *run_server(void *_args_){
-
+void *run_server(void *_args_) 
+{
     thread_args * args = (thread_args*) _args_;
 
-    if (args->verbose)
-	fprintf(stderr, "[server] Running server...\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Running server...\n");
+    }
 
+    // initial setup
     char *port = args->port;
-
     int blast = args->blast;
     int udt_buff = args->udt_buff;
     int udp_buff = args->udp_buff; // 67108864;
     int mss = args->mss;
 
-    if (args->verbose)
-	fprintf(stderr, "[server] Starting UDT...\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Starting UDT...\n");
+    }
+
+    // start UDT
     UDT::startup();
 
     addrinfo hints;
@@ -62,101 +66,103 @@ void *run_server(void *_args_){
     // switch to turn on ip specification or not
     int specify_ip = !(args->listen_ip == NULL);
 
-    if (args->verbose)
-	fprintf(stderr, "Listening on specific ip: %s\n", args->listen_ip);
-
+    if (args->verbose) {
+        fprintf(stderr, "Listening on specific ip: %s\n", args->listen_ip);
+    }
+    
     // char* ip;
 
     // if (specify_ip)
     // 	ip = strdup(args->listen_ip);
 
-    if (specify_ip){
-	my_addr.sin_family = AF_INET;     
-	my_addr.sin_port = htons(atoi(port)); 
-	my_addr.sin_addr.s_addr = inet_addr(args->listen_ip);
+    if (specify_ip) {
+        my_addr.sin_family = AF_INET;     
+        my_addr.sin_port = htons(atoi(port)); 
+        my_addr.sin_addr.s_addr = inet_addr(args->listen_ip);
 
-	bzero(&(my_addr.sin_zero), 8);    
+        bzero(&(my_addr.sin_zero), 8);    
     } else {
-	memset(&hints, 0, sizeof(struct addrinfo));
+        memset(&hints, 0, sizeof(struct addrinfo));
+    
+        hints.ai_flags = AI_PASSIVE;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
 
-	hints.ai_flags = AI_PASSIVE;
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
+        string service(port);
 
-	string service(port);
-
-	if (0 != getaddrinfo(NULL, service.c_str(), &hints, &res)) {
-	    cerr << "illegal port number or port is busy.\n" << endl;
-	    return NULL;
-	}
+        if (0 != getaddrinfo(NULL, service.c_str(), &hints, &res)) {
+            cerr << "illegal port number or port is busy.\n" << endl;
+            return NULL;
+        }
     }
 
     buffer_size = udt_buff;
 
-    if (args->verbose)
-	fprintf(stderr, "[server] Creating socket...\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Creating socket...\n");
+    }
 
     UDTSOCKET serv;
     if (specify_ip){
-	serv = UDT::socket(AF_INET, SOCK_STREAM, 0);
+        serv = UDT::socket(AF_INET, SOCK_STREAM, 0);
     } else { 
-	serv = UDT::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        serv = UDT::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     }
 
     // UDT Options
-    if (blast)
-	UDT::setsockopt(serv, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
-
+    if (blast) {
+        UDT::setsockopt(serv, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
+    }
+    
     UDT::setsockopt(serv, 0, UDT_MSS, &mss, sizeof(int));
     UDT::setsockopt(serv, 0, UDT_RCVBUF, &udt_buff, sizeof(int));
     UDT::setsockopt(serv, 0, UDP_RCVBUF, &udp_buff, sizeof(int));
 
     // printf("Binding to %s\n", inet_ntoa(sin.sin_addr));
     
-    if (args->verbose)
+    if (args->verbose) {
     	fprintf(stderr, "[server] Binding socket...\n");
-
+    }
+    
     int r;
 
-    if (specify_ip){ 
-	r = UDT::bind(serv, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
+    if (specify_ip) { 
+        r = UDT::bind(serv, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
     } else {
-	r = UDT::bind(serv, res->ai_addr, res->ai_addrlen);
+        r = UDT::bind(serv, res->ai_addr, res->ai_addrlen);
     }
 
-    if (UDT::ERROR == r){
+    if (UDT::ERROR == r) {
     	cerr << "bind: " << UDT::getlasterror().getErrorMessage() << endl;
     	return NULL;
     }
 
 
-    if (UDT::ERROR == UDT::listen(serv, 10)){
-	cerr << "listen: " << UDT::getlasterror().getErrorMessage() << endl;
-	return NULL;
+    if (UDT::ERROR == UDT::listen(serv, 10)) {
+        cerr << "listen: " << UDT::getlasterror().getErrorMessage() << endl;
+        return NULL;
     }
-
-
 
     sockaddr_storage clientaddr;
     int addrlen = sizeof(clientaddr);
-
     
     UDTSOCKET recver;
     pthread_t rcvthread, sndthread;
 
-
-    if (args->verbose)
-	fprintf(stderr, "[server] Listening for client...\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Listening for client...\n");
+    }
 
     if (UDT::INVALID_SOCK == (recver = UDT::accept(serv,
 						   (sockaddr*)&clientaddr, &addrlen))) {
 
-	cerr << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
-	return NULL;
+        cerr << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
+        return NULL;
     }
 
-    if (args->verbose)
-	fprintf(stderr, "[server] New client connection...\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] New client connection...\n");
+    }
 
     char clienthost[NI_MAXHOST];
     char clientservice[NI_MAXSERV];
@@ -165,8 +171,9 @@ void *run_server(void *_args_){
 		NI_NUMERICHOST|NI_NUMERICSERV);
 
 
-    if (args->verbose)
-	fprintf(stderr, "[server] Creating receive thread...\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Creating receive thread...\n");
+    }
 
     rs_args rcvargs;
     rcvargs.usocket = new UDTSOCKET(recver);
@@ -188,8 +195,9 @@ void *run_server(void *_args_){
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
 
-    if (args->verbose)
-	fprintf(stderr, "[server] Creating send thread.\n");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Creating send thread.\n");
+    }
 
     rs_args send_args;
     send_args.usocket = new UDTSOCKET(recver);
@@ -209,8 +217,8 @@ void *run_server(void *_args_){
     }
 
     if (args->print_speed){
-	pthread_t mon_thread;
-	pthread_create(&mon_thread, NULL, monitor, &recver);
+        pthread_t mon_thread;
+        pthread_create(&mon_thread, NULL, monitor, &recver);
     }
 
     pthread_create(&sndthread, NULL, senddata, &send_args);

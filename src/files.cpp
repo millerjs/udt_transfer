@@ -647,17 +647,13 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 int get_filelist_size(file_LL *fileList)
 {
     int total_size = 0;
-    verb(VERB_2, "get_filelist_size: walking");
     
     if ( fileList != NULL ) {
-        verb(VERB_2, "get_filelist_size: setting head");
         file_node_t* cursor = fileList->head;
         int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
         
-        verb(VERB_2, "get_filelist_size: calculating size");
         while ( cursor != NULL ) {
             total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root) + 3);  // 3 is for 3 null terminators of strings
-            verb(VERB_2, "get_filelist_size: setting next");
             cursor = cursor->next;
         }
     }
@@ -666,9 +662,42 @@ int get_filelist_size(file_LL *fileList)
     
 }
 
+#define TMP_STR_SIZE 33
+#define TMP_DEBUG_LINE_SIZE 16
+
+void debug_print(char* data, int length)
+{
+    char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
+    int i;
+    
+    while (length > 0 ) {
+        memset(asciiStr, '\0', TMP_STR_SIZE);
+        memset(hexStr, '\0', TMP_STR_SIZE);
+        memset(tmpChar, '\0', 8);
+        
+        for (i = 0; i < TMP_DEBUG_LINE_SIZE; i++ ) {
+//            sprintf(&hexStr[i*2], "%02X", data++);
+            sprintf(tmpChar, " %c", data[i]);
+            strcat(asciiStr, tmpChar);
+            sprintf(tmpChar, "%02X ", (unsigned char)data[i]);
+            strcat(hexStr, tmpChar);
+            length--;
+            
+            if ( length == 0 ) {
+                break;
+            }
+        }
+        data += TMP_DEBUG_LINE_SIZE;
+        verb(VERB_2, "%s *** %s", hexStr, asciiStr);
+    }    
+    
+}
+
 
 char* pack_filelist(file_LL* fileList, int total_size)
 {
+    verb(VERB_2, "pack_filelist: total_size = %d", total_size);
+
     // malloc the space to make everything continuous
     char* packed_data = (char*)malloc(sizeof(char) * total_size);
     char* packed_data_ptr = packed_data;
@@ -681,30 +710,39 @@ char* pack_filelist(file_LL* fileList, int total_size)
             // copy over the static data
             memcpy(packed_data_ptr, cursor->curr, static_file_size);
             packed_data_ptr += static_file_size;
-            strncpy(packed_data_ptr, cursor->curr->filetype, strlen(cursor->curr->filetype) + 1);
-            packed_data_ptr += strlen(cursor->curr->filetype);
-            strncpy(packed_data_ptr, cursor->curr->path, strlen(cursor->curr->path) + 1);
-            packed_data_ptr += strlen(cursor->curr->path);
-            strncpy(packed_data_ptr, cursor->curr->root, strlen(cursor->curr->root) + 1);
-            packed_data_ptr += strlen(cursor->curr->root);
+//            strncpy(packed_data_ptr, cursor->curr->filetype, strlen(cursor->curr->filetype) + 1);
+            strcpy(packed_data_ptr, cursor->curr->filetype);
+            packed_data_ptr += strlen(cursor->curr->filetype) + 1;
+//            strncpy(packed_data_ptr, cursor->curr->path, strlen(cursor->curr->path) + 1);
+            strcpy(packed_data_ptr, cursor->curr->path);
+            packed_data_ptr += strlen(cursor->curr->path) + 1;
+//            strncpy(packed_data_ptr, cursor->curr->root, strlen(cursor->curr->root) + 1);
+            strcpy(packed_data_ptr, cursor->curr->root);
+            packed_data_ptr += strlen(cursor->curr->root) + 1;
             cursor = cursor->next;
         }
 
     }
 
+//    debug_print(packed_data, total_size);
     return packed_data;
 }
+
 
 // NOTE: we may have some 32/64 bit issues here, so they might
 // need to be addressed at some point
 file_LL* unpack_filelist(char* fileList_data, int data_length)
 {
+    verb(VERB_2, "unpack_filelist: walking, data length = %d", data_length);
+    
     file_LL* file_list = (file_LL*)malloc(sizeof(file_LL));
     file_list->head = NULL;
     file_list->tail = NULL;
     file_list->count = 0;
     int tmp_len;
  
+//    debug_print(fileList_data, data_length);
+    
     // unpack each entry
     while ( data_length ) {
         file_node_t *file_node = (file_node_t*)malloc(sizeof(file_node_t));
@@ -756,8 +794,9 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
         tmp_len = strlen(fileList_data) + 1;
         fileList_data += tmp_len;
         data_length -= tmp_len;
-        
+         
         // add data to list
+        verb(VERB_2, "unpack_filelist: file = %s, mtime_sec = %d", file->path, file->mtime_sec);
         
         // if we're first, just make it head & tail
         if ( file_list->head == NULL ) {
@@ -769,6 +808,12 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
             file_list->tail = file_node;
         }
         file_list->count++;
+        if ( data_length >= 0 ) {
+            verb(VERB_2, "unpack_filelist: data_length = %d", data_length);
+        } else {
+            exit(0);
+        }
+        
     }    
 
     return file_list;

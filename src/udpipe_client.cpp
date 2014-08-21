@@ -47,9 +47,11 @@ void *run_client(void *_args_)
 
     thread_args *args = (thread_args*) _args_;
 
-    if (args->verbose)
-	fprintf(stderr, "[client] Running client...\n");
-
+    if (args->verbose) {
+        fprintf(stderr, "[client] Running client...\n");
+    }
+    
+    // initial setup
     char *ip = args->ip; 
     char *port = args->port;
     int blast = args->blast;
@@ -58,11 +60,14 @@ void *run_client(void *_args_)
     int udp_buff = args->udp_buff; // 67108864;
     int mss = args->mss;
 
-    if (args->verbose)
-	fprintf(stderr, "Starting UDT...\n");
-
+    if (args->verbose) {
+        fprintf(stderr, "Starting UDT...\n");
+    }
+    
+    // start UDT
     UDT::startup();
 
+    // get the connection info for the requested port
     struct addrinfo hints, *local, *peer;
 
     memset(&hints, 0, sizeof(struct addrinfo));
@@ -71,63 +76,70 @@ void *run_client(void *_args_)
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    if (0 != getaddrinfo(NULL, port, &hints, &local)){
-	cerr << "incorrect network address.\n" << endl;
-	return NULL;
+    if (0 != getaddrinfo(NULL, port, &hints, &local)) {
+        cerr << "incorrect network address.\n" << endl;
+        return NULL;
     }
     
 
-    if (args->verbose)
-	fprintf(stderr, "[client] Creating socket...\n");
-
+    if (args->verbose) {
+        fprintf(stderr, "[client] Creating socket...\n");
+    }
     
+    // create the UDT socket
     UDTSOCKET client;
     bool NOT_CONNECTED = true;
     int connectionAttempts = 0;
     const int MAX_CONNECTION_ATTEMPTS = 25;
 
-    while (NOT_CONNECTED && connectionAttempts < MAX_CONNECTION_ATTEMPTS){
+    while (NOT_CONNECTED && connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
 
-	client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
+        client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
 
-	// UDT Options
-	if (blast)
-	    UDT::setsockopt(client, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
-	
-	UDT::setsockopt(client, 0, UDT_MSS, &mss, sizeof(int));
-	UDT::setsockopt(client, 0, UDT_SNDBUF, &udt_buff, sizeof(int));
-	UDT::setsockopt(client, 0, UDP_SNDBUF, &udp_buff, sizeof(int));
+        // UDT Options
+        if (blast)
+            UDT::setsockopt(client, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
+        
+        UDT::setsockopt(client, 0, UDT_MSS, &mss, sizeof(int));
+        UDT::setsockopt(client, 0, UDT_SNDBUF, &udt_buff, sizeof(int));
+        UDT::setsockopt(client, 0, UDP_SNDBUF, &udp_buff, sizeof(int));
 
-	// freeaddrinfo(local);
+        // freeaddrinfo(local);
 
-	if (0 != getaddrinfo(ip, port, &hints, &peer)) {
-	    cerr << "incorrect server/peer address. " << ip << ":" << port << endl;
-	    return NULL;
-	}
+        if (0 != getaddrinfo(ip, port, &hints, &peer)) {
+            cerr << "incorrect server/peer address. " << ip << ":" << port << endl;
+            return NULL;
+        }
 
-	if (args->verbose)
-	    fprintf(stderr, "[client] Connecting to server...\n");
-    
-	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
-	
-	    // cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
-	    if (args->verbose)
-		cerr << "connect: " << UDT::getlasterror().getErrorMessage() << endl;
+        if (args->verbose) {
+            fprintf(stderr, "[client] Connecting to server...\n");
+        }
+        
+        if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
+        
+            // cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
+            if (args->verbose) {
+                cerr << "connect: " << UDT::getlasterror().getErrorMessage() << endl;
+            }
 
-	    if (UDT::getlasterror().getErrorCode() != ENOSERVER)
-		return NULL;
-	    else
-		connectionAttempts ++;
-	    
-	} else {
-	    NOT_CONNECTED = false;
-	}
+            if (UDT::getlasterror().getErrorCode() != ENOSERVER) {
+                return NULL;
+            } else {
+                connectionAttempts ++;
+            }
+            
+        } else {
+            NOT_CONNECTED = false;
+        }
 
     }
 
-    if (args->verbose)
-	fprintf(stderr, "[client] Creating receive thread...\n");
-
+    if (args->verbose) {
+        fprintf(stderr, "[client] Creating receive thread...\n");
+    }
+    
+    
+    // set the socket up and send to the receive thread
     pthread_t rcvthread, sndthread;
     rs_args rcvargs;
     rcvargs.usocket = new UDTSOCKET(client);
@@ -148,9 +160,11 @@ void *run_client(void *_args_)
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
 
-    if (args->verbose)
-	fprintf(stderr, "[client] Creating send thread...\n");
-
+    if (args->verbose) {
+        fprintf(stderr, "[client] Creating send thread...\n");
+    }
+    
+    // same thing, but with the send thread
     rs_args send_args;
     send_args.usocket = new UDTSOCKET(client);
     send_args.use_crypto = args->use_crypto;
@@ -171,17 +185,16 @@ void *run_client(void *_args_)
     // freeaddrinfo(peer);
 
     if (blast) {
-	CUDPBlast* cchandle = NULL;
-	int temp;
-	UDT::getsockopt(client, 0, UDT_CC, &cchandle, &temp);
+        CUDPBlast* cchandle = NULL;
+        int temp;
+        UDT::getsockopt(client, 0, UDT_CC, &cchandle, &temp);
 	if (NULL != cchandle)
 	    cchandle->setRate(blast_rate);
     }
 
-    if (args->print_speed){
-	pthread_t mon_thread;
-	pthread_create(&mon_thread, NULL, monitor, &client);
-	
+    if (args->print_speed) {
+        pthread_t mon_thread;
+        pthread_create(&mon_thread, NULL, monitor, &client);
     }
 
     pthread_create(&sndthread, NULL, senddata, &send_args);

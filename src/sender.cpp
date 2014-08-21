@@ -259,9 +259,9 @@ int send_file(file_object_t *file)
 int send_filelist(file_LL* fileList, int totalSize)
 {
     header_t header;
+    verb(VERB_2, "send_filelist: sending file list of size %d", totalSize);
 //    totalSize = get_filelist_size(fileList);
     header = nheader(XFER_FILELIST, totalSize);
-    verb(VERB_2, "send_filelist: sending");
     
     if ( sender_block.data != NULL ) {
         char* tmp_file_list = pack_filelist(fileList, header.data_len);
@@ -273,6 +273,7 @@ int send_filelist(file_LL* fileList, int totalSize)
         ERR("send_filelist: unable to copy to sender_block.data, value NULL");        
     }
     
+    verb(VERB_2, "send_filelist: complete");
     return RET_SUCCESS;
     
 }
@@ -280,6 +281,7 @@ int send_filelist(file_LL* fileList, int totalSize)
 
 int send_and_wait_for_filelist(file_LL* fileList)
 {
+    verb(VERB_2, "send_and_wait_for_filelist: enter");
     header_t header;
     int totalSize = get_filelist_size(fileList);
 
@@ -292,20 +294,34 @@ int send_and_wait_for_filelist(file_LL* fileList)
     
     send_filelist(fileList, totalSize);
     
+    int tmpCounter = 0;
+    
+    verb(VERB_2, "Waiting for filelist");
     // Read in headers and data until signalled completion
     while ( !global_send_data.complete ) {
+        verb(VERB_2, "While loop");
 
         if (global_send_data.read_new_header) {
+            verb(VERB_2, "Read new header");
             if ((global_send_data.rs = read_header(&header)) <= 0) {
                 ERR("Bad header read");
             }
+        } else {
+            verb(VERB_2, "Instructed to not read new header");
         }
         
         if (global_send_data.rs) {
             verb(VERB_2, "Dispatching message to sender: %d", header.type);
             dispatch_message(send_postmaster, header, &global_send_data);
         }
+        
+        if ( !(tmpCounter % 1000) ) {
+            verb(VERB_2, "Waiting for filelist to return");
+        }
+        tmpCounter++;
+        
     }
+    verb(VERB_2, "Freeing memory and heading out");
 
     // free up the memory on the way out
     free(global_send_data.data);
@@ -324,9 +340,8 @@ int handle_files(file_LL* fileList)
 //    allocate_block(&block);
     file_node_t* cursor = fileList->head;
     
-    
     // Send each file or directory
-    while (fileList) {
+    while (cursor) {
 
         file_object_t *file = cursor->curr;
 
@@ -399,7 +414,8 @@ int handle_files(file_LL* fileList)
 
         }
 
-        log_completed_file(file);
+//  verb(VERB_2, "handle_files: next file address %x", cursor->next);
+    log_completed_file(file);
         cursor = cursor->next;
 
     }
