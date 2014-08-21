@@ -40,6 +40,7 @@ and limitations under the License.
 #include <inttypes.h>
 
 #include "files.h"
+#include "crypto.h"
 
 /* The buffer len is calculated as the optimal udt block - block
    header len = 67108864 - 16 */
@@ -148,6 +149,10 @@ typedef struct parcel_opt_t{
 
     int remote_to_local; 
     int encryption;
+    int n_crypto_threads;
+
+    crypto *enc;
+    crypto *dec;
 
     char restart_path[MAX_PATH_LEN];
 

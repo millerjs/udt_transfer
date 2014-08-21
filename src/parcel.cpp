@@ -382,7 +382,10 @@ int run_ssh_command(char *remote_path)
     if (remote_args.ssh_pid == 0) {
 
         char remote_pipe_cmd[MAX_PATH_LEN];     
+        char cmd_options[MAX_PATH_LEN];     
         bzero(remote_pipe_cmd, MAX_PATH_LEN);
+
+        bzero(cmd_options, MAX_PATH_LEN);
 
 	// Redirect output from ssh process to ssh_fd
 	char *args[] = {
@@ -393,19 +396,27 @@ int run_ssh_command(char *remote_path)
 	    NULL
 	};
 
+        sprintf(remote_pipe_cmd, "%s ", remote_args.udpipe_location);
+
+        if (opts.encryption){
+            strcat(remote_pipe_cmd, " -n ");
+            char n_crypto_threads[MAX_PATH_LEN];     
+            sprintf(n_crypto_threads, "--crypto-threads %d ", opts.n_crypto_threads);
+            strcat(remote_pipe_cmd, n_crypto_threads);
+        }
+
+
         if (opts.mode == MODE_SEND){
 
 	    ERR_IF(opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
             if (remote_args.remote_ip){
-                sprintf(remote_pipe_cmd, "%s --interface %s -xt -p %s %s", 
-                        remote_args.udpipe_location,
+                sprintf(cmd_options, "--interface %s -xt -p %s %s ", 
                         remote_args.remote_ip,
                         remote_args.pipe_port, 
                         remote_args.remote_path);
             } else {
-                sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
-                        remote_args.udpipe_location,
+                sprintf(cmd_options, "-xt -p %s %s ", 
                         remote_args.pipe_port, 
                         remote_args.remote_path);
             }
@@ -414,13 +425,14 @@ int run_ssh_command(char *remote_path)
 
 	    ERR_IF(!opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
 
-            sprintf(remote_pipe_cmd, "%s -x -q %s -p %s %s", 
-                    remote_args.udpipe_location,
+            sprintf(cmd_options, "-x -q %s -p %s %s ", 
                     remote_args.pipe_host,
                     remote_args.pipe_port, 
                     remote_args.remote_path);
 
         }
+
+        strcat(remote_pipe_cmd, cmd_options);
 
 	verb(VERB_2, "ssh command: ");
 	for (int i = 0; args[i]; i++)
@@ -466,6 +478,9 @@ void initialize_udpipe_args(thread_args *args)
     args->ip               = NULL;
     args->listen_ip        = NULL;
     args->port             = NULL;
+
+    args->enc              = NULL;
+    args->dec              = NULL;
 
     args->udt_buff         = BUFF_SIZE;
     args->udp_buff         = BUFF_SIZE;
@@ -575,6 +590,9 @@ int set_defaults()
 
     opts.socket_ready           = 0;
     opts.encryption             = 0;
+    opts.n_crypto_threads       = 1;
+    opts.enc = NULL;
+    opts.dec = NULL;
 
     opts.send_pipe              = NULL;
     opts.recv_pipe              = NULL;
@@ -612,6 +630,7 @@ int get_options(int argc, char *argv[])
         {"verbosity"            , required_argument     , NULL                      , '6'},
         {"interface"            , required_argument     , NULL                      , '7'},
         {"remote-interface"     , required_argument     , NULL                      , '8'},
+        {"crypto-threads"       , required_argument     , NULL                      , '2'},
         {"restart"              , required_argument     , NULL                      , 'r'},
         {"checkpoint"           , required_argument     , NULL                      , 'k'},
         {0, 0, 0, 0}
@@ -619,7 +638,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:7:8:", 
+    while ((opt = getopt_long(argc, argv, "i:xl:thvc:k:r:nd:5:p:q:7:8:2:6:", 
                               long_options, &option_index)) != -1) {
         switch (opt) {
             case 'k':
@@ -631,7 +650,12 @@ int get_options(int argc, char *argv[])
                 break;
 
             case 'n':
-                ERR_IF(sscanf(optarg, "%d", &opts.encryption) != 1, "unable to parse encryption threads from -n flag");
+                opts.encryption = 1;
+                break;
+
+            case '2':
+                ERR_IF(sscanf(optarg, "%d", &opts.n_crypto_threads) != 1, "unable to parse encryption threads from -n flag");
+                fprintf(stderr, "n_crypto_threads: %d\n", opts.n_crypto_threads);
                 break;
 
             case 'q':
@@ -642,6 +666,10 @@ int get_options(int argc, char *argv[])
 
             case '5':
                 ERR_IF(sscanf(optarg, "%d", &opts.timeout) != 1, "unable to parse timeout --timeout flag");
+                break;
+
+            case 'verbosity':
+                ERR_IF(sscanf(optarg, "%d", &opts.verbosity) != 1, "unable to parse timeout --verbosity flag");
                 break;
 
             case 'r':
@@ -686,10 +714,6 @@ int get_options(int argc, char *argv[])
                 // in the case of slow ssh initiation, delay binding to
                 // remote by optarg seconds
                 opts.delay = atoi(optarg);
-                break;
-
-            case '0':
-                
                 break;
 
             case 'v':
@@ -795,6 +819,11 @@ pthread_t *start_udpipe_server(remote_arg_t *remote_args)
     args->verbose          = (opts.verbosity > VERB_1);
     args->listen_ip        = remote_args->local_ip;
 
+    args->use_crypto       = opts.encryption;
+    args->n_crypto_threads = opts.n_crypto_threads;
+    args->enc = opts.enc;
+    args->dec = opts.dec;
+
     pthread_t *server_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(server_thread, NULL, &run_server, args);
     
@@ -823,7 +852,12 @@ pthread_t *start_udpipe_client(remote_arg_t *remote_args)
     args->send_pipe        = opts.send_pipe;
     args->timeout          = opts.timeout;
     args->verbose          = (opts.verbosity > VERB_1);
-    args->listen_ip      = remote_args->local_ip;
+    args->listen_ip        = remote_args->local_ip;
+    
+    args->use_crypto       = opts.encryption;
+    args->n_crypto_threads = opts.n_crypto_threads;
+    args->enc              = opts.enc;
+    args->dec              = opts.dec;
 
     pthread_t *client_thread = (pthread_t*) malloc(sizeof(pthread_t));
     pthread_create(client_thread, NULL, &run_client, args);
@@ -1039,11 +1073,19 @@ int local_to_remote(int argc, char*argv[], int optind)
 int main(int argc, char *argv[])
 {
     // specify how to catch signals
-    set_handlers();
+    // set_handlers();
     // set structs opts and remote_args to their default values
     set_defaults();
     // parse user command line input and get the remaining argument index
     optind = get_options(argc, argv);
+
+    if (opts.encryption){
+        char* cipher = (char*) "aes-128";
+        crypto enc(EVP_ENCRYPT, PASSPHRASE_SIZE, (unsigned char*)"password", cipher, opts.n_crypto_threads);
+        crypto dec(EVP_DECRYPT, PASSPHRASE_SIZE, (unsigned char*)"password", cipher, opts.n_crypto_threads);
+        opts.enc = &enc;
+        opts.dec = &dec;
+    }
 
     get_remote_host(argc, argv);
     initialize_pipes();
