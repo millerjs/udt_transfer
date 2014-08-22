@@ -757,6 +757,19 @@ int initialize_pipes()
 }
 
 
+void cleanup_pipes()
+{
+    if ( opts.send_pipe != NULL ) {
+        free(opts.send_pipe);
+    }
+    
+    if ( opts.recv_pipe != NULL ) {
+        free(opts.recv_pipe);
+    }
+    
+}
+
+
 pthread_t *start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_type)
 {
     thread_args *args = (thread_args*) malloc(sizeof(thread_args));
@@ -1026,6 +1039,7 @@ void init_parcel(int argc, char *argv[])
     optind = get_options(argc, argv);
 
     get_remote_host(argc, argv);
+    
     initialize_pipes();
     init_sender();
     init_receiver();
@@ -1038,6 +1052,9 @@ void cleanup_parcel()
     
     cleanup_receiver();    
     cleanup_sender();
+    cleanup_pipes();
+    
+    // 
     
 }
 
@@ -1057,7 +1074,7 @@ int main(int argc, char *argv[])
 
     print_xfer_stats();    
     
-
+    cleanup_parcel();
     
     return RET_SUCCESS;
 }

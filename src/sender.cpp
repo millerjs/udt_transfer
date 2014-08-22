@@ -44,6 +44,7 @@ int allocate_block(parcel_block *block)
 
     if ( block->buffer == NULL ) {
         block->buffer = (char*) malloc(alloc_len*sizeof(char));
+        memset(block->buffer, 0, alloc_len*sizeof(char));
     }
     
     if (!block->buffer) {

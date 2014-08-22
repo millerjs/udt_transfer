@@ -355,6 +355,8 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     struct stat     temp_stat_buffer;
     char*           cur_directory = NULL;
     
+    memset(&temp_stat_buffer, 0, sizeof(struct stat));
+    
     verb(VERB_3, "pst_rec_callback_filelist: received list data of size %d", header.data_len);
     
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
@@ -381,6 +383,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
         // remove the root directory from the destination path
         char destination[MAX_PATH_LEN];
         int root_len = strlen(cursor->curr->root);
+        memset(destination, 0, MAX_PATH_LEN);
         
         if (!root_len || strncmp(cursor->curr->path, cursor->curr->root, root_len)) {
             sprintf(destination, "%s", cursor->curr->path);
