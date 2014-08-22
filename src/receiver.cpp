@@ -83,7 +83,7 @@ int receive_files(char*base_path)
         }
         
         if (global_receive_data.rs) {
-//            verb(VERB_2, "Dispatching message: %d", header.type);
+            verb(VERB_3, "Dispatching message: %d", header.type);
             dispatch_message(receive_postmaster, header, &global_receive_data);
         }
     }
@@ -145,12 +145,12 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
     // hang on to mtime data until we're done
     global_data->mtime_sec = header.mtime_sec;
     global_data->mtime_nsec = header.mtime_nsec;
-    verb(VERB_2, "Header mtime: %d, mtime_nsec: %ld\n", global_data->mtime_sec, global_data->mtime_nsec);
+    verb(VERB_3, "Header mtime: %d, mtime_nsec: %ld\n", global_data->mtime_sec, global_data->mtime_nsec);
     
     // Read filename from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
-    verb(VERB_2, "Initializing file receive: %s\n", global_data->data_path + global_data->bl);
+    verb(VERB_3, "Initializing file receive: %s\n", global_data->data_path + global_data->bl);
 
 
     global_data->fout = open(global_data->data_path, f_mode, f_perm);
@@ -337,39 +337,92 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
     return 0;
 }
 
+//
+// pst_rec_callback_filelist
+//
+// routine to handle XFER_FILELIST message
+//
+// fly - Ok, a few possible ways to handle this. One is dumb: walk the list and only
+// change the file timestamps if we have them. That makes for a double send and a longer
+// walk/compare on the other end.  Second is to create a new list that only has the 
+// files that are already present, but that presents an issue with needing a case for 
+// an empty list. For now, trying dumb, but if we have really long lists, the second  
+// case may be a necessity.
 
 int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 {
-    file_LL*    fileList;
+    file_LL*        fileList;
+    struct stat     temp_stat_buffer;
+    char*           cur_directory = NULL;
     
-    verb(VERB_2, "pst_rec_callback_filelist: received list data of size %d", header.data_len);
+    verb(VERB_3, "pst_rec_callback_filelist: received list data of size %d", header.data_len);
     
-//    fileList = (file_LL*)malloc(header.data_len);
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
     
     read_data(tmp_file_list, header.data_len);
     fileList = unpack_filelist(tmp_file_list, header.data_len);
     free(tmp_file_list);
+    
+    // repopulate the list with our timestamps, if any
+    
+    verb(VERB_3, "pst_rec_callback_filelist: %d elements, need to check %s for these", fileList->count, global_data->data_path);
 
-    verb(VERB_2, "pst_rec_callback_filelist: list of %d elements received", fileList->count);
-    
-    // repopulate the list with our timestamps
-    
+    // if the directory exists, change to it
+    // if it doesn't, the stat checks below will fail, and we'll get all zeroes
+    if ( !stat(global_data->data_path, &temp_stat_buffer) ) {
+        verb(VERB_3, "pst_rec_callback_filelist:chdir to %s", global_data->data_path);
+        cur_directory = get_current_dir_name();
+        chdir(global_data->data_path);
+    }
+
+    // now, walk the list
+    file_node_t* cursor = fileList->head;
+    while ( cursor != NULL ) {
+        // remove the root directory from the destination path
+        char destination[MAX_PATH_LEN];
+        int root_len = strlen(cursor->curr->root);
+        
+        if (!root_len || strncmp(cursor->curr->path, cursor->curr->root, root_len)) {
+            sprintf(destination, "%s", cursor->curr->path);
+
+        } else {
+            memcpy(destination, cursor->curr->path + root_len + 1, strlen(cursor->curr->path) - root_len);
+        }
+        
+        // check if file exists
+        if ( !stat(destination, &temp_stat_buffer) ) {
+            verb(VERB_3, "pst_rec_callback_filelist: file %s present", destination);
+            // if it's there, change the timestamp
+            verb(VERB_3, "pst_rec_callback_filelist: mtime = %d, mtime_nsec = %lu", temp_stat_buffer.st_mtime, temp_stat_buffer.st_mtim.tv_nsec);
+            cursor->curr->mtime_sec = temp_stat_buffer.st_mtime;
+            cursor->curr->mtime_nsec = temp_stat_buffer.st_mtim.tv_nsec;
+        } else {
+            verb(VERB_3, "pst_rec_callback_filelist: file %s not found", cursor->curr->path);
+            // if not, zero it out
+            cursor->curr->mtime_sec = 0;
+            cursor->curr->mtime_nsec = 0;
+        }
+        cursor = cursor->next;
+    }
     
     // return the list
     // get size of list and such
     int totalSize = get_filelist_size(fileList);
-    
 
     while (!opts.socket_ready) {
         usleep(10000);
     }
 
-    int alloc_len = BUFFER_LEN - sizeof(header_t);
-    global_data->data = (char*) malloc( alloc_len * sizeof(char));
-    
-    verb(VERB_2, "pst_rec_callback_filelist: sending back");
+    verb(VERB_3, "pst_rec_callback_filelist: sending back");
     send_filelist(fileList, totalSize);    
+
+    // change directory back
+    if ( cur_directory ) {
+        chdir(cur_directory);        
+    }
+    
+    // free the file list
+    free_file_list(fileList);
     
     return 0;
 }

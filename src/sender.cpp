@@ -273,17 +273,14 @@ int send_filelist(file_LL* fileList, int totalSize)
         ERR("send_filelist: unable to copy to sender_block.data, value NULL");        
     }
     
-    verb(VERB_2, "send_filelist: complete");
     return RET_SUCCESS;
-    
 }
 
 
-int send_and_wait_for_filelist(file_LL* fileList)
+file_LL* send_and_wait_for_filelist(file_LL* fileList)
 {
-    verb(VERB_2, "send_and_wait_for_filelist: enter");
     header_t header;
-    int totalSize = get_filelist_size(fileList);
+    int total_size = get_filelist_size(fileList);
 
     while (!opts.socket_ready) {
         usleep(10000);
@@ -292,141 +289,137 @@ int send_and_wait_for_filelist(file_LL* fileList)
     int alloc_len = BUFFER_LEN - sizeof(header_t);
     global_send_data.data = (char*) malloc( alloc_len * sizeof(char));
     
-    send_filelist(fileList, totalSize);
+    send_filelist(fileList, total_size);
     
-    int tmpCounter = 0;
-    
-    verb(VERB_2, "Waiting for filelist");
     // Read in headers and data until signalled completion
     while ( !global_send_data.complete ) {
-        verb(VERB_2, "While loop");
 
+        // pop the file list into the data packet so the callback can
+        // adjust it based on the list returned
+        global_send_data.user_data = (void*)fileList;
         if (global_send_data.read_new_header) {
-            verb(VERB_2, "Read new header");
             if ((global_send_data.rs = read_header(&header)) <= 0) {
                 ERR("Bad header read");
             }
-        } else {
-            verb(VERB_2, "Instructed to not read new header");
         }
         
         if (global_send_data.rs) {
-            verb(VERB_2, "Dispatching message to sender: %d", header.type);
+            verb(VERB_3, "Dispatching message to sender: %d", header.type);
             dispatch_message(send_postmaster, header, &global_send_data);
         }
         
-        if ( !(tmpCounter % 1000) ) {
-            verb(VERB_2, "Waiting for filelist to return");
-        }
-        tmpCounter++;
-        
     }
-    verb(VERB_2, "Freeing memory and heading out");
 
     // free up the memory on the way out
     free(global_send_data.data);
 
-    return 0;
-    
+    return ((file_LL*)global_send_data.user_data);
 }
 
 
 // main loop for send mode, takes a linked list of files and streams
 // them
 
-int handle_files(file_LL* fileList)
+int handle_files(file_LL* fileList, file_LL* remote_fileList)
 {
-
-//    allocate_block(&block);
-    file_node_t* cursor = fileList->head;
     
-    // Send each file or directory
-    while (cursor) {
+    if ( ((fileList != NULL) && (remote_fileList != NULL)) && (fileList->count == remote_fileList->count) ) {
+    //    allocate_block(&block);
+        file_node_t* cursor = fileList->head;
+        file_node_t* remote_cursor = remote_fileList->head;
+        
+        
+        // Send each file or directory
+        while (cursor) {
 
-        file_object_t *file = cursor->curr;
+            file_object_t *file = cursor->curr;
+            file_object_t *remote_file = remote_cursor->curr;
 
-        // While there is a directory, opts.recurse?
-        if (file->mode == S_IFDIR) {
+            // While there is a directory, opts.recurse?
+            if (file->mode == S_IFDIR) {
 
-            // Tell desination to create a directory 
-            if (opts.full_root) {
-                send_file(file);
-            }
+                // Tell desination to create a directory 
+                if (opts.full_root) {
+                    send_file(file);
+                }
+            } 
 
-            // Recursively enter directory
-/*            if (opts.recurse) {
+            // if it is a regular file, then send it
+            else if (file->mode == S_IFREG) {
 
-                verb(VERB_2, "> Entering [%s]  %s", file->filetype, file->path);
-                
-                // Get a linked list of all the files in the directory 
-                file_LL* internal_fileList = lsdir(file);
+                if (is_in_checkpoint(file)) {
+                    char*status = "completed";
+                    verb(VERB_1, "Logged: %s [%s]", file->path, status);
+                } else {
+                    if ( compare_timestamps(file, remote_file) ) {
+                        send_file(file);
+                    }
+                }
 
-                // if directory is non-empty then recurse 
-                if (internal_fileList) {
-                    handle_files(internal_fileList);
+            } 
+
+            // If the file is a character device or a named pipe, warn user
+            else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
+
+                if (opts.regular_files) {
+                    warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
+                         "To enable sending character devices, use --all-files");
+
+                } else {
+
+                    warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
+                         file->path, file->filetype, file->filetype);
+                    send_file(file);
+
                 }
             }
 
-            // If user chose not to recurse into directories
+            // if it's neither a regular file nor a directory, leave it
+            // for now, maybe send in later version
             else {
-                verb(VERB_1, " --- SKIPPING [%s]  %s", file->filetype, file->path);
-            } */
+                verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
 
-        } 
-
-        // if it is a regular file, then send it
-        else if (file->mode == S_IFREG) {
-
-            if (is_in_checkpoint(file)) {
-                char*status = "completed";
-                verb(VERB_1, "Logged: %s [%s]", file->path, status);
-            } else {
-                send_file(file);
-            }
-
-        } 
-
-        // If the file is a character device or a named pipe, warn user
-        else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
-
-            if (opts.regular_files) {
-                warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
-                     "To enable sending character devices, use --all-files");
-
-            } else {
-
-                warn("sending %s [%s].\nTo prevent sending %ss, remove the -all-files flag.",
-                     file->path, file->filetype, file->filetype);
-                send_file(file);
+                if (opts.verbosity > VERB_0) {
+                    warn("File %s is a %s", file->path, file->filetype);
+                    ERR("This filetype is not currently supported.");
+                }
 
             }
+
+            log_completed_file(file);
+            cursor = cursor->next;
+            remote_cursor = remote_cursor->next;
         }
 
-        // if it's neither a regular file nor a directory, leave it
-        // for now, maybe send in later version
-        else {
-            verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
-
-            if (opts.verbosity > VERB_0) {
-                warn("File %s is a %s", file->path, file->filetype);
-                ERR("This filetype is not currently supported.");
-            }
-
+        close_log_file();
+    } else {
+        
+        if ( (fileList == NULL) || (remote_fileList == NULL) ) {
+            ERR("Bad file list pointers passed");
+        } else {
+            ERR("Unequal file list counts: local = %d, remote = %d", fileList->count, remote_fileList->count);
         }
-
-//  verb(VERB_2, "handle_files: next file address %x", cursor->next);
-    log_completed_file(file);
-        cursor = cursor->next;
-
     }
-
-    close_log_file();
+    
     return RET_SUCCESS;
 }
 
-
+//
+// pst_snd_callback_filelist
+//
+// routine to handle XFER_FILELIST message
+//
 int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
 {
+    
+    // all we need to do is unpack data and stuff into global_data
+    char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
+    
+    read_data(tmp_file_list, header.data_len);
+    file_LL* fileList = unpack_filelist(tmp_file_list, header.data_len);
+    free(tmp_file_list);
+    
+    global_data->user_data = (void*)fileList;
     global_data->complete = 1;
     
     return 0;

@@ -41,7 +41,7 @@ typedef struct file_object_t{
     int         mode;
     int         length;
     int         mtime_sec;
-    long int    mtime_nsec;  
+    long int    mtime_nsec;
     char        *filetype;
     char        *path;
     char        *root;
@@ -55,9 +55,9 @@ typedef struct file_node_t {
 } file_node_t;
 
 struct file_LL {
-    file_node_t* head;
-    file_node_t* tail;
-    unsigned int count;
+    file_node_t*    head;
+    file_node_t*    tail;
+    unsigned int    count;
 //    file_object_t *curr;
 //    file_LL *next;
 };
@@ -138,5 +138,17 @@ char* pack_filelist(file_LL* fileList, int total_size);
 
 // Unpack sent file list byte array back into a file list struct
 file_LL* unpack_filelist(char* fileList_data, int data_length);
+
+// Free a given file object
+void free_file_object(file_object_t* file);
+
+// Free a given file list
+void free_file_list(file_LL* fileList);
+
+// Compare two file timestamps, return zero if the same, non-zero if not
+int compare_timestamps(file_object_t* file1, file_object_t* file2);
+
+// Routine to dump data in raw
+void debug_print(char* data, int length);
 
 #endif

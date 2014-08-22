@@ -797,7 +797,7 @@ int remote_to_local(int argc, char*argv[], int optind)
 
         char *base_path = NULL;
 
-        verb(VERB_2, "Starting remote_to_local receiver\n");
+        verb(VERB_3, "Starting remote_to_local receiver\n");
 
         // spawn process on remote host and let it create the server
         run_ssh_command(remote_args.remote_path);
@@ -806,7 +806,7 @@ int remote_to_local(int argc, char*argv[], int optind)
         write(opts.send_pipe[1], &pid, sizeof(pid_t));
         opts.socket_ready = 1;
 
-        verb(VERB_2, "Running with file destination mode");
+        verb(VERB_3, "Running with file destination mode");
 //        pthread_t *server_thread = start_udpipe_server(&remote_args);
         pthread_t *server_thread = start_udpipe_thread(&remote_args, UDPIPE_SERVER);
 
@@ -821,7 +821,7 @@ int remote_to_local(int argc, char*argv[], int optind)
         }
 	
         ERR_IF(!base_path, "I thought I knew where to put the files, but I really didn't.");
-        verb(VERB_2, "Writing files to: %s", base_path);
+        verb(VERB_3, "Writing files to: %s", base_path);
 
         // Listen to sender for files and data, see receiver.cpp
         receive_files(base_path);
@@ -837,7 +837,7 @@ int remote_to_local(int argc, char*argv[], int optind)
 
     } else if (opts.mode & MODE_SEND) {
 
-        verb(VERB_2, "FLAG: Starting remote_to_local sender\n");
+        verb(VERB_3, "FLAG: Starting remote_to_local sender\n");
 
         // delay proceeding for slow ssh connection
         if (opts.delay) {
@@ -856,7 +856,7 @@ int remote_to_local(int argc, char*argv[], int optind)
 
         ERR_IF(optind >= argc, "Please specify files to send");
 
-        verb(VERB_2, "Running with file source mode.\n");
+        verb(VERB_3, "Running with file source mode.\n");
                 
         int n_files = argc-optind;
         char **path_list = argv+optind;
@@ -865,12 +865,15 @@ int remote_to_local(int argc, char*argv[], int optind)
 //        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
         ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
 
-        send_and_wait_for_filelist(fileList);
-        
         // send the file list, requesting version from dest
+        file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
+        
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
-        handle_files(fileList);
+        handle_files(fileList, remote_fileList);
+        
+        // we're done, free the remote file list
+        free_file_list(remote_fileList);
 
         // signal the end of the transfer
         complete_xfer();
@@ -884,7 +887,7 @@ int remote_to_local(int argc, char*argv[], int optind)
                 fprintf(stderr, "received non-end-of-transfer message\n");
             }
         }
-        verb(VERB_2, "Received acknowledgement of completion");
+        verb(VERB_3, "Received acknowledgement of completion");
 
     }
 
@@ -901,14 +904,14 @@ int local_to_remote(int argc, char*argv[], int optind)
 
     // if user selected to restart a previous transfer
     if (opts.restart) {
-        verb(VERB_2, "Loading restart checkpoint [%s].", opts.restart_path);
+        verb(VERB_3, "Loading restart checkpoint [%s].", opts.restart_path);
         read_checkpoint(opts.restart_path);
     }
 
 
     if (opts.mode & MODE_SEND) {
 
-        verb(VERB_2, "Starting local_to_remote sender\n");
+        verb(VERB_3, "Starting local_to_remote sender\n");
         
         // spawn process on remote host and let it create the server
         run_ssh_command(remote_args.remote_path);
@@ -928,7 +931,7 @@ int local_to_remote(int argc, char*argv[], int optind)
 
         ERR_IF(optind >= argc, "Please specify files to send");
                 
-        verb(VERB_2, "Running with file source mode.\n");
+        verb(VERB_3, "Running with file source mode.\n");
                 
         int n_files = argc-optind;
         char **path_list = argv+optind;
@@ -937,26 +940,29 @@ int local_to_remote(int argc, char*argv[], int optind)
 //        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
         ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
 
-        send_and_wait_for_filelist(fileList);
+        file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
         
         // Visit all directories and send all files
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
-        handle_files(fileList);
+        handle_files(fileList, remote_fileList);
         // signal the end of the transfer
         complete_xfer();
+
+        // free the remote list
+        free_file_list(remote_fileList);
 
     // Otherwise, switch to receiving mode
     } else if (opts.mode & MODE_RCV) {
 
-        verb(VERB_2, "Starting local_to_remote receiver\n");
+        verb(VERB_3, "Starting local_to_remote receiver\n");
         
         pid_t pid = getpid();
         write(opts.send_pipe[1], &pid, sizeof(pid_t));
 
         opts.socket_ready = 1;
 
-        verb(VERB_2, "Running with file destination mode\n");
+        verb(VERB_3, "Running with file destination mode\n");
 
 //        pthread_t *server_thread = start_udpipe_server(&remote_args);
         pthread_t *server_thread = start_udpipe_thread(&remote_args, UDPIPE_SERVER);
@@ -996,6 +1002,7 @@ int local_to_remote(int argc, char*argv[], int optind)
         
     }
 
+    verb(VERB_3, "Waiting for acknowledgement of complete.\n");
     header_t h = nheader(XFER_WAIT, 0);
     while (read(opts.recv_pipe[0], &h, sizeof(header_t))) {
         if (h.type == XFER_COMPLETE) {
@@ -1004,7 +1011,7 @@ int local_to_remote(int argc, char*argv[], int optind)
             fprintf(stderr, "received non-end-of-transfer message\n");
         }
     }
-    verb(VERB_2, "Received acknowledgement of completion");
+    verb(VERB_3, "Received acknowledgement of completion");
 
     return RET_SUCCESS;
 }

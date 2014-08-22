@@ -332,7 +332,7 @@ file_object_t* new_file_object(char*path, char*root)
 
 file_LL* add_file_to_list(file_LL *fileList, char*path, char*root)
 {
-    verb(VERB_2, "add_file_to_list: path = %s, root = %s\n", path, root);
+    verb(VERB_3, "add_file_to_list: path = %s, root = %s", path, root);
 
     // make a file object out of the path
     file_object_t* new_file = new_file_object(path, root);
@@ -368,23 +368,23 @@ file_LL* build_full_filelist(int n, char *paths[])
     file_LL *fileList = NULL;
     struct stat stats;
 
-    verb(VERB_2, "build_full_filelist: %d paths\n", n);
+    verb(VERB_3, "build_full_filelist: %d paths", n);
 
     for (int i = 0; i < n ; i++) {
 
         if (paths[i]) {
-            verb(VERB_2, "build_full_filelist: trying %s\n", paths[i]);
+            verb(VERB_3, "build_full_filelist: trying %s", paths[i]);
 
             if (stat(paths[i], &stats) == -1) {
                 ERR("unable to stat file [%s], error = %d", paths[i], errno);
             }
 
             if ((stats.st_mode & S_IFMT) == S_IFDIR) {
-                verb(VERB_2, "build_full_filelist: dir found, traversing %s\n", paths[i]);
+                verb(VERB_3, "build_full_filelist: dir found, traversing %s", paths[i]);
                 fileList = add_file_to_list(fileList, paths[i], paths[i]);
                 char parent_dir[MAX_PATH_LEN];
                 get_parent_dir(parent_dir, paths[i]);
-                lsdir_to_list(fileList, paths[i], parent_dir);
+                lsdir_to_list(fileList, paths[i], paths[i]);
             } else {
                 char parent_dir[MAX_PATH_LEN];
                 get_parent_dir(parent_dir, paths[i]);
@@ -396,7 +396,7 @@ file_LL* build_full_filelist(int n, char *paths[])
         // fileList = add_file_to_list(fileList, paths[i]);
     }
 
-    verb(VERB_2, "build_full_filelist: complete, %d items in list\n", fileList->count);
+    verb(VERB_2, "build_full_filelist: complete, %d items in list", fileList->count);
     return fileList;
     
     
@@ -408,7 +408,7 @@ file_LL* build_filelist(int n, char *paths[])
     file_LL *fileList = NULL;
     struct stat stats;
 
-    verb(VERB_2, "build_filelist: %d paths\n", n);
+    verb(VERB_3, "build_filelist: %d paths\n", n);
 
     for (int i = 0; i < n ; i++) {
 
@@ -431,7 +431,7 @@ file_LL* build_filelist(int n, char *paths[])
         // fileList = add_file_to_list(fileList, paths[i]);
     }
 
-    verb(VERB_2, "build_filelist: complete\n");
+    verb(VERB_3, "build_filelist: complete\n");
     return fileList;
 }
 
@@ -442,7 +442,7 @@ void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
         warn("attemped to enter a non-directory file");
         return NULL;
     } */
-    verb(VERB_2, "lsdir_to_list: %s %s\n", dir, root);
+    verb(VERB_3, "lsdir_to_list: %s %s\n", dir, root);
 
     DIR *dirp = opendir(dir);
     struct dirent * entry;
@@ -606,7 +606,7 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime)
         retVal = errno;
         fprintf(stdout, "ERROR: Unable to set timestamp on %s, error code %d\n", filename, retVal);
     } else {
-        verb(VERB_2, "setting - mtime: %d, mtime_nsec: %ld\n", mtime, mtime_nsec);        
+        verb(VERB_3, "setting - mtime: %d, mtime_nsec: %ld\n", mtime, mtime_nsec);        
     }
     
     return retVal;
@@ -629,10 +629,10 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
         fprintf(stderr, "ERROR: Unable to stat %s, error code %d\n", filename, retVal);
     } else {
         if ( (mtime != NULL) && (mtime_nsec != NULL) ) {
-            verb(VERB_2, "stat for file: %s, mtime: %d, mtime_nsec: %ld\n", filename, tmpStat.st_mtime, tmpStat.st_mtim.tv_nsec);
+            verb(VERB_3, "stat for file: %s, mtime: %d, mtime_nsec: %ld", filename, tmpStat.st_mtime, tmpStat.st_mtim.tv_nsec);
             *mtime = tmpStat.st_mtime;
             *mtime_nsec = tmpStat.st_mtim.tv_nsec;
-            verb(VERB_2, "file: %s, mtime: %d, mtime_nsec: %ld\n", filename, *mtime, *mtime_nsec);
+            verb(VERB_3, "file: %s, mtime: %d, mtime_nsec: %ld", filename, *mtime, *mtime_nsec);
         } else {
             fprintf(stderr, "ERROR: bad pointer passed to get_mod_time\n");
         }
@@ -643,7 +643,11 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
     
 }
 
+//
+// get_filelist_size 
+//
 // Returns the size of a file list (total, in bytes)
+//
 int get_filelist_size(file_LL *fileList)
 {
     int total_size = 0;
@@ -662,9 +666,14 @@ int get_filelist_size(file_LL *fileList)
     
 }
 
+
+//
+// debug_print 
+//
+// prints a buffer of data, [length] bytes in a line
+//
 #define TMP_STR_SIZE 33
 #define TMP_DEBUG_LINE_SIZE 16
-
 void debug_print(char* data, int length)
 {
     char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
@@ -688,63 +697,83 @@ void debug_print(char* data, int length)
             }
         }
         data += TMP_DEBUG_LINE_SIZE;
-        verb(VERB_2, "%s *** %s", hexStr, asciiStr);
+        verb(VERB_3, "%s *** %s", hexStr, asciiStr);
     }    
     
 }
 
-
+//
+// pack_filelist 
+//
+// packs a file list into a byte buffer for sending along
+//
 char* pack_filelist(file_LL* fileList, int total_size)
 {
-    verb(VERB_2, "pack_filelist: total_size = %d", total_size);
+    verb(VERB_3, "pack_filelist: total_size = %d", total_size);
 
     // malloc the space to make everything continuous
     char* packed_data = (char*)malloc(sizeof(char) * total_size);
     char* packed_data_ptr = packed_data;
     
     if ( fileList != NULL ) {
-    
         file_node_t* cursor = fileList->head;
-        int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
+//        int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
         while ( cursor != NULL ) {
             // copy over the static data
-            memcpy(packed_data_ptr, cursor->curr, static_file_size);
-            packed_data_ptr += static_file_size;
-//            strncpy(packed_data_ptr, cursor->curr->filetype, strlen(cursor->curr->filetype) + 1);
+            memcpy(packed_data_ptr, &(cursor->curr->stats), sizeof(int));
+            packed_data_ptr += sizeof(struct stat);
+            
+            memcpy(packed_data_ptr, &(cursor->curr->mode), sizeof(int));
+            packed_data_ptr += sizeof(int);
+
+            memcpy(packed_data_ptr, &(cursor->curr->length), sizeof(int));
+            packed_data_ptr += sizeof(int);
+            
+            memcpy(packed_data_ptr, &(cursor->curr->mtime_sec), sizeof(int));
+            packed_data_ptr += sizeof(int);
+
+            memcpy(packed_data_ptr, &(cursor->curr->mtime_nsec), sizeof(long int));
+            packed_data_ptr += sizeof(long int);
+            
+            // copy strings (remember that every C string func handles null terminators differently, kids!)
             strcpy(packed_data_ptr, cursor->curr->filetype);
             packed_data_ptr += strlen(cursor->curr->filetype) + 1;
-//            strncpy(packed_data_ptr, cursor->curr->path, strlen(cursor->curr->path) + 1);
+            
             strcpy(packed_data_ptr, cursor->curr->path);
             packed_data_ptr += strlen(cursor->curr->path) + 1;
-//            strncpy(packed_data_ptr, cursor->curr->root, strlen(cursor->curr->root) + 1);
+            
             strcpy(packed_data_ptr, cursor->curr->root);
             packed_data_ptr += strlen(cursor->curr->root) + 1;
+            
+            // next!
             cursor = cursor->next;
         }
-
     }
 
-//    debug_print(packed_data, total_size);
     return packed_data;
 }
 
 
+//
+// unpack_filelist 
+//
+// unpacks a file list into from byte buffer we got from another
+// machine
 // NOTE: we may have some 32/64 bit issues here, so they might
 // need to be addressed at some point
+//
 file_LL* unpack_filelist(char* fileList_data, int data_length)
 {
-    verb(VERB_2, "unpack_filelist: walking, data length = %d", data_length);
+    verb(VERB_3, "unpack_filelist: walking, data length = %d", data_length);
     
     file_LL* file_list = (file_LL*)malloc(sizeof(file_LL));
     file_list->head = NULL;
     file_list->tail = NULL;
     file_list->count = 0;
     int tmp_len;
- 
-//    debug_print(fileList_data, data_length);
     
     // unpack each entry
-    while ( data_length ) {
+    while ( data_length > 0 ) {
         file_node_t *file_node = (file_node_t*)malloc(sizeof(file_node_t));
         file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
 
@@ -779,24 +808,24 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
         fileList_data += sizeof(long int);
         data_length -= sizeof(long int);
         
-        // copy the strings
+        // copy the strings (strdup mallocs, so these will need to be freed someday)
         file->filetype = strdup(fileList_data);
-        tmp_len = strlen(fileList_data) + 1;
+        tmp_len = strlen(file->filetype) + 1;
         fileList_data += tmp_len;
         data_length -= tmp_len;
         
         file->path = strdup(fileList_data);
-        tmp_len = strlen(fileList_data) + 1;
+        tmp_len = strlen(file->path) + 1;
         fileList_data += tmp_len;
         data_length -= tmp_len;
 
         file->root = strdup(fileList_data);
-        tmp_len = strlen(fileList_data) + 1;
+        tmp_len = strlen(file->root) + 1;
         fileList_data += tmp_len;
         data_length -= tmp_len;
          
         // add data to list
-        verb(VERB_2, "unpack_filelist: file = %s, mtime_sec = %d", file->path, file->mtime_sec);
+        verb(VERB_3, "unpack_filelist: file = %s, mtime_sec = %d", file->path, file->mtime_sec);
         
         // if we're first, just make it head & tail
         if ( file_list->head == NULL ) {
@@ -808,18 +837,69 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
             file_list->tail = file_node;
         }
         file_list->count++;
-        if ( data_length >= 0 ) {
-            verb(VERB_2, "unpack_filelist: data_length = %d", data_length);
-        } else {
-            exit(0);
-        }
-        
     }    
 
     return file_list;
     
 }
 
+//
+// free_file_object 
+//
+// frees a file object
+//
+void free_file_object(file_object_t* file)
+{
+    if ( file ) {
+        // free all the malloc'ed strings
+        free(file->filetype);
+        free(file->path);
+        free(file->root);
+        
+        // now free the file (everything else is good)
+        free(file);
+    }
+    
+}
 
+
+//
+// free_file_list 
+//
+// frees a file list and all data along on it
+//
+void free_file_list(file_LL* fileList)
+{
+    if ( fileList ) {
+        file_node_t* cursor = fileList->head;
+        file_node_t* tmp_cursor = fileList->head;
+        while ( cursor != NULL ) {
+            // free what it's pointing at
+            free_file_object(cursor->curr);
+            cursor = cursor->next;
+            
+            // now free the node
+            free(tmp_cursor);
+            tmp_cursor = cursor;
+        }
+        // finally, free the list struct itself
+        free(fileList);
+    }      
+}
+
+
+//
+// compare_timestamps
+// 
+// compares the timestamps of two files, returning 0 if the same
+// or non-zero if not (working on how to know which is newer)
+int compare_timestamps(file_object_t* file1, file_object_t* file2)
+{
+//    verb(VERB_2, "compare_timestamps: file1 = %s, mtime_sec/nsec = %d/%lu", 
+//        file1->path, file1->mtime_sec, file1->mtime_nsec);
+//    verb(VERB_2, "compare_timestamps: file2 = %s, mtime_sec/nsec = %d/%lu", 
+//        file2->path, file2->mtime_sec, file2->mtime_nsec);
+    return ( (file1->mtime_sec - file2->mtime_sec) + (file1->mtime_nsec - file2->mtime_nsec) );
+}
 
 

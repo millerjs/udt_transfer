@@ -41,7 +41,7 @@ typedef struct global_data_t {
     int         complete, expecting_data, read_new_header;
     int         mtime_sec;
     long int    mtime_nsec;
-    void*       user_def;                                   // whatever else might be needed, stuff in here
+    void*       user_data;                                   // whatever else might be needed, stuff in here
     
 } global_data_t;
 

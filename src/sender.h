@@ -39,11 +39,11 @@ int send_filelist(file_LL* fileList, int totalSize);
 // main loop for send mode, takes a linked list of files and streams
 // them
 
-int handle_files(file_LL* fileList);
+int handle_files(file_LL* fileList, file_LL* remote_fileList);
 
 // sends a list of files to the receiver and waits for a response
 
-int send_and_wait_for_filelist(file_LL* fileList);
+file_LL* send_and_wait_for_filelist(file_LL* fileList);
 
 // send header specifying that the sending stream is complete
 
