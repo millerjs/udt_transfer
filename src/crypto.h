@@ -38,6 +38,8 @@ and limitations under the License.
 #include <unistd.h>
 #include <semaphore.h>
 
+#include "thread_manager.h"
+
 #define MUTEX_TYPE		pthread_mutex_t
 #define MUTEX_SETUP(x)		pthread_mutex_init(&(x), NULL)
 #define MUTEX_CLEANUP(x)	pthread_mutex_destroy(&x) 
@@ -196,6 +198,7 @@ class crypto
 	    int ret = pthread_create(&threads[i],
 				 &attr, &crypto_update_thread, 
 				 &e_args[i]);
+        RegisterThread(threads[i], "crypto_update_thread");
     
 	    if (ret){
 		fprintf(stderr, "Unable to create thread: %d\n", ret);

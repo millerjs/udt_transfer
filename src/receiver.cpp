@@ -75,7 +75,6 @@ int receive_files(char*base_path)
     
     // Read in headers and data until signalled completion
     while ( !global_receive_data.complete ) {
-
         if (global_receive_data.read_new_header) {
             if ((global_receive_data.rs = read_header(&header)) <= 0) {
                 ERR("Bad header read");
@@ -86,6 +85,7 @@ int receive_files(char*base_path)
             verb(VERB_3, "Dispatching message: %d", header.type);
             dispatch_message(receive_postmaster, header, &global_receive_data);
         }
+        usleep(100);
     }
     
     // free up the memory on the way out

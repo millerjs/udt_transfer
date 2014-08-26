@@ -32,6 +32,7 @@ and limitations under the License.
 #include "udpipe.h"
 #include "udpipe_client.h"
 #include "parcel.h"
+#include "udpipe_threads.h"
 
 #define prii(x) fprintf(stderr,"debug:%d\n",x)
 #define pris(x) fprintf(stderr,"debug: %s\n",x)
@@ -159,6 +160,10 @@ void *run_client(void *_args_)
 
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
+    RegisterThread(rcvthread, "recvdata");
+    if (args->verbose) {
+        fprintf(stderr, "[client] Receive thread created: %lu\n", rcvthread);
+    }
 
     if (args->verbose) {
         fprintf(stderr, "[client] Creating send thread...\n");
@@ -195,18 +200,25 @@ void *run_client(void *_args_)
     if (args->print_speed) {
         pthread_t mon_thread;
         pthread_create(&mon_thread, NULL, monitor, &client);
+        RegisterThread(mon_thread, "monitor");
     }
 
     pthread_create(&sndthread, NULL, senddata, &send_args);
-
+    RegisterThread(sndthread, "senddata");
+    
     opts.socket_ready = 1;
+
 
     void * retval;
     pthread_join(sndthread, &retval);
 
+    if (args->verbose) {
+        fprintf(stderr, "[client] Exiting and cleaning up...\n");
+    }
     // Partial cause of segfault issue commented out for now
     // UDT::cleanup();
-
+    free(ip);
+    ExitThread(GetMyThreadId());
     return NULL;
 }
 

@@ -151,66 +151,77 @@ int crypto_update(char* in, char* out, int len, crypto *c)
 void *crypto_update_thread(void* _args)
 {
 
-    int evp_outlen = 0;
+    int evp_outlen = 0, error = 0;
 
     if (!_args){
-	fprintf(stderr, "Null argument passed to crypto_update_thread\n");
-	exit(1);
-    }
+        fprintf(stderr, "Null argument passed to crypto_update_thread\n");
+//        exit(1);
+    } else {
 
-    e_thread_args* args = (e_thread_args*)_args;
-    crypto *c = (crypto*)args->c;
+        e_thread_args* args = (e_thread_args*)_args;
+        crypto *c = (crypto*)args->c;
+        
+        while (1) {
+
+            // fprintf(stderr, "[%d] Waiting for thread_ready %d\n", pthread_self(), args->thread_id);
+            c->wait_thread_ready(args->thread_id);
+
+            int len = args->len;
+
+            int total = 0;
+            while (total < args->len) {
+
+                if(!EVP_CipherUpdate(&c->ctx[args->thread_id], 
+                         args->in+total, &evp_outlen, 
+                         args->out+total, args->len-total)) {
+                    fprintf(stderr, "encryption error\n");
+//                    exit(EXIT_FAILURE);
+                    error = 1;
+                    break;
+                }
+                // fly - kind of a crappy way to exit the outer while here, but
+                // I'm trying to centralize things on exit
+                if ( error > 0 ) {
+                    break;
+                }
+                total += evp_outlen;
+
+            }
+
+            if (len != args->len){
+                fprintf(stderr, "error: The length changed during encryption.\n\n");
+//                exit(1);
+                break;
+            }
+
+            if (total != args->len){
+                fprintf(stderr, "error: Did not encrypt full length of data %d [%d-%d]", 
+                    args->thread_id, total, args->len);
+//                exit(1);
+                break;
+            }
+            
+            // fprintf(stderr, "[%d] Done with thread %d\n", pthread_self(), args->thread_id);	
+            c->unlock_data(args->thread_id);
+        
+        }
+    }
     
-    while (1){
-
-	// fprintf(stderr, "[%d] Waiting for thread_ready %d\n", pthread_self(), args->thread_id);
-	c->wait_thread_ready(args->thread_id);
-
-	int len = args->len;
-
-	int total = 0;
-	while (total < args->len){
-
-	    if(!EVP_CipherUpdate(&c->ctx[args->thread_id], 
-				 args->in+total, &evp_outlen, 
-				 args->out+total, args->len-total)){
-		fprintf(stderr, "encryption error\n");
-		exit(EXIT_FAILURE);
-	    }
-	    total += evp_outlen;
-
-	}
-
-	if (len != args->len){
-	    fprintf(stderr, "error: The length changed during encryption.\n\n");
-	    exit(1);
-	}
-
-	if (total != args->len){
-	    fprintf(stderr, "error: Did not encrypt full length of data %d [%d-%d]", 
-		    args->thread_id, total, args->len);
- 	    exit(1);
-	}
-	
-	// fprintf(stderr, "[%d] Done with thread %d\n", pthread_self(), args->thread_id);	
-	c->unlock_data(args->thread_id);
-	
-    }
-
+    ExitThread(GetMyThreadId());
     return NULL;
     
 }
 
 int join_all_encryption_threads(crypto *c){
 
-    if (!c){
-	fprintf(stderr, "error: join_all_encryption_threads passed null pointer\n");
-	return 0;
+    if (!c) {
+        fprintf(stderr, "error: join_all_encryption_threads passed null pointer\n");
+        return 0;
     }
     
-    for (int i = 0; i < c->get_num_crypto_threads(); i++){
-	c->lock_data(i);
-	c->unlock_data(i);
+    for (int i = 0; i < c->get_num_crypto_threads(); i++) {
+        c->lock_data(i);
+        c->unlock_data(i);
     }
     
     return 0;

@@ -25,6 +25,7 @@ and limitations under the License.
 
 #include "../udt/src/udt.h"
 #include "parcel.h"
+#include "udpipe_threads.h"
 
 #include <arpa/inet.h>
 
@@ -194,9 +195,13 @@ void *run_server(void *_args_)
     
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
+    RegisterThread(rcvthread, "recvdata");
+    if (args->verbose) {
+        fprintf(stderr, "[server] Receive thread created: %lu\n", rcvthread);
+    }
 
     if (args->verbose) {
-        fprintf(stderr, "[server] Creating send thread.\n");
+        fprintf(stderr, "[server] Creating send thread\n");
     }
 
     rs_args send_args;
@@ -219,14 +224,24 @@ void *run_server(void *_args_)
     if (args->print_speed){
         pthread_t mon_thread;
         pthread_create(&mon_thread, NULL, monitor, &recver);
+        RegisterThread(mon_thread, "monitor");
     }
 
     pthread_create(&sndthread, NULL, senddata, &send_args);
-
+    RegisterThread(sndthread, "senddata");
+    
+    if (args->verbose) {
+        fprintf(stderr, "[server] Waiting for send thread to complete\n");
+    }
     pthread_join(sndthread, NULL);
 
+    if (args->verbose) {
+        fprintf(stderr, "[server] Exiting and cleaning up\n");
+    }
     UDT::cleanup();
 
+    free(args->ip);
+    ExitThread(GetMyThreadId());
     return NULL;
 }
 

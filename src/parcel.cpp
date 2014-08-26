@@ -22,6 +22,7 @@ and limitations under the License.
 #include "receiver.h"
 #include "files.h"
 #include "postmaster.h"
+#include "thread_manager.h"
 
 #include <ifaddrs.h>
 #include <arpa/inet.h>
@@ -52,6 +53,8 @@ typedef enum : uint8_t {
 
 using std::cerr;
 using std::endl;
+
+void cleanup_pipes();
 
 /* 
  * void print_bytes:
@@ -293,6 +296,7 @@ void print_xfer_stats()
     }
 }
 
+#define MAX_OUTPUT_COUNT    10000
 /* 
  * void clean_exit
  * - a wrapper for exit 
@@ -300,9 +304,27 @@ void print_xfer_stats()
  */
 void clean_exit(int status)
 {
+    verb(VERB_2, "Clean exit");
     close_log_file();
     print_xfer_stats();
-    kill_children(VERB_2);
+//    kill_children(VERB_2);
+    SetExit();
+    
+    int counter = 0;
+    verb(VERB_2, "\n");
+    while ( GetThreadCount() > 0 ) {
+        if ( counter == 0 ) {
+            verb(VERB_2, "Waiting on %d threads to exit", GetThreadCount());
+            PrintThreads();
+            counter = MAX_OUTPUT_COUNT;
+        } else {
+            counter--;
+        }
+        usleep(100);
+    }
+
+    // fly - HAVE to wait for all the threads to be done to clean this up
+    cleanup_pipes();
     exit(status);
 }
 
@@ -761,10 +783,12 @@ void cleanup_pipes()
 {
     if ( opts.send_pipe != NULL ) {
         free(opts.send_pipe);
+        opts.send_pipe = NULL;
     }
     
     if ( opts.recv_pipe != NULL ) {
         free(opts.recv_pipe);
+        opts.recv_pipe = NULL;
     }
     
 }
@@ -794,8 +818,10 @@ pthread_t *start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server
     pthread_t *udpipe_thread = (pthread_t*) malloc(sizeof(pthread_t));
     if ( udpipe_server_type == UDPIPE_SERVER ) {
         pthread_create(udpipe_thread, NULL, &run_server, args);
+        RegisterThread(*udpipe_thread, "run_server");
     } else {
         pthread_create(udpipe_thread, NULL, &run_client, args);
+        RegisterThread(*udpipe_thread, "run_client");
     }
     
     return udpipe_thread;    
@@ -845,6 +871,7 @@ int remote_to_local(int argc, char*argv[], int optind)
         write(opts.send_pipe[1], &h, sizeof(header_t));
 
 	// This causes hanging, commented for now?
+        verb(VERB_3, "Killing server thread");
         pthread_kill(*server_thread, 0);
 
 
@@ -860,7 +887,7 @@ int remote_to_local(int argc, char*argv[], int optind)
 
         // connect to receiving server
 //        start_udpipe_client(&remote_args);
-        start_udpipe_thread(&remote_args, UDPIPE_CLIENT);
+        pthread_t *server_thread = start_udpipe_thread(&remote_args, UDPIPE_CLIENT);
 
 
         // get the pid of the remote process in case we need to kill it
@@ -902,8 +929,10 @@ int remote_to_local(int argc, char*argv[], int optind)
         }
         verb(VERB_3, "Received acknowledgement of completion");
 
+        free(server_thread);
     }
 
+    // free up the thread handle
     return RET_SUCCESS;
 }
 
@@ -1012,6 +1041,7 @@ int local_to_remote(int argc, char*argv[], int optind)
         write(opts.send_pipe[1], &h, sizeof(header_t));
 
         pthread_join(*server_thread, NULL);
+        free(server_thread);
         
     }
 
@@ -1048,13 +1078,14 @@ void init_parcel(int argc, char *argv[])
 
 void cleanup_parcel()
 {
-    kill_children(VERB_2);
+    
+    verb(VERB_2, "Cleaning up parcel");
+    
+//    kill_children(VERB_2);
     
     cleanup_receiver();    
     cleanup_sender();
-    cleanup_pipes();
-    
-    // 
+    clean_exit(EXIT_SUCCESS);
     
 }
 
@@ -1072,7 +1103,7 @@ int main(int argc, char *argv[])
         local_to_remote(argc, argv, optind);
     }
 
-    print_xfer_stats();    
+//    print_xfer_stats();    
     
     cleanup_parcel();
     
