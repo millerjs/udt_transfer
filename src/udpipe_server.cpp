@@ -42,9 +42,7 @@ void *run_server(void *_args_)
 {
     thread_args * args = (thread_args*) _args_;
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] Running server...\n");
-    }
+    verb(VERB_2, "[server] Running server...");
 
     // initial setup
     char *port = args->port;
@@ -53,9 +51,7 @@ void *run_server(void *_args_)
     int udp_buff = args->udp_buff; // 67108864;
     int mss = args->mss;
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] Starting UDT...\n");
-    }
+    verb(VERB_2, "[server] Starting UDT...");
 
     // start UDT
     UDT::startup();
@@ -67,9 +63,7 @@ void *run_server(void *_args_)
     // switch to turn on ip specification or not
     int specify_ip = !(args->listen_ip == NULL);
 
-    if (args->verbose) {
-        fprintf(stderr, "Listening on specific ip: %s\n", args->listen_ip);
-    }
+    verb(VERB_2, "Listening on specific ip: %s", args->listen_ip);
     
     // char* ip;
 
@@ -99,9 +93,7 @@ void *run_server(void *_args_)
 
     buffer_size = udt_buff;
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] Creating socket...\n");
-    }
+    verb(VERB_2, "[server] Creating socket...");
 
     UDTSOCKET serv;
     if (specify_ip){
@@ -121,9 +113,7 @@ void *run_server(void *_args_)
 
     // printf("Binding to %s\n", inet_ntoa(sin.sin_addr));
     
-    if (args->verbose) {
-    	fprintf(stderr, "[server] Binding socket...\n");
-    }
+    verb(VERB_2, "[server] Binding socket...");
     
     int r;
 
@@ -150,9 +140,7 @@ void *run_server(void *_args_)
     UDTSOCKET recver;
     pthread_t rcvthread, sndthread;
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] Listening for client...\n");
-    }
+    verb(VERB_2, "[server] Listening for client...");
 
     if (UDT::INVALID_SOCK == (recver = UDT::accept(serv,
 						   (sockaddr*)&clientaddr, &addrlen))) {
@@ -161,9 +149,7 @@ void *run_server(void *_args_)
         return NULL;
     }
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] New client connection...\n");
-    }
+    verb(VERB_2, "[server] New client connection...");
 
     char clienthost[NI_MAXHOST];
     char clientservice[NI_MAXSERV];
@@ -172,9 +158,7 @@ void *run_server(void *_args_)
 		NI_NUMERICHOST|NI_NUMERICSERV);
 
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] Creating receive thread...\n");
-    }
+    verb(VERB_2, "[server] Creating receive thread...");
 
     rs_args rcvargs;
     rcvargs.usocket = new UDTSOCKET(recver);
@@ -196,13 +180,10 @@ void *run_server(void *_args_)
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
     RegisterThread(rcvthread, "recvdata");
-    if (args->verbose) {
-        fprintf(stderr, "[server] Receive thread created: %lu\n", rcvthread);
-    }
+    
+    verb(VERB_2, "[server] Receive thread created: %lu", rcvthread);
 
-    if (args->verbose) {
-        fprintf(stderr, "[server] Creating send thread\n");
-    }
+    verb(VERB_2, "[server] Creating send thread");
 
     rs_args send_args;
     send_args.usocket = new UDTSOCKET(recver);
@@ -213,31 +194,31 @@ void *run_server(void *_args_)
     send_args.c = args->enc;
     send_args.timeout = args->timeout;
 
-    if (args->send_pipe && args->recv_pipe){
+    if (args->send_pipe && args->recv_pipe) {
+        
         send_args.send_pipe = args->send_pipe;
         send_args.recv_pipe = args->recv_pipe;
-    } else {
-        fprintf(stderr, "[udpipe_server] send pipe uninitialized\n");
-        exit(1);
-    }
 
-    if (args->print_speed){
-        pthread_t mon_thread;
-        pthread_create(&mon_thread, NULL, monitor, &recver);
-        RegisterThread(mon_thread, "monitor");
-    }
+        if (args->print_speed){
+            pthread_t mon_thread;
+            pthread_create(&mon_thread, NULL, monitor, &recver);
+            RegisterThread(mon_thread, "monitor");
+        }
 
-    pthread_create(&sndthread, NULL, senddata, &send_args);
-    RegisterThread(sndthread, "senddata");
+        pthread_create(&sndthread, NULL, senddata, &send_args);
+        RegisterThread(sndthread, "senddata");
+        
+        verb(VERB_2, "[server] Waiting for send thread to complete");
+        pthread_join(sndthread, NULL);
+        
+    } else { 
+        fprintf(stderr, "[udpipe_server] send or receive pipe uninitialized\n");
+    }
     
-    if (args->verbose) {
-        fprintf(stderr, "[server] Waiting for send thread to complete\n");
-    }
-    pthread_join(sndthread, NULL);
-
-    if (args->verbose) {
-        fprintf(stderr, "[server] Exiting and cleaning up\n");
-    }
+    verb(VERB_2, "[server] Exiting and cleaning up");
+    UDT::close(*rcvargs.usocket);
+    UDT::close(*send_args.usocket);
+    
     UDT::cleanup();
 
     free(args->ip);

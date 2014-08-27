@@ -27,6 +27,7 @@ and limitations under the License.
 #include "udpipe.h"
 #include "udpipe_threads.h"
 #include "thread_manager.h"
+#include "parcel.h"
 
 #define DEBUG 0
 #define EXIT_FAILURE 1
@@ -173,12 +174,10 @@ void* recvdata(void * _args)
     
     rs_args * args = (rs_args*)_args;
     
-    if (args->verbose) {
-        fprintf(stderr, "[recv thread %lu] Initializing receive thread...\n", tid);
-    }
+    verb(VERB_2, "[recv thread %lu] Initializing receive thread...", tid);
     
-    if (args->verbose && args->use_crypto) {
-        fprintf(stderr, "[recv thread %lu] Receive encryption is on.\n", tid);
+    if (args->use_crypto) {
+        verb(VERB_2, "[recv thread %lu] Receive encryption is on.", tid);
     }
     
     UDTSOCKET recver = *args->usocket;
@@ -212,9 +211,7 @@ void* recvdata(void * _args)
     int offset = sizeof(int)/sizeof(char);
     int crypto_cursor;
 
-    if (args->verbose) {
-        fprintf(stderr, "[recv thread %lu] Listening on receive thread.\n", tid);
-    }
+    verb(VERB_2, "[recv thread %lu] Listening on receive thread.", tid);
     
     // Set monitor thread to expect a timeout
     if (args->timeout) {
@@ -222,9 +219,7 @@ void* recvdata(void * _args)
     }
     
     if(args->use_crypto) {
-        if (args->verbose) {
-            fprintf(stderr, "[recv thread %lu] Entering crypto loop...\n", tid);
-        }
+        verb(VERB_2, "[recv thread %lu] Entering crypto loop...", tid);
         while(true) {
             int rs;
             if (new_block) {
@@ -297,60 +292,43 @@ void* recvdata(void * _args)
                 new_block = 1;
             } 
             if ( CheckForExit() ) {
-                if (args->verbose) {
-                    fprintf(stderr, "[recv thread %lu] Got exit signal, exiting\n", tid);
-                    fflush(stderr);
-                }
+                verb(VERB_2, "[recv thread %lu] Got exit signal, exiting", tid);
                 break;
             }
         }
 
     } else { 
-        if (args->verbose) {
-            tid = pthread_self();
-            fprintf(stderr, "[recv thread %lu] Entering non-crypto loop...\n", tid);
-            fflush(stderr);
-        }
+        tid = pthread_self();
+        verb(VERB_2, "[recv thread %lu] Entering non-crypto loop...", tid);
         int rs;
         while (1) {
 
             rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
-
             if (UDT::ERROR == rs) {
                 if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
                     cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
-                    if (args->verbose) {
-                        fprintf(stderr, "[recv thread %lu] Exiting on error 1...\n", tid);
-                        fflush(stderr);
-                    }
+                    verb(VERB_2, "[recv thread %lu] Exiting on error 1...", tid);
 //                    free(indata);
 //                    exit(1);
                     break;
                 }
-                if (args->verbose) {
-                    fprintf(stderr, "[recv thread %lu] Exiting on error 0...\n", tid);
-                    fflush(stderr);
-                }
+                verb(VERB_2, "[recv thread %lu] Exiting on error 0...", tid);
 //                free(indata);
 //                exit(0);
+                break;
+            }
+            
+            if ( CheckForExit() ) {
+                verb(VERB_2, "[recv thread %lu] Got exit signal, exiting", tid);
                 break;
             }
 
             timeout_sem = 1;	
             write(args->recv_pipe[1], indata, rs);	
-
-            if ( CheckForExit() ) {
-                fprintf(stderr, "[recv thread %lu] Got exit signal, exiting\n", tid);
-                fflush(stderr);
-                break;
-            }
         }
     }
 
-    if (args->verbose) {
-        fprintf(stderr, "[recv thread %lu] Closing up and heading out...\n", tid);
-        fflush(stderr);
-    }
+    verb(VERB_2, "[recv thread %lu] Closing up and heading out...", tid);
     UDT::close(recver);
     
     free(indata);
@@ -360,7 +338,7 @@ void* recvdata(void * _args)
 
 void senddata_cleanup_handler(void *arg)
 {
-    fprintf(stderr, "[senddata_cleanup_handler] Cleaning up on way out\n");
+    verb(VERB_2, "[senddata_cleanup_handler] Cleaning up on way out");
     
 }
 
@@ -374,16 +352,11 @@ void* senddata(void* _args)
     pthread_cleanup_push(senddata_cleanup_handler, NULL);
     
     tid = pthread_self();
-        
-    if (args->verbose) {
-        fprintf(stderr, "[send thread %lu] Initializing send thread...\n", tid);
-    }
+    verb(VERB_2, "[send thread %lu] Initializing send thread...", tid);
 
     UDTSOCKET client = *(UDTSOCKET*)args->usocket;
 
-    if (args->verbose && args->use_crypto) {
-        fprintf(stderr, "[send thread %lu] Send encryption is on.\n", tid);
-    }
+    verb(VERB_2, "[send thread %lu] Send encryption is on.", tid);
 
     char* outdata = (char*)malloc(BUFF_SIZE*sizeof(char));
 
@@ -392,9 +365,7 @@ void* senddata(void* _args)
     int	offset = sizeof(int)/sizeof(char);
     int bytes_read;
 
-    if (args->verbose) {
-        fprintf(stderr, "[send thread %lu] Sending encryption status...\n", tid);
-    }
+    verb(VERB_2, "[send thread %lu] Sending encryption status...", tid);
 
     if (args->use_crypto) {
         sign_auth(args);
@@ -415,14 +386,10 @@ void* senddata(void* _args)
 
     while (!READ_IN);
 	
-    if (args->verbose) {
-        fprintf(stderr, "[send thread %lu] Send thread listening on stdin.\n", tid);
-    }
+    verb(VERB_2, "[send thread %lu] Send thread listening on stdin.", tid);
 
     if (args->use_crypto) {
-        if (args->verbose) {
-            fprintf(stderr, "[send thread %lu] Entering crypto loop\n", tid);
-        }
+        verb(VERB_2, "[send thread %lu] Entering crypto loop", tid);
         while(true) {
             int ss;
 
@@ -483,21 +450,18 @@ void* senddata(void* _args)
             }
             
             if ( CheckForExit() ) {
-                fprintf(stderr, "[send thread %lu] Got exit signal, exiting\n", tid);
-                fflush(stderr);
+                verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
                 break;
             }
         }
 
     } else {
-        if (args->verbose) {
-            fprintf(stderr, "[send thread %lu] Entering non-crypto loop\n", tid);
-        }
+        verb(VERB_2, "[send thread %lu] Entering non-crypto loop", tid);
         while (1) {
-            if (args->verbose) {
-                fprintf(stderr, "[send thread %lu] Main loop\n", tid);
-                fflush(stderr);
-            }
+            if ( CheckForExit() ) {
+                verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
+                break;
+            }            
             bytes_read = read(args->send_pipe[0], outdata, BUFF_SIZE);
             int ssize = 0;
             int ss;
@@ -510,10 +474,7 @@ void* senddata(void* _args)
 
               //UDT::close(client);
               //UDT::close(*args->usocket);
-                if (args->verbose) {
-                    fprintf(stderr, "[send thread %lu] No data read, leaving\n", tid);
-                    fflush(stderr);
-                }
+                verb(VERB_2, "[send thread %lu] No data read, leaving", tid);
 //                free(outdata);
 //                return NULL;
                 break;
@@ -525,10 +486,7 @@ void* senddata(void* _args)
                 if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize, 
                                   bytes_read - ssize, 0))) {
                     cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-                    if (args->verbose) {
-                        fprintf(stderr, "[send thread %lu] Leaving on error\n", tid);
-                        fflush(stderr);
-                    }
+                    verb(VERB_2, "[send thread %lu] Leaving on error", tid);
     //                free(outdata);
     //                return NULL;
                     error = 1;
@@ -541,23 +499,12 @@ void* senddata(void* _args)
                 }
                 ssize += ss;
             }
-            if (args->verbose) {
-                fprintf(stderr, "[send thread %lu] Checking for exit\n", tid);
-                fflush(stderr);
-            }
-            if ( CheckForExit() ) {
-                fprintf(stderr, "[send thread %lu] Got exit signal, exiting\n", tid);
-                fflush(stderr);
-                break;
-            }            
         }	
     }
 
     sleep(1);
-    if (args->verbose) {
-        fprintf(stderr, "[send thread %lu] Freeing data & exiting\n", tid);
-        fflush(stderr);
-    }
+    verb(VERB_2, "[send thread %lu] Freeing data & exiting", tid);
+    UDT::close(client);
     free(outdata);
     ExitThread(GetMyThreadId());
     pthread_cleanup_pop(0);

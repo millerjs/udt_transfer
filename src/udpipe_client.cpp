@@ -48,9 +48,7 @@ void *run_client(void *_args_)
 
     thread_args *args = (thread_args*) _args_;
 
-    if (args->verbose) {
-        fprintf(stderr, "[client] Running client...\n");
-    }
+    verb(VERB_2, "[client] Running client...");
     
     // initial setup
     char *ip = args->ip; 
@@ -61,9 +59,7 @@ void *run_client(void *_args_)
     int udp_buff = args->udp_buff; // 67108864;
     int mss = args->mss;
 
-    if (args->verbose) {
-        fprintf(stderr, "Starting UDT...\n");
-    }
+    verb(VERB_2, "Starting UDT...");
     
     // start UDT
     UDT::startup();
@@ -83,9 +79,7 @@ void *run_client(void *_args_)
     }
     
 
-    if (args->verbose) {
-        fprintf(stderr, "[client] Creating socket...\n");
-    }
+    verb(VERB_2, "[client] Creating socket...");
     
     // create the UDT socket
     UDTSOCKET client;
@@ -112,9 +106,7 @@ void *run_client(void *_args_)
             return NULL;
         }
 
-        if (args->verbose) {
-            fprintf(stderr, "[client] Connecting to server...\n");
-        }
+        verb(VERB_2, "[client] Connecting to server...");
         
         if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
         
@@ -135,9 +127,7 @@ void *run_client(void *_args_)
 
     }
 
-    if (args->verbose) {
-        fprintf(stderr, "[client] Creating receive thread...\n");
-    }
+    verb(VERB_2, "[client] Creating receive thread...");
     
     
     // set the socket up and send to the receive thread
@@ -161,13 +151,10 @@ void *run_client(void *_args_)
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
     RegisterThread(rcvthread, "recvdata");
-    if (args->verbose) {
-        fprintf(stderr, "[client] Receive thread created: %lu\n", rcvthread);
-    }
+    
+    verb(VERB_2, "[client] Receive thread created: %lu", rcvthread);
 
-    if (args->verbose) {
-        fprintf(stderr, "[client] Creating send thread...\n");
-    }
+    verb(VERB_2, "[client] Creating send thread...");
     
     // same thing, but with the send thread
     rs_args send_args;
@@ -212,11 +199,11 @@ void *run_client(void *_args_)
     void * retval;
     pthread_join(sndthread, &retval);
 
-    if (args->verbose) {
-        fprintf(stderr, "[client] Exiting and cleaning up...\n");
-    }
+    verb(VERB_2, "[client] Exiting and cleaning up...");
     // Partial cause of segfault issue commented out for now
     // UDT::cleanup();
+    UDT::close(*rcvargs.usocket);
+    UDT::close(*send_args.usocket);
     free(ip);
     ExitThread(GetMyThreadId());
     return NULL;
