@@ -48,7 +48,7 @@ void *run_client(void *_args_)
 
     thread_args *args = (thread_args*) _args_;
 
-    verb(VERB_2, "[client] Running client...");
+    verb(VERB_2, "[%s] Running client...", __func__);
     
     // initial setup
     char *ip = args->ip; 
@@ -59,7 +59,7 @@ void *run_client(void *_args_)
     int udp_buff = args->udp_buff; // 67108864;
     int mss = args->mss;
 
-    verb(VERB_2, "Starting UDT...");
+    verb(VERB_2, "[%s] Starting UDT...", __func__);
     
     // start UDT
     UDT::startup();
@@ -79,7 +79,7 @@ void *run_client(void *_args_)
     }
     
 
-    verb(VERB_2, "[client] Creating socket...");
+    verb(VERB_2, "[%s] Creating socket...", __func__);
     
     // create the UDT socket
     UDTSOCKET client;
@@ -106,9 +106,10 @@ void *run_client(void *_args_)
             return NULL;
         }
 
-        verb(VERB_2, "[client] Connecting to server...");
+        verb(VERB_2, "[%s] Connecting to server...", __func__);
         
         if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
+            verb(VERB_2, "[%s] UDTError %s", __func__, UDT::getlasterror().getErrorMessage());
         
             // cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
             if (args->verbose) {
@@ -127,7 +128,7 @@ void *run_client(void *_args_)
 
     }
 
-    verb(VERB_2, "[client] Creating receive thread...");
+    verb(VERB_2, "[%s] Creating receive thread...", __func__);
     
     
     // set the socket up and send to the receive thread
@@ -144,7 +145,7 @@ void *run_client(void *_args_)
         rcvargs.recv_pipe = args->recv_pipe;
         rcvargs.send_pipe = args->send_pipe;
     } else {
-        fprintf(stderr, "[udpipe_server] send pipe uninitialized\n");
+        fprintf(stderr, "[%s] send pipe uninitialized\n", __func__);
         exit(1);
     }
 
@@ -152,9 +153,9 @@ void *run_client(void *_args_)
     pthread_detach(rcvthread);
     RegisterThread(rcvthread, "recvdata");
     
-    verb(VERB_2, "[client] Receive thread created: %lu", rcvthread);
+    verb(VERB_2, "[%s] Receive thread created: %lu", __func__, rcvthread);
 
-    verb(VERB_2, "[client] Creating send thread...");
+    verb(VERB_2, "[%s] Creating send thread...", __func__);
     
     // same thing, but with the send thread
     rs_args send_args;
@@ -169,7 +170,7 @@ void *run_client(void *_args_)
         send_args.send_pipe = args->send_pipe;
         send_args.recv_pipe = args->recv_pipe;
     } else {
-        fprintf(stderr, "[udpipe_server] send pipe uninitialized\n");
+        fprintf(stderr, "[%s] send pipe uninitialized\n", __func__);
         exit(1);
     }
 
@@ -193,13 +194,13 @@ void *run_client(void *_args_)
     pthread_create(&sndthread, NULL, senddata, &send_args);
     RegisterThread(sndthread, "senddata");
     
-    opts.socket_ready = 1;
+    g_opts.socket_ready = 1;
 
 
     void * retval;
     pthread_join(sndthread, &retval);
 
-    verb(VERB_2, "[client] Exiting and cleaning up...");
+    verb(VERB_2, "[%s] Exiting and cleaning up...", __func__);
     // Partial cause of segfault issue commented out for now
     // UDT::cleanup();
     UDT::close(*rcvargs.usocket);

@@ -71,9 +71,9 @@ and limitations under the License.
 
 // Global variables
 
-extern int timer;
-extern off_t TOTAL_XFER;
-extern int opt_verbosity;
+extern int g_timer;
+extern off_t G_TOTAL_XFER;
+extern int g_opt_verbosity;
 
 typedef enum : uint8_t {
     XFER_DATA,
@@ -180,8 +180,8 @@ typedef struct remote_arg_t{
 
 } remote_arg_t;
 
-extern remote_arg_t remote_args;
-extern parcel_opt_t opts;
+extern remote_arg_t g_remote_args;
+extern parcel_opt_t g_opts;
 
 int parse_destination(char *xfer_cmd);
 
@@ -243,7 +243,8 @@ int run_pipe(char* pipe_cmd);
 
 // run the ssh command that will create a remote parcel process
 
-int run_ssh_command(char *remote_dest);
+//int run_ssh_command(char *remote_dest);
+int run_ssh_command();
 
 
 #endif

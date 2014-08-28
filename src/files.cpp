@@ -133,7 +133,7 @@ file_object_t *find_last_instance(file_LL *list, file_object_t *file)
 
 int is_in_checkpoint(file_object_t *file)
 {
-    if (!opts.restart || !file)
+    if (!g_opts.restart || !file)
         return 0;
 
     struct timespec mtime1 = {0, 0};
@@ -143,7 +143,7 @@ int is_in_checkpoint(file_object_t *file)
 
     if (match) {
 
-        if (opts.ignore_modification) {
+        if (g_opts.ignore_modification) {
             return 1;
         }
 
@@ -190,7 +190,7 @@ int read_checkpoint(char *path)
 
 int open_log_file()
 {
-    if (!opts.log) {
+    if (!g_opts.log) {
         return RET_FAILURE;
     }
 
@@ -206,7 +206,7 @@ int open_log_file()
 
 int close_log_file()
 {
-    if (!opts.log) {
+    if (!g_opts.log) {
         return RET_SUCCESS;
     }
     
@@ -219,7 +219,7 @@ int close_log_file()
 
 int log_completed_file(file_object_t *file)
 {
-    if (!opts.log) {
+    if (!g_opts.log) {
         return RET_SUCCESS;
     }
 

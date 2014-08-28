@@ -34,7 +34,7 @@ int read_header(header_t *header)
 {
 
     // return read(fileno(stdin), header, sizeof(header_t));
-    return read(opts.recv_pipe[0], header, sizeof(header_t));
+    return read(g_opts.recv_pipe[0], header, sizeof(header_t));
 
 }
 
@@ -47,12 +47,12 @@ off_t read_data(void* b, int len)
     
     while (total < len) {
         // rs = read(fileno(stdin), buffer+total, len - total);
-        rs = read(opts.recv_pipe[0], buffer+total, len - total);
+        rs = read(g_opts.recv_pipe[0], buffer+total, len - total);
         total += rs;
-        TOTAL_XFER += rs;
+        G_TOTAL_XFER += rs;
     }
 
-    verb(VERB_4, "Read %d bytes from stream", total);
+    verb(VERB_4, "[%s] Read %d bytes from stream", __func__, total);
 
     return total;
 
@@ -62,7 +62,7 @@ int receive_files(char*base_path)
 {
     header_t header;
     
-    while (!opts.socket_ready) {
+    while (!g_opts.socket_ready) {
         usleep(10000);
     }
 
@@ -82,7 +82,7 @@ int receive_files(char*base_path)
         }
         
         if (global_receive_data.rs) {
-            verb(VERB_3, "Dispatching message: %d", header.type);
+            verb(VERB_3, "[%s] Dispatching message: %d", __func__, header.type);
             dispatch_message(receive_postmaster, header, &global_receive_data);
         }
         usleep(100);
@@ -108,14 +108,12 @@ int receive_files(char*base_path)
 int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 {
     
-    verb(VERB_4, "Received directory header");
+    verb(VERB_4, "[%s] Received directory header", __func__);
     
     // Read directory name from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
-    if (opts.verbosity > VERB_1) {
-        fprintf(stderr, "making directory: %s\n", global_data->data_path);
-    }
+    verb(VERB_2, "[%s] Making directory: %s\n", __func__, global_data->data_path);
     
     // make directory, if any parent in directory path
     // doesnt exist, make that as well
@@ -136,7 +134,7 @@ int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 {
     
-    verb(VERB_4, "Received file header");
+    verb(VERB_4, "[%s] Received file header", __func__);
     
     // int f_mode = O_CREAT| O_WRONLY;
     int f_mode = O_CREAT| O_RDWR;
@@ -145,12 +143,12 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
     // hang on to mtime data until we're done
     global_data->mtime_sec = header.mtime_sec;
     global_data->mtime_nsec = header.mtime_nsec;
-    verb(VERB_3, "Header mtime: %d, mtime_nsec: %ld\n", global_data->mtime_sec, global_data->mtime_nsec);
+    verb(VERB_3, "[%s] Header mtime: %d, mtime_nsec: %ld\n", __func__, global_data->mtime_sec, global_data->mtime_nsec);
     
     // Read filename from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
-    verb(VERB_3, "Initializing file receive: %s\n", global_data->data_path + global_data->bl);
+    verb(VERB_3, "[%s] Initializing file receive: %s\n", __func__, global_data->data_path + global_data->bl);
 
 
     global_data->fout = open(global_data->data_path, f_mode, f_perm);
@@ -164,9 +162,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
         char parent_dir[MAX_PATH_LEN];
         get_parent_dir(parent_dir, global_data->data_path);
         
-        if (opts.verbosity > VERB_2) {
-            fprintf(stderr, "Using %s as parent directory.\n", parent_dir);
-        }
+        verb(VERB_3, "[%s] Using %s as parent directory.", __func__, parent_dir);
         
         // Build parent directory recursively
         if (mkdir_parent(parent_dir) < 0) {
@@ -188,7 +184,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 
     // Attempt to optimize simple sequential write
     if (posix_fadvise64(global_data->fout, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE)) {
-        if (opts.verbosity > VERB_3) {
+        if (g_opts.verbosity > VERB_3) {
             perror("WARNING: Unable to advise file write");
         }
     }		
@@ -213,7 +209,7 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
     read_data(&(global_data->f_size), header.data_len);
 
     // Memory map attempt
-    if (opts.mmap) {
+    if (g_opts.mmap) {
         map_fd(global_data->fout, global_data->f_size);
     }
 
@@ -229,9 +225,7 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 
 int pst_rec_callback_complete(header_t header, global_data_t* global_data)
 {
-    if (opts.verbosity > VERB_1) {
-        fprintf(stderr, "Receive completed.\n");
-    }
+    verb(VERB_2, "[%s] Receive completed", __func__);
     
     global_data->complete = 1;
     
@@ -259,7 +253,7 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 
     // read data buffer from stdin
     // use the memory map
-    if (opts.mmap) {
+    if (g_opts.mmap) {
         if ((rs = read_data(global_data->f_map + global_data->total, len)) < 0) {
             ERR("Unable to read stdin");
         }
@@ -280,8 +274,8 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 
 //    read_header(&header);
 
-    // Update user on progress if opts.progress set to true		    
-    if (opts.progress) {
+    // Update user on progress if g_opts.progress set to true		    
+    if (g_opts.progress) {
         print_progress(global_data->data_path, global_data->total, global_data->f_size);
     }
 
@@ -300,14 +294,14 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
     // On the next loop, use the header that was just read in
    
     // Formatting
-    if (opts.progress) {
+    if (g_opts.progress) {
         fprintf(stderr, "\n");
     }
 
     // Check to see if we received full file
     if (global_data->f_size) {
         if (global_data->total == global_data->f_size) {
-            verb(VERB_3, "Received full file [%li B]", global_data->total);
+            verb(VERB_3, "[%s] Received full file [%li B]", __func__, global_data->total);
         } else {
             warn("Did not receive full file: %s", global_data->data_path);
         }
@@ -325,7 +319,7 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
     global_data->f_size = 0;
     
     // Truncate the file in case it already exists and remove extra data
-    if (opts.mmap) {
+    if (g_opts.mmap) {
         unmap_fd(global_data->fout, global_data->f_size);
     }
 
@@ -357,7 +351,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     
     memset(&temp_stat_buffer, 0, sizeof(struct stat));
     
-    verb(VERB_3, "pst_rec_callback_filelist: received list data of size %d", header.data_len);
+    verb(VERB_3, "[%s] Received list data of size %d", __func__, header.data_len);
     
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
     
@@ -367,12 +361,12 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     
     // repopulate the list with our timestamps, if any
     
-    verb(VERB_3, "pst_rec_callback_filelist: %d elements, need to check %s for these", fileList->count, global_data->data_path);
+    verb(VERB_3, "[%s] %d elements, need to check %s for these", __func__, fileList->count, global_data->data_path);
 
     // if the directory exists, change to it
     // if it doesn't, the stat checks below will fail, and we'll get all zeroes
     if ( !stat(global_data->data_path, &temp_stat_buffer) ) {
-        verb(VERB_3, "pst_rec_callback_filelist:chdir to %s", global_data->data_path);
+        verb(VERB_3, "[%s] chdir to %s", __func__, global_data->data_path);
         cur_directory = get_current_dir_name();
         chdir(global_data->data_path);
     }
@@ -394,13 +388,13 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
         
         // check if file exists
         if ( !stat(destination, &temp_stat_buffer) ) {
-            verb(VERB_3, "pst_rec_callback_filelist: file %s present", destination);
+            verb(VERB_3, "[%s] File %s present", __func__, destination);
             // if it's there, change the timestamp
-            verb(VERB_3, "pst_rec_callback_filelist: mtime = %d, mtime_nsec = %lu", temp_stat_buffer.st_mtime, temp_stat_buffer.st_mtim.tv_nsec);
+            verb(VERB_3, "[%s] mtime = %d, mtime_nsec = %lu", __func__, temp_stat_buffer.st_mtime, temp_stat_buffer.st_mtim.tv_nsec);
             cursor->curr->mtime_sec = temp_stat_buffer.st_mtime;
             cursor->curr->mtime_nsec = temp_stat_buffer.st_mtim.tv_nsec;
         } else {
-            verb(VERB_3, "pst_rec_callback_filelist: file %s not found", cursor->curr->path);
+            verb(VERB_3, "[%s] File %s not found", __func__, cursor->curr->path);
             // if not, zero it out
             cursor->curr->mtime_sec = 0;
             cursor->curr->mtime_nsec = 0;
@@ -412,11 +406,11 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     // get size of list and such
     int totalSize = get_filelist_size(fileList);
 
-    while (!opts.socket_ready) {
+    while (!g_opts.socket_ready) {
         usleep(10000);
     }
 
-    verb(VERB_3, "pst_rec_callback_filelist: sending back");
+    verb(VERB_3, "[%s] Sending back", __func__);
     send_filelist(fileList, totalSize);    
 
     // change directory back

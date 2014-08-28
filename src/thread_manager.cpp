@@ -41,7 +41,7 @@ int RegisterThread(pthread_t threadId, char* threadName)
 {
     int i;
 
-    verb(VERB_2, "[RegisterThread]: Thread %s (%lu) added", threadName, threadId);
+    verb(VERB_2, "[%s] Thread %s (%lu) added", __func__, threadName, threadId);
     
     for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
         if ( !(activeThreads[i].threadUsed) ) {
@@ -54,7 +54,7 @@ int RegisterThread(pthread_t threadId, char* threadName)
         activeThreads[i].threadUsed = 1;
         thread_count++;
     }
-    verb(VERB_2, "[RegisterThread]: Thread count now %d", thread_count);
+    verb(VERB_2, "[%s] Thread count now %d", __func__, thread_count);
     
     return(thread_count);
 }
@@ -62,11 +62,11 @@ int RegisterThread(pthread_t threadId, char* threadName)
 int ExitThread(pthread_t threadId)
 {
     int i;
-    verb(VERB_2, "[ExitThread]: Thread ID %lu requested", threadId);
+    verb(VERB_2, "[%s] Thread ID %lu requested", __func__, threadId);
     
     for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
         if ( activeThreads[i].threadId == threadId ) {
-                verb(VERB_2, "[ExitThread]: Thread %s found (%lu), clearing", activeThreads[i].threadName, threadId);
+                verb(VERB_2, "[%s]: Thread %s found (%lu), clearing", __func__, activeThreads[i].threadName, threadId);
                 activeThreads[i].threadId = 0;
                 activeThreads[i].threadUsed = 0;
                 memset(activeThreads[i].threadName, 0, sizeof(char)*MAX_THREAD_NAME);
@@ -75,7 +75,7 @@ int ExitThread(pthread_t threadId)
         }
     }
     
-    verb(VERB_2, "[ExitThread]: Thread count now %d", thread_count);
+    verb(VERB_2, "[%s]: Thread count now %d", __func__, thread_count);
     return(thread_count);
 }
 
@@ -103,7 +103,7 @@ void PrintThreads(void)
 
 void SetExit(void)
 {
-    verb(VERB_2, "[SetExit]: Time to wrap this up");
+    verb(VERB_2, "[%s]: Time to wrap this up", __func__);
     time_to_exit = 1;
     
 }

@@ -88,7 +88,7 @@ int write_header(header_t header)
     // should you be using write block?
 
     // int ret = write(fileno(stdout), &header, sizeof(header_t));
-    int ret = write(opts.send_pipe[1], &header, sizeof(header_t));
+    int ret = write(g_opts.send_pipe[1], &header, sizeof(header_t));
 
     return ret;
 
@@ -106,13 +106,13 @@ off_t write_block(header_t header, int len)
     int send_len = len + sizeof(header_t);
 
     // int ret = write(fileno(stdout), block.buffer, send_len);
-    int ret = write(opts.send_pipe[1], sender_block.buffer, send_len);
+    int ret = write(g_opts.send_pipe[1], sender_block.buffer, send_len);
 
     if (ret < 0) {
         ERR("unable to write to send_pipe");
     }
 
-    TOTAL_XFER += ret;
+    G_TOTAL_XFER += ret;
 
     return ret; 
 
@@ -122,7 +122,7 @@ off_t write_block(header_t header, int len)
 int complete_xfer() 
 {
     
-    verb(VERB_2, "Signalling end of transfer.");
+    verb(VERB_2, "[%s] Signalling end of transfer", __func__);
 
     // Send completition header
 
@@ -145,7 +145,7 @@ int send_file(file_object_t *file)
         return -1;
     }
     
-    while (!opts.socket_ready) {
+    while (!g_opts.socket_ready) {
         usleep(10000);
     }
 
@@ -183,7 +183,7 @@ int send_file(file_object_t *file)
         char destination[MAX_PATH_LEN];
         int root_len = strlen(file->root);
         
-        if (opts.full_root || !root_len || strncmp(file->path, file->root, root_len)) {
+        if (g_opts.full_root || !root_len || strncmp(file->path, file->root, root_len)) {
             sprintf(destination, "%s", file->path);
 
         } else {
@@ -202,12 +202,12 @@ int send_file(file_object_t *file)
 
         // Attempt to advise system of our intentions
         if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE) < 0) {
-            verb(VERB_3, "Unable to advise file read");
+            verb(VERB_3, "[%s] Unable to advise file read", __func__);
         }
      
         // Get the length of the file in advance
         if ((f_size = fsize(fd)) < 0) {
-            fprintf(stderr, "Unable to determine size of file");
+            fprintf(stderr, "[%s] Unable to determine size of file", __func__);
         }
         
         // Send length of file
@@ -221,7 +221,7 @@ int send_file(file_object_t *file)
 
         while ((rs = read(fd, sender_block.data, BUFFER_LEN))) {
 
-            verb(VERB_3, "Read in %d bytes", rs);
+            verb(VERB_3, "[%s] Read in %d bytes", __func__, rs);
 
             // Check for file read error
             if (rs < 0) {
@@ -233,13 +233,13 @@ int send_file(file_object_t *file)
             sent += write_block(header, rs);
 
             // Print progress
-            if (opts.progress) {
+            if (g_opts.progress) {
                 print_progress(file->path, sent, f_size);
             }
         }
 
         // Carriage return for  progress printing
-        if (opts.progress) {
+        if (g_opts.progress) {
             fprintf(stderr, "\n");
         }
 
@@ -260,7 +260,7 @@ int send_file(file_object_t *file)
 int send_filelist(file_LL* fileList, int totalSize)
 {
     header_t header;
-    verb(VERB_2, "send_filelist: sending file list of size %d", totalSize);
+    verb(VERB_2, "[%s] Sending file list of size %d", __func__, totalSize);
 //    totalSize = get_filelist_size(fileList);
     header = nheader(XFER_FILELIST, totalSize);
     
@@ -271,7 +271,7 @@ int send_filelist(file_LL* fileList, int totalSize)
         free(tmp_file_list);
         write_block(header, header.data_len);
     } else {
-        ERR("send_filelist: unable to copy to sender_block.data, value NULL");        
+        ERR("[%s] Unable to copy to sender_block.data, value NULL", __func__);        
     }
     
     return RET_SUCCESS;
@@ -283,7 +283,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
     header_t header;
     int total_size = get_filelist_size(fileList);
 
-    while (!opts.socket_ready) {
+    while (!g_opts.socket_ready) {
         usleep(10000);
     }
 
@@ -305,7 +305,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
         }
         
         if (global_send_data.rs) {
-            verb(VERB_3, "Dispatching message to sender: %d", header.type);
+            verb(VERB_3, "[%s] Dispatching message to sender: %d", __func__, header.type);
             dispatch_message(send_postmaster, header, &global_send_data);
         }
         
@@ -340,7 +340,7 @@ int handle_files(file_LL* fileList, file_LL* remote_fileList)
             if (file->mode == S_IFDIR) {
 
                 // Tell desination to create a directory 
-                if (opts.full_root) {
+                if (g_opts.full_root) {
                     send_file(file);
                 }
             } 
@@ -350,7 +350,7 @@ int handle_files(file_LL* fileList, file_LL* remote_fileList)
 
                 if (is_in_checkpoint(file)) {
                     char*status = "completed";
-                    verb(VERB_1, "Logged: %s [%s]", file->path, status);
+                    verb(VERB_1, "[%s] Logged: %s [%s]", __func__, file->path, status);
                 } else {
                     if ( compare_timestamps(file, remote_file) ) {
                         send_file(file);
@@ -362,7 +362,7 @@ int handle_files(file_LL* fileList, file_LL* remote_fileList)
             // If the file is a character device or a named pipe, warn user
             else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
 
-                if (opts.regular_files) {
+                if (g_opts.regular_files) {
                     warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
                          "To enable sending character devices, use --all-files");
 
@@ -380,7 +380,7 @@ int handle_files(file_LL* fileList, file_LL* remote_fileList)
             else {
                 verb(VERB_2, "   > SKIPPING [%s] %s", file->filetype, file->path);
 
-                if (opts.verbosity > VERB_0) {
+                if (g_opts.verbosity > VERB_0) {
                     warn("File %s is a %s", file->path, file->filetype);
                     ERR("This filetype is not currently supported.");
                 }
