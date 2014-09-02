@@ -68,6 +68,8 @@ and limitations under the License.
 #define LABEL_TB "TB"
 #define LABEL_PB "PB"
 
+// Undefine this to have a backtrace spit out on segfault
+//#define DEBUG_BACKTRACE
 
 // Global variables
 
@@ -92,8 +94,6 @@ typedef enum : uint8_t {
 typedef enum : uint8_t {
     CTRL_ACK,
     NUM_CTRL_MSGS
-    
-    
 } ctrl_t;
 
 /* 
@@ -124,10 +124,11 @@ typedef enum{
 #define HEADER_TYPE_MTIME_NSEC  4
 
 typedef struct header{
-    xfer_t type;
-    uint32_t mtime_sec;
-    uint64_t mtime_nsec;
-    uint64_t data_len;
+    xfer_t      type;
+    ctrl_t      ctrl_msg;
+    uint32_t    mtime_sec;
+    uint64_t    mtime_nsec;
+    uint64_t    data_len;
 } header_t;
 
 typedef struct parcel_block{

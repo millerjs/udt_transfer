@@ -34,8 +34,9 @@ and limitations under the License.
 
 int g_opt_verbosity = 1;
 int g_opt_debug_file_logging = 0;
-FILE* g_opt_debug_file = (FILE*)NULL;
 char g_base_path[MAX_PATH_LEN];
+
+char g_logfilename[] = "debug.log";
 
 // Statistics globals
 int g_timer = 0;
@@ -174,10 +175,12 @@ void verb(int verbosity, char* fmt, ... )
         fprintf(stderr, "\n");
         va_end(args);
         if ( g_opt_debug_file_logging ) {
+            FILE* debug_file = fopen(g_logfilename, "a+");
             va_list args; va_start(args, fmt);
-            vfprintf(g_opt_debug_file, fmt, args);
-            fprintf(g_opt_debug_file, "\n");
-            fflush(g_opt_debug_file);
+            vfprintf(debug_file, fmt, args);
+            fprintf(debug_file, "\n");
+            fflush(debug_file);
+            fclose(debug_file);
             va_end(args);
         }
     }
@@ -357,9 +360,6 @@ void clean_exit(int status)
     }
 
 //    kill_children(VERB_2);
-    if ( g_opt_debug_file_logging ) {
-        fclose(g_opt_debug_file);
-    }    
     exit(status);
 }
 
@@ -386,7 +386,7 @@ void sig_handler(int signal)
 
     if (signal == SIGSEGV){
         verb(VERB_0, "\nERROR: [%d] received SIGSEV, caught SEGFAULT cleaning up and exiting...", getpid());
-//        print_backtrace();
+#ifdef DEBUG_BACKTRACE
         fprintf( stderr, "\n********* SEGMENTATION FAULT *********\n\n" );
 
         void *trace[32];
@@ -403,6 +403,7 @@ void sig_handler(int signal)
         }
 
         fprintf( stderr, "\n***************************************\n" );
+#endif
     }
 
     // Kill children and let user know
@@ -437,11 +438,13 @@ int print_progress(char* descrip, off_t read, off_t total)
     if (total){
         double percent = total ? read*100./total : 0.0;
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
-        fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+//        fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+        verb(VERB_2, fmt, descrip, read/scale, total/scale, label, percent);
 
     } else {
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
-        fprintf(stderr, fmt, descrip, read/scale,label);
+//        fprintf(stderr, fmt, descrip, read/scale,label);
+        verb(VERB_2, fmt, descrip, read/scale, label);
     }
 
     return RET_SUCCESS;
@@ -614,6 +617,7 @@ int get_remote_host(int argc, char** argv)
             // Set this argument to NULL because it is not a file to send
             argv[i] = NULL;
 
+            // switch to MODE_RECV if it's not the last item on the list
             if (i < argc - 1) {
                 NOTE(g_opts.remote_to_local = 1);
                 g_opts.mode = MODE_RCV;
@@ -629,10 +633,18 @@ int get_remote_host(int argc, char** argv)
 
 int get_base_path(int argc, char** argv, int optind)
 {
+    verb(VERB_2, "[%s] enter", __func__);
+    int i;
+    for ( i = 0; i < argc; i++ ) {
+        verb(VERB_2, "[%s] %d - %s", __func__, i, argv[i]);
+    }
+    
     if (g_opts.mode & MODE_RCV) { 
+        verb(VERB_2, "[%s] MODE_RCV detected", __func__);
         // Destination directory was passed
         if (optind < argc) {
             // Generate a base path for file locations
+            verb(VERB_2, "[%s] argv[optind] = %s", __func__, argv[optind]);
             sprintf(g_base_path, "%s", argv[optind++]);
             
             // Are there any remaining command line args? Warn user
@@ -729,7 +741,7 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thv:c:k:r:n0d:5:p:q:b", 
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thvc:k:r:n0d:5:p:q:b", 
                               long_options, &option_index)) != -1) {
         switch (opt) {
             case 'k':
@@ -822,6 +834,7 @@ int get_options(int argc, char *argv[])
             
             case 'b':
                 g_opt_debug_file_logging = 1;
+                g_opts.verbosity = 2;
                 break;
                 
             default:
@@ -1010,6 +1023,7 @@ int start_transfer(int argc, char*argv[], int optind)
         int n_files = argc-optind;
         char **path_list = argv+optind;
 
+        verb(VERB_2, "[%s] building filelist of %d items from %s", __func__, n_files, path_list[0]);
         // Generate a linked list of file objects from path list
         ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
 
@@ -1020,8 +1034,10 @@ int start_transfer(int argc, char*argv[], int optind)
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
         handle_files(fileList, remote_fileList);
+        
         // signal the end of the transfer
-        complete_xfer();
+        send_and_wait_for_ack_of_complete();
+//        complete_xfer();
 
         // free the remote list
         free_file_list(remote_fileList);        
@@ -1032,7 +1048,7 @@ int start_transfer(int argc, char*argv[], int optind)
 }
 
 
-int remote_to_local(int argc, char*argv[], int optind)
+/*int remote_to_local(int argc, char*argv[], int optind)
 {
     file_LL *fileList = NULL;
 
@@ -1260,7 +1276,7 @@ int local_to_remote(int argc, char*argv[], int optind)
     verb(VERB_2, "[%s] Received acknowledgement of completion", __func__);
 
     return RET_SUCCESS;
-} 
+} */
 
 void init_parcel(int argc, char *argv[])
 {
@@ -1269,20 +1285,39 @@ void init_parcel(int argc, char *argv[])
 
     // parse user command line input and get the remaining argument index
     int optind = get_options(argc, argv);
+    verb(VERB_2, "[%s] optind = %d, argc = %d", __func__, optind, argc);
     
-    if ( g_opt_debug_file_logging ) {
-        g_opt_debug_file = fopen("debug.log", "w");
-        if ( !g_opt_debug_file ) {
-            g_opt_debug_file_logging = 0;
-        }
+    if (g_opts.mode & MODE_RCV) { 
+        verb(VERB_2, "[%s] set to MODE_RCV", __func__);
+    } 
+    if (g_opts.mode & MODE_SEND) { 
+        verb(VERB_2, "[%s] set to MODE_SEND", __func__);
     }
     
     // specify how to catch signals
     set_handlers();
 
     get_remote_host(argc, argv);
+    if ( g_opts.remote_to_local ) { 
+        optind++;
+    }
     get_base_path(argc, argv, optind);
 
+    if ( g_opt_debug_file_logging ) {
+        verb(VERB_2, "[%s] opening log file %s", __func__, g_logfilename);
+        FILE* debug_file = fopen(g_logfilename, "a");
+        if ( !debug_file ) {
+            g_opt_debug_file_logging = 0;
+            verb(VERB_2, "[%s] unable to open log file, error %d", __func__, g_logfilename, errno);
+        }
+        fclose(debug_file);
+        verb(VERB_2, "********", __func__, g_logfilename);
+        verb(VERB_2, "********", __func__, g_logfilename);
+        verb(VERB_2, "[%s] log file opened as %s", __func__, g_logfilename);
+        
+    }
+    
+    
     verb(VERB_2, "[%s] parcel started as id %d", __func__, getpid());
     
     initialize_pipes();

@@ -69,6 +69,7 @@ typedef struct e_thread_args
 } e_thread_args;
 
 void *crypto_update_thread(void* _args);
+const EVP_CIPHER* figure_encryption_type(char* encrypt_str);
 
 class crypto
 {
@@ -90,159 +91,111 @@ class crypto
 
 
  public:
-    
-
-       
     // EVP stuff
-
-    EVP_CIPHER_CTX ctx[MAX_CRYPTO_THREADS];
-
-    e_thread_args e_args[MAX_CRYPTO_THREADS];
- 
-    pthread_t threads[MAX_CRYPTO_THREADS];
-
-
+    EVP_CIPHER_CTX  ctx[MAX_CRYPTO_THREADS];
+    e_thread_args   e_args[MAX_CRYPTO_THREADS];
+    pthread_t       threads[MAX_CRYPTO_THREADS];
 
     crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
     {
 
-	N_CRYPTO_THREADS = n_threads;
+        N_CRYPTO_THREADS = n_threads;
 
-	THREAD_setup();
+        THREAD_setup();
 	 //free_key( password ); can't free here because is reused by threads
-        const EVP_CIPHER *cipher;
+        const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
 
+        if ( !cipher ) {
+            exit(EXIT_FAILURE);            
+        }
+        
         //aes-128|aes-256|bf|des-ede3
         //log_set_maximum_verbosity(LOG_DEBUG);
         //log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
 
-        if (strncmp("aes-128", encryption_type, 8) == 0) {
-            //log_print(LOG_DEBUG, "using aes-128 encryption\n");
-#ifdef OPENSSL_HAS_CTR
-            if (CTR_MODE)
-                cipher = EVP_aes_128_ctr();
-            else
-#endif
-                cipher = EVP_aes_128_cfb();
-        }
-        else if (strncmp("aes-192", encryption_type, 8) == 0) {
-            //log_print(LOG_DEBUG, "using aes-192 encryption\n");
-#ifdef OPENSSL_HAS_CTR
-            if (CTR_MODE)
-                cipher = EVP_aes_192_ctr();
-            else
-#endif
-                cipher = EVP_aes_192_cfb();
-        }
-        else if (strncmp("aes-256", encryption_type, 8) == 0) {
-            //log_print(LOG_DEBUG, "using aes-256 encryption\n");
-#ifdef OPENSSL_HAS_CTR
-            if (CTR_MODE)
-                cipher = EVP_aes_256_ctr();
-            else
-#endif
-                cipher = EVP_aes_256_cfb();
-        }
-        else if (strncmp("des-ede3", encryption_type, 9) == 0) {
-            // apparently there is no 3des nor bf ctr
-            cipher = EVP_des_ede3_cfb();
-            //log_print(LOG_DEBUG, "using des-ede3 encryption\n");
-        }
-        else if (strncmp("bf", encryption_type, 3) == 0) {
-            cipher = EVP_bf_cfb();
-            //log_print(LOG_DEBUG, "using blowfish encryption\n");
-        }
-        else {
-            fprintf(stderr, "error unsupported encryption type %s\n",
-                encryption_type);
-            exit(EXIT_FAILURE);
-        }
-
         direction = direc;
 
         // EVP stuff
-	for (int i = 0; i < N_CRYPTO_THREADS; i++){
+        for (int i = 0; i < N_CRYPTO_THREADS; i++) {
 
-	    memset(ivec, 0, 1024);
+            memset(ivec, 0, 1024);
 
-	    EVP_CIPHER_CTX_init(&ctx[i]);
+            EVP_CIPHER_CTX_init(&ctx[i]);
 
-	    if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
-	    	fprintf(stderr, "error setting encryption scheme\n");
-	    	exit(EXIT_FAILURE);
-	    }
-	    
-	}
+            if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
+                fprintf(stderr, "error setting encryption scheme\n");
+                exit(EXIT_FAILURE);
+            }
+            
+        }
 	
 
-	pthread_mutex_init(&id_lock, NULL);
-	for (int i = 0; i < N_CRYPTO_THREADS; i++){
-	    pthread_mutex_init(&c_lock[i], NULL);
-	    pthread_mutex_init(&thread_ready[i], NULL);
-	    pthread_mutex_lock(&thread_ready[i]);
-	}
+        pthread_mutex_init(&id_lock, NULL);
+        for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+            pthread_mutex_init(&c_lock[i], NULL);
+            pthread_mutex_init(&thread_ready[i], NULL);
+            pthread_mutex_lock(&thread_ready[i]);
+        }
 
-	// ----------- [ Initialize and set thread detached attribute
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        // ----------- [ Initialize and set thread detached attribute
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	thread_id = 0;
+        thread_id = 0;
 
-	for (int i = 0; i < N_CRYPTO_THREADS; i++){
+        for (int i = 0; i < N_CRYPTO_THREADS; i++) {
 
-	    e_args[i].thread_id = i;
-	    e_args[i].ctx = &ctx[i];
-	    e_args[i].c = this;
+            e_args[i].thread_id = i;
+            e_args[i].ctx = &ctx[i];
+            e_args[i].c = this;
 
-	    int ret = pthread_create(&threads[i],
-				 &attr, &crypto_update_thread, 
-				 &e_args[i]);
-        RegisterThread(threads[i], "crypto_update_thread");
-    
-	    if (ret){
-		fprintf(stderr, "Unable to create thread: %d\n", ret);
-	    }
-
-
-	}
-
+            int ret = pthread_create(&threads[i],
+                     &attr, &crypto_update_thread, 
+                     &e_args[i]);
+            RegisterThread(threads[i], "crypto_update_thread");
+        
+            if (ret) {
+                fprintf(stderr, "Unable to create thread: %d\n", ret);
+            }
+        }
     }
 
     int get_num_crypto_threads(){
-	return N_CRYPTO_THREADS;
+        return N_CRYPTO_THREADS;
     }
 
     int get_thread_id(){
-	pthread_mutex_lock(&id_lock);
-	int id = thread_id;
-	pthread_mutex_unlock(&id_lock);
-	return id;
+        pthread_mutex_lock(&id_lock);
+        int id = thread_id;
+        pthread_mutex_unlock(&id_lock);
+        return id;
     }
 
     int increment_thread_id(){
-	pthread_mutex_lock(&id_lock);
-	thread_id++;
-	if (thread_id >= N_CRYPTO_THREADS)
-	    thread_id = 0;
-	pthread_mutex_unlock(&id_lock);
-	return 1;
+        pthread_mutex_lock(&id_lock);
+        thread_id++;
+        if (thread_id >= N_CRYPTO_THREADS) {
+            thread_id = 0;
+        }
+        pthread_mutex_unlock(&id_lock);
+        return 1;
     }
 
     int set_thread_ready(int thread_id){
-	return pthread_mutex_unlock(&thread_ready[thread_id]);
+        return pthread_mutex_unlock(&thread_ready[thread_id]);
     }
 
     int wait_thread_ready(int thread_id){
-	return pthread_mutex_lock(&thread_ready[thread_id]);
+        return pthread_mutex_lock(&thread_ready[thread_id]);
     }
     
     int lock_data(int thread_id){
-	return pthread_mutex_lock(&c_lock[thread_id]);
+        return pthread_mutex_lock(&c_lock[thread_id]);
     }
     
     int unlock_data(int thread_id){
-	return pthread_mutex_unlock(&c_lock[thread_id]);
+        return pthread_mutex_unlock(&c_lock[thread_id]);
     }
 
 
@@ -281,13 +234,9 @@ class crypto
     
 };
 
-
-
 int crypto_update(char* in, char* data, int len, crypto *c);
-
 int join_all_encryption_threads(crypto *c);
 int pass_to_enc_thread(char* in, char* out, int len, crypto*c);
-
 
 #endif
 

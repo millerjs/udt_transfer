@@ -368,19 +368,19 @@ file_LL* build_full_filelist(int n, char *paths[])
     file_LL *fileList = NULL;
     struct stat stats;
 
-    verb(VERB_3, "build_full_filelist: %d paths", n);
+    verb(VERB_2, "[%s] %d paths", __func__, n);
 
     for (int i = 0; i < n ; i++) {
 
         if (paths[i]) {
-            verb(VERB_3, "build_full_filelist: trying %s", paths[i]);
+            verb(VERB_2, "[%s] trying %s", __func__, paths[i]);
 
             if (stat(paths[i], &stats) == -1) {
                 ERR("unable to stat file [%s], error = %d", paths[i], errno);
             }
 
             if ((stats.st_mode & S_IFMT) == S_IFDIR) {
-                verb(VERB_3, "build_full_filelist: dir found, traversing %s", paths[i]);
+                verb(VERB_2, "[%s] dir found, traversing %s", __func__ , paths[i]);
                 fileList = add_file_to_list(fileList, paths[i], paths[i]);
                 char parent_dir[MAX_PATH_LEN];
                 get_parent_dir(parent_dir, paths[i]);
@@ -396,7 +396,7 @@ file_LL* build_full_filelist(int n, char *paths[])
         // fileList = add_file_to_list(fileList, paths[i]);
     }
 
-    verb(VERB_2, "build_full_filelist: complete, %d items in list", fileList->count);
+    verb(VERB_2, "[%s] complete, %d items in list", __func__, fileList->count);
     return fileList;
     
     

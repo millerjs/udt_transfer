@@ -205,6 +205,7 @@ void *run_client(void *_args_)
     // UDT::cleanup();
     UDT::close(*rcvargs.usocket);
     UDT::close(*send_args.usocket);
+    UDT::cleanup();
     free(ip);
     ExitThread(GetMyThreadId());
     return NULL;

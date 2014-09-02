@@ -52,10 +52,11 @@ const int max_block_size = 64*1024;
 static void locking_function(int mode, int n, const char*file, int line)
 {
     pris("LOCKING FUNCTION CALLED");
-    if (mode & CRYPTO_LOCK)
-	MUTEX_LOCK(mutex_buf[n]);
-    else
-	MUTEX_UNLOCK(mutex_buf[n]);
+    if (mode & CRYPTO_LOCK) {
+        MUTEX_LOCK(mutex_buf[n]);
+    } else { 
+        MUTEX_UNLOCK(mutex_buf[n]);
+    }
 }
 
 // Returns the thread ID
@@ -68,23 +69,22 @@ static void threadid_func(CRYPTO_THREADID * id)
 
 int THREAD_setup(void)
 {
-    
     pris("Setting up threads");
     mutex_buf = (MUTEX_TYPE*)malloc(CRYPTO_num_locks()*sizeof(MUTEX_TYPE));
   
-    if (!mutex_buf)
-	return 0;
+    if ( mutex_buf ) {
 
-    int i;
-    for (i = 0; i < CRYPTO_num_locks(); i++)
-	MUTEX_SETUP(mutex_buf[i]);
+        int i;
+        for (i = 0; i < CRYPTO_num_locks(); i++)
+        MUTEX_SETUP(mutex_buf[i]);
 
-    // CRYPTO_set_id_callback(threadid_func);
-    CRYPTO_THREADID_set_callback(threadid_func);
-    CRYPTO_set_locking_callback(locking_function);
+        // CRYPTO_set_id_callback(threadid_func);
+        CRYPTO_THREADID_set_callback(threadid_func);
+        CRYPTO_set_locking_callback(locking_function);
 
-    pris("Locking and callback functions set");
-
+        pris("Locking and callback functions set");
+    }
+    
     return 0;
 }
 
@@ -92,17 +92,17 @@ int THREAD_setup(void)
 int THREAD_cleanup(void)
 {
     pris("Cleaning up threads");
-    if (!mutex_buf)
-	return 0;
+    if ( mutex_buf ) { 
 
-    /* CRYPTO_set_id_callback(NULL); */
-    CRYPTO_THREADID_set_callback(NULL);
-    CRYPTO_set_locking_callback(NULL);
+        /* CRYPTO_set_id_callback(NULL); */
+        CRYPTO_THREADID_set_callback(NULL);
+        CRYPTO_set_locking_callback(NULL);
 
-    int i;
-    for (i = 0; i < CRYPTO_num_locks(); i ++)
-	MUTEX_CLEANUP(mutex_buf[i]);
-
+        int i;
+        for (i = 0; i < CRYPTO_num_locks(); i ++)
+        MUTEX_CLEANUP(mutex_buf[i]);
+    }
+    
     return 0;
 
 }
@@ -118,11 +118,11 @@ int crypto_update(char* in, char* out, int len, crypto *c)
 
     if (len == 0) {
 	
-	// FINALIZE CIPHER
-	if (!EVP_CipherFinal_ex(&c->ctx[i], (uchar*)in, &evp_outlen)) {
-	    	fprintf(stderr, "encryption error\n");
-	    	exit(EXIT_FAILURE);
-	}
+        // FINALIZE CIPHER
+        if (!EVP_CipherFinal_ex(&c->ctx[i], (uchar*)in, &evp_outlen)) {
+                fprintf(stderr, "encryption error\n");
+                exit(EXIT_FAILURE);
+        }
 
     } else {
 
@@ -212,7 +212,8 @@ void *crypto_update_thread(void* _args)
     
 }
 
-int join_all_encryption_threads(crypto *c){
+int join_all_encryption_threads(crypto *c)
+{
 
     if (!c) {
         fprintf(stderr, "error: join_all_encryption_threads passed null pointer\n");
@@ -228,27 +229,70 @@ int join_all_encryption_threads(crypto *c){
 
 }
 
-int pass_to_enc_thread(char* in, char*out, int len, crypto*c){
+int pass_to_enc_thread(char* in, char*out, int len, crypto*c)
+{
 
-    if (len == 0)
-	return 0; 
+    if (len > 0) {
 
-    int thread_id = c->get_thread_id();
-    c->lock_data(thread_id);
+        int thread_id = c->get_thread_id();
+        c->lock_data(thread_id);
 
-    c->increment_thread_id();
+        c->increment_thread_id();
 
-    // fprintf(stderr, "[%d] Waiting on data %d in pass\n", getpid(), thread_id);
+        // fprintf(stderr, "[%d] Waiting on data %d in pass\n", getpid(), thread_id);
 
-    c->e_args[thread_id].in = (uchar*) in;
-    c->e_args[thread_id].out = (uchar*) out;
-    c->e_args[thread_id].len = len;
+        c->e_args[thread_id].in = (uchar*) in;
+        c->e_args[thread_id].out = (uchar*) out;
+        c->e_args[thread_id].len = len;
 
-    // fprintf(stderr, "[%d] posting thread %d in pass\n", getpid(), thread_id);
-    c->set_thread_ready(thread_id);
+        // fprintf(stderr, "[%d] posting thread %d in pass\n", getpid(), thread_id);
+        c->set_thread_ready(thread_id);
 
-    fflush(stderr);
-
+        fflush(stderr);
+    }
+    
     return 0;
 }
 
+const EVP_CIPHER* figure_encryption_type(char* encrypt_str)
+{
+    const EVP_CIPHER *cipher = (EVP_CIPHER*)NULL;
+
+    if (strncmp("aes-128", encrypt_str, 8) == 0) {
+#ifdef OPENSSL_HAS_CTR
+        if (CTR_MODE)
+            cipher = EVP_aes_128_ctr();
+        else
+#endif
+            cipher = EVP_aes_128_cfb();
+    }
+    else if (strncmp("aes-192", encrypt_str, 8) == 0) {
+#ifdef OPENSSL_HAS_CTR
+        if (CTR_MODE)
+            cipher = EVP_aes_192_ctr();
+        else
+#endif
+            cipher = EVP_aes_192_cfb();
+    }
+    else if (strncmp("aes-256", encrypt_str, 8) == 0) {
+#ifdef OPENSSL_HAS_CTR
+        if (CTR_MODE)
+            cipher = EVP_aes_256_ctr();
+        else
+#endif
+            cipher = EVP_aes_256_cfb();
+    }
+    else if (strncmp("des-ede3", encrypt_str, 9) == 0) {
+        // apparently there is no 3des nor bf ctr
+        cipher = EVP_des_ede3_cfb();
+    }
+    else if (strncmp("bf", encrypt_str, 3) == 0) {
+        cipher = EVP_bf_cfb();
+    }
+    else {
+        fprintf(stderr, "error unsupported encryption type %s\n", encrypt_str);
+    }
+    
+    return cipher;
+    
+}

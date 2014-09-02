@@ -58,6 +58,25 @@ off_t read_data(void* b, int len)
 
 }
 
+// Notify the destination that the transfer is complete
+int acknowlege_complete_xfer() 
+{
+    
+    verb(VERB_2, "[%s] Acknowledging end of transfer", __func__);
+
+    // Send completition header
+
+    header_t header;
+    header.type = XFER_CONTROL;
+    header.ctrl_msg = CTRL_ACK;
+    header.data_len = 0;
+    write_header(header);
+    
+    return RET_SUCCESS;
+
+}
+
+
 int receive_files(char*base_path) 
 {
     header_t header;
@@ -229,6 +248,9 @@ int pst_rec_callback_complete(header_t header, global_data_t* global_data)
     
     global_data->complete = 1;
     
+    // acknowledge the complete
+    acknowlege_complete_xfer();
+    
     return 0;
 }
 
@@ -301,7 +323,7 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
     // Check to see if we received full file
     if (global_data->f_size) {
         if (global_data->total == global_data->f_size) {
-            verb(VERB_3, "[%s] Received full file [%li B]", __func__, global_data->total);
+            verb(VERB_2, "[%s] Received full file %s [%li B]", __func__, global_data->data_path, global_data->total);
         } else {
             warn("Did not receive full file: %s", global_data->data_path);
         }

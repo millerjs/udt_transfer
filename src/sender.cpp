@@ -317,6 +317,30 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
     return ((file_LL*)global_send_data.user_data);
 }
 
+void send_and_wait_for_ack_of_complete()
+{
+    header_t header;
+    
+    complete_xfer();
+    global_send_data.complete = 0;
+    while ( !global_send_data.complete ) {
+        if (global_send_data.read_new_header) {
+            if ((global_send_data.rs = read_header(&header)) <= 0) {
+                ERR("Bad header read");
+            }
+        }
+        
+        if (global_send_data.rs) {
+            verb(VERB_3, "[%s] Dispatching message to sender: %d", __func__, header.type);
+            dispatch_message(send_postmaster, header, &global_send_data);
+        }
+
+    }        
+    
+}
+
+
+
 
 // main loop for send mode, takes a linked list of files and streams
 // them
@@ -426,6 +450,22 @@ int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
     return 0;
 }
 
+
+//
+// pst_snd_callback_control_msg
+//
+// routine to handle XFER_CONTROL message
+//
+int pst_snd_callback_control(header_t header, global_data_t* global_data)
+{
+    if ( header.ctrl_msg == CTRL_ACK ) {
+        global_data->complete = 1;
+    }
+    
+    return 0;
+}
+
+
 void init_sender()
 {
     
@@ -442,6 +482,7 @@ void init_sender()
 
     // register the callbacks
     register_callback(send_postmaster, XFER_FILELIST, pst_snd_callback_filelist);
+    register_callback(send_postmaster, XFER_CONTROL, pst_snd_callback_control);
     
 }
 

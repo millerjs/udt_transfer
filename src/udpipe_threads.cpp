@@ -329,7 +329,7 @@ void* recvdata(void * _args)
     }
 
     verb(VERB_2, "[recv thread %lu] Closing up and heading out...", tid);
-    UDT::close(recver);
+//    UDT::close(recver);
     
     free(indata);
     ExitThread(GetMyThreadId());
@@ -356,8 +356,10 @@ void* senddata(void* _args)
 
     UDTSOCKET client = *(UDTSOCKET*)args->usocket;
 
-    verb(VERB_2, "[send thread %lu] Send encryption is on.", tid);
-
+    if (args->use_crypto) {
+        verb(VERB_2, "[send thread %lu] Send encryption is on.", tid);
+    }
+    
     char* outdata = (char*)malloc(BUFF_SIZE*sizeof(char));
 
     int crypto_buff_len = BUFF_SIZE / args->n_crypto_threads;
@@ -365,9 +367,9 @@ void* senddata(void* _args)
     int	offset = sizeof(int)/sizeof(char);
     int bytes_read;
 
-    verb(VERB_2, "[send thread %lu] Sending encryption status...", tid);
 
     if (args->use_crypto) {
+        verb(VERB_2, "[send thread %lu] Sending encryption status...", tid);
         sign_auth(args);
     }
 
@@ -391,13 +393,17 @@ void* senddata(void* _args)
     if (args->use_crypto) {
         verb(VERB_2, "[send thread %lu] Entering crypto loop", tid);
         while(true) {
-            int ss;
+            if ( CheckForExit() ) {
+                verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
+                break;
+            }
 
+            int ss;
             bytes_read = read(args->send_pipe[0], outdata+offset, BUFF_SIZE);
         
             if(bytes_read < 0) {
                 cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-                UDT::close(client);
+//                UDT::close(client);
 //                free(outdata);
 //                exit(1);
                 break;
@@ -405,12 +411,14 @@ void* senddata(void* _args)
 
             if(bytes_read == 0) {
                 sleep(1);
-                UDT::close(client);
+//               UDT::close(client);
 //                free(outdata);
 //                return NULL;
                 break;
             }
         
+            // fly - why this check again? if we're in here, isn't it
+            // already assumed to be crypto?
             if(args->use_crypto) {
 
                 *((int*)outdata) = bytes_read;
@@ -461,7 +469,8 @@ void* senddata(void* _args)
             if ( CheckForExit() ) {
                 verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
                 break;
-            }            
+            }
+
             bytes_read = read(args->send_pipe[0], outdata, BUFF_SIZE);
             int ssize = 0;
             int ss;
@@ -504,7 +513,7 @@ void* senddata(void* _args)
 
     sleep(1);
     verb(VERB_2, "[send thread %lu] Freeing data & exiting", tid);
-    UDT::close(client);
+//    UDT::close(client);
     free(outdata);
     ExitThread(GetMyThreadId());
     pthread_cleanup_pop(0);
