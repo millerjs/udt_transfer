@@ -46,7 +46,7 @@ The following options are currently supported by parcel:
     --log xfer.log           will output completed file report to l_file
     --no-mmap                opt-out of memory mapping the file write
     --restart l_file         will restart the transfer from a log file xfer.log 
-    --verbose                verbose, notify of files being sent. Same as -v2
+    --verbose                verbose, notify of files being sent. Same as -v
     --quiet                  silence all warnings. Same as -v0
     
 
@@ -54,7 +54,7 @@ The following options are currently supported by parcel:
     -k                       same as --checkpoint
     -l xfer.log              same as --log 
     -r xfer.log              same as --restart
-    -v level                 set the level of verbosity
+    -v                       same as --verbose
     -x                       silence transfer progress    
 
 
