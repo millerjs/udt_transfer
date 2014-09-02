@@ -83,6 +83,7 @@ using std::endl;
 
 void cleanup_pipes();
 
+
 /* 
  * void print_bytes:
  * - print the bytes at pointer object for length size
@@ -97,6 +98,7 @@ void print_bytes(const void *object, size_t size)
     }
     fprintf(stderr, "]\n");
 }
+
 
 /* 
  * header_t nheader
@@ -135,7 +137,8 @@ void usage(int EXIT_STAT)
         "",
 
         "-l [dest_dir] \t\t listen for file transfer and write to dest_dir [default ./]",
-        "-v verbosity level \t\t set the level of verbosity",
+//        "-v verbosity level \t\t set the level of verbosity",
+        "-v enables verbose output",
         "",
 
         "Remote transfers: --remote (-r) host:dest",
@@ -162,6 +165,7 @@ void usage(int EXIT_STAT)
     exit(EXIT_STAT);
 
 }
+
 
 /* 
  * void verb
@@ -201,6 +205,7 @@ void warn(char* fmt, ... )
         va_end(args);
     }
 }
+
 
 // /* 
 //  * void error
@@ -275,6 +280,7 @@ int kill_children(int verbosity)
     return RET_SUCCESS;
 }
 
+
 /* 
  * double get_scale
  * - takes the transfer size and an allocated label string
@@ -332,6 +338,7 @@ void print_xfer_stats()
     }
 }
 
+
 #define MAX_OUTPUT_COUNT    10000
 /* 
  * void clean_exit
@@ -363,14 +370,6 @@ void clean_exit(int status)
     exit(status);
 }
 
-
-
-
-void print_backtrace() 
-{
-
-//    exit(-1);
-}
 
 /* 
  * void sig_handler
@@ -450,6 +449,7 @@ int print_progress(char* descrip, off_t read, off_t total)
     return RET_SUCCESS;
 }
 
+
 /* 
  * int run_ssh_command
  * - run the ssh command that will create a remote parcel process
@@ -486,17 +486,24 @@ int run_ssh_command()
             NULL
         };
 
-        if (g_opts.mode == MODE_SEND){
+        if (g_opts.mode == MODE_SEND) {
 
             ERR_IF(g_opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
-            sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
-                    g_remote_args.udpipe_location,
-                    g_remote_args.pipe_port, 
-                    g_remote_args.remote_path);
+            if (g_remote_args.remote_ip) {
+                sprintf(remote_pipe_cmd, "%s --interface %s -xt -p %s %s", 
+                        g_remote_args.udpipe_location,
+                        g_remote_args.remote_ip,
+                        g_remote_args.pipe_port, 
+                        g_remote_args.remote_path);
+            } else {
+                sprintf(remote_pipe_cmd, "%s -xt -p %s %s", 
+                        g_remote_args.udpipe_location,
+                        g_remote_args.pipe_port, 
+                        g_remote_args.remote_path);
+            }
 
-
-        } else if (g_opts.mode == MODE_RCV){
+        } else if (g_opts.mode == MODE_RCV) {
 
             ERR_IF(!g_opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
 
@@ -531,7 +538,7 @@ int run_ssh_command()
 int get_remote_pid()
 {
     // Try and get the pid of the remote process from the ssh pipe input
-    if (read(g_opts.recv_pipe[0], &g_remote_args.remote_pid, sizeof(pid_t)) < 0){
+    if (read(g_opts.recv_pipe[0], &g_remote_args.remote_pid, sizeof(pid_t)) < 0) {
         perror("WARNING: Unable to read pid from remote process");
     } 
 
@@ -568,6 +575,7 @@ void initialize_udpipe_args(thread_args *args)
     args->verbose          = 0;
 }
 
+
 /* 
  * int parse_destination
  * - parse argument xfer_cmd for host:destination
@@ -597,6 +605,7 @@ int parse_destination(char *xfer_cmd)
 
     return RET_SUCCESS;
 }
+
 
 /* 
  * int get_remote_host
@@ -630,6 +639,7 @@ int get_remote_host(int argc, char** argv)
 
     return RET_FAILURE;
 }
+
 
 int get_base_path(int argc, char** argv, int optind)
 {
@@ -703,9 +713,13 @@ int set_defaults()
 
     g_opts.send_pipe              = NULL;
     g_opts.recv_pipe              = NULL;
+    g_remote_args.local_ip        = NULL;
+    g_remote_args.remote_ip       = NULL;
+
 
     return RET_SUCCESS;
 }
+
 
 /* 
  * int get_options
@@ -734,6 +748,8 @@ int get_options(int argc, char *argv[])
         {"log"                  , required_argument     , NULL                      , 'l'},
         {"timeout"              , required_argument     , NULL                      , '5'},
         {"verbosity"            , required_argument     , NULL                      , '6'},
+        {"interface"            , required_argument     , NULL                      , '7'},
+        {"remote-interface"     , required_argument     , NULL                      , '8'},
         {"restart"              , required_argument     , NULL                      , 'r'},
         {"checkpoint"           , required_argument     , NULL                      , 'k'},
         {0, 0, 0, 0}
@@ -741,7 +757,8 @@ int get_options(int argc, char *argv[])
 
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "n:i:xl:thvc:k:r:n0d:5:p:q:b", 
+    // fly - for now, removed ability for -v to take an arg
+    while ((opt = getopt_long(argc, argv, "n:i:xl:thvc:k:r:n0d:5:p:q:b7:8:", 
                               long_options, &option_index)) != -1) {
         switch (opt) {
             case 'k':
@@ -811,7 +828,6 @@ int get_options(int argc, char *argv[])
                 break;
 
             case '0':
-                
                 break;
 
             case 'v':
@@ -823,6 +839,15 @@ int get_options(int argc, char *argv[])
                 // verbosity
                 ERR_IF(sscanf(optarg, "%d", &g_opts.verbosity) != 1, "unable to parse verbosity level");
                 break;
+
+            case '7':
+                ERR_IF(!(g_remote_args.local_ip = strdup(optarg)), "unable to parse local ip");
+                break;
+
+            case '8':
+                ERR_IF(!(g_remote_args.remote_ip = strdup(optarg)), "unable to parse remote ip");
+                break;
+
                 
             case 'h':
                 // help
@@ -854,6 +879,7 @@ int get_options(int argc, char *argv[])
 
 }
 
+
 /* 
  * int set_handlers
  * - sets the signal handler to sig_handler()
@@ -875,6 +901,7 @@ int set_handlers()
 
     return RET_SUCCESS;
 }
+
 
 int initialize_pipes()
 {
@@ -909,29 +936,29 @@ void cleanup_pipes()
 }
 
 
-pthread_t start_udpipe_thread(remote_arg_t *g_remote_args, udpipe_t udpipe_server_type)
+pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_type)
 {
     thread_args *args = (thread_args*) malloc(sizeof(thread_args));
     initialize_udpipe_args(args);
 
     char *host = (char*)malloc(1028*sizeof(char));
     char *at_ptr = NULL;
-    if ((at_ptr = strrchr(g_remote_args->pipe_host, '@'))) {
+    if ((at_ptr = strrchr(remote_args->pipe_host, '@'))) {
         sprintf(host, "%s", at_ptr+1);
     } else {
-        sprintf(host, "%s", g_remote_args->pipe_host);
+        sprintf(host, "%s", remote_args->pipe_host);
     }
     
     args->ip               = host;
     args->n_crypto_threads = 1;
-    args->port             = strdup(g_remote_args->pipe_port);
+    args->port             = strdup(remote_args->pipe_port);
     args->recv_pipe        = g_opts.recv_pipe;
     args->send_pipe        = g_opts.send_pipe;
     args->timeout          = g_opts.timeout;
     args->verbose          = (g_opts.verbosity > VERB_1);
+    args->listen_ip        = remote_args->local_ip;
 
     pthread_t udpipe_thread;
-//    pthread_t *udpipe_thread = (pthread_t*) malloc(sizeof(pthread_t));
     if ( udpipe_server_type == UDPIPE_SERVER ) {
         pthread_create(&udpipe_thread, NULL, &run_server, args);
         RegisterThread(udpipe_thread, "run_server");
@@ -1048,236 +1075,6 @@ int start_transfer(int argc, char*argv[], int optind)
 }
 
 
-/*int remote_to_local(int argc, char*argv[], int optind)
-{
-    file_LL *fileList = NULL;
-
-    if (g_opts.mode & MODE_RCV) {
-
-        char *base_path = NULL;
-
-        verb(VERB_2, "[%s]Starting remote_to_local receiver\n", __func__);
-
-        // spawn process on remote host and let it create the server
-//        run_ssh_command(g_remote_args.remote_path);
-        run_ssh_command();
-
-        pid_t pid = getpid();
-        write(g_opts.send_pipe[1], &pid, sizeof(pid_t));
-        g_opts.socket_ready = 1;
-
-        verb(VERB_2, "[%s] Running with file destination mode", __func__);
-//        pthread_t *server_thread = start_udpipe_server(&g_remote_args);
-        start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
-
-        // Find the output path
-        ERR_IF(optind >= argc, "I don't know where to put the files");
-        for (; optind < argc; optind++) {
-            // Go through the remaining arguments looking for an output directory path
-            if (argv[optind]) {
-                base_path = strdup(argv[optind]);
-                break;
-            }
-        }
-	
-        ERR_IF(!base_path, "I thought I knew where to put the files, but I really didn't.");
-        verb(VERB_2, "[%s] Writing files to: %s", __func__, base_path);
-
-        // Listen to sender for files and data, see receiver.cpp
-        receive_files(base_path);
-
-	// Wait here for completion
-        header_t h = nheader(XFER_COMPLETE, 0);
-        write(g_opts.send_pipe[1], &h, sizeof(header_t));
-
-//        pthread_join(transfer_thread, NULL);
-	// This causes hanging, commented for now?
-//        verb(VERB_3, "Killing server thread");
-//        pthread_kill(*server_thread, 0);
-
-
-    } else if (g_opts.mode & MODE_SEND) {
-
-        verb(VERB_2, "[%s] Starting remote_to_local sender", __func__);
-
-        // delay proceeding for slow ssh connection
-        if (g_opts.delay) {
-            verb(VERB_1, "[%s] Delaying %ds for slow connection", __func__, g_opts.delay);
-            sleep(g_opts.delay);
-        }
-
-        // connect to receiving server
-//        start_udpipe_client(&g_remote_args);
-        start_udpipe_thread(&g_remote_args, UDPIPE_CLIENT);
-
-        // get the pid of the remote process in case we need to kill it
-        get_remote_pid();
-
-        ERR_IF(optind >= argc, "Please specify files to send");
-
-        verb(VERB_2, "[%s] Running with file source mode.", __func__);
-                
-        int n_files = argc-optind;
-        char **path_list = argv+optind;
-
-        // Generate a linked list of file objects from path list
-//        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-        ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-
-        // send the file list, requesting version from dest
-        file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
-        
-        // This is where we pass the remainder of the work to the
-        // file handler in sender.cpp
-        handle_files(fileList, remote_fileList);
-        
-        // we're done, free the remote file list
-        free_file_list(remote_fileList);
-
-        // signal the end of the transfer
-        complete_xfer();
-        
-//        pthread_join(transfer_thread, NULL);
-
-        header_t h = nheader(XFER_WAIT, 0);
-        while (read(g_opts.recv_pipe[0], &h, sizeof(header_t))) {
-            if (h.type == XFER_COMPLETE) {
-                break;
-            }
-            else {
-                verb(VERB_2, "[%s] received non-end-of-transfer message", __func__);
-            }
-        }
-        verb(VERB_2, "[%s] Received acknowledgement of completion", __func__);
-
-    }
-
-    return RET_SUCCESS;
-}
-
-
-int local_to_remote(int argc, char*argv[], int optind)
-{
-    file_LL *fileList = NULL;
-
-    // if logging is enabled, open the log/checkpoint file
-    open_log_file();
-
-    // if user selected to restart a previous transfer
-    if (g_opts.restart) {
-        verb(VERB_2, "[%s] Loading restart checkpoint [%s].", __func__, g_opts.restart_path);
-        read_checkpoint(g_opts.restart_path);
-    }
-
-
-    if (g_opts.mode & MODE_SEND) {
-
-        verb(VERB_2, "[%s] Starting local_to_remote sender", __func__);
-        
-        // spawn process on remote host and let it create the server
-        verb(VERB_2, "[%s] Running ssh to remote path %s\n", __func__, g_remote_args.remote_path);
-//        run_ssh_command(g_remote_args.remote_path);
-        run_ssh_command();
-
-        // delay proceeding for slow ssh connection
-        if (g_opts.delay) {
-            verb(VERB_1, "[%s] Delaying %ds for slow connection", __func__, g_opts.delay);
-            sleep(g_opts.delay);
-        }
-
-        // connect to receiving server
-//        start_udpipe_client(&g_remote_args);
-        start_udpipe_thread(&g_remote_args, UDPIPE_CLIENT);
-        
-        // get the pid of the remote process in case we need to kill it
-        get_remote_pid();
-
-        ERR_IF(optind >= argc, "Please specify files to send");
-                
-        verb(VERB_2, "[%s] Running with file source mode.", __func__);
-                
-        int n_files = argc-optind;
-        char **path_list = argv+optind;
-
-        // Generate a linked list of file objects from path list
-//        ERR_IF(!(fileList = build_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-        ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
-
-        file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
-        
-        // Visit all directories and send all files
-        // This is where we pass the remainder of the work to the
-        // file handler in sender.cpp
-        handle_files(fileList, remote_fileList);
-        // signal the end of the transfer
-        complete_xfer();
-
-        // free the remote list
-        free_file_list(remote_fileList);
-
-    // Otherwise, switch to receiving mode
-    } else if (g_opts.mode & MODE_RCV) {
-
-        verb(VERB_2, "[%s] Starting local_to_remote receiver", __func__);
-        
-        pid_t pid = getpid();
-        write(g_opts.send_pipe[1], &pid, sizeof(pid_t));
-
-        g_opts.socket_ready = 1;
-
-        verb(VERB_3, "Running with file destination mode");
-
-//        pthread_t *server_thread = start_udpipe_server(&g_remote_args);
-        start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
-
-        // Check to see if user specified a pipe, if so, run it
-        // run_pipe(g_remote_args.pipe_cmd);
-
-        // Destination directory was passed
-        if (optind < argc) {
-            
-            // Generate a base path for file locations
-            char base_path[MAX_PATH_LEN];
-            bzero(base_path, MAX_PATH_LEN);
-            sprintf(base_path, "%s", argv[optind++]);
-            
-            // Are there any remaining command line args? Warn user
-            verb(VERB_2, "[%s] Unused command line args:", __func__);
-            for (; optind < argc-1; optind++) {
-                verb(VERB_2, "[%s] Unused %s", __func__, argv[optind]);
-            }
-            
-            g_timer = start_timer("receive_timer");
-
-            // Listen to sender for files and data, see receiver.cpp
-            receive_files(base_path);
-            
-        // If no destination directory was passed, default to current dir
-        } else {
-            g_timer = start_timer("receive_timer");
-            receive_files("");
-        }
-
-        header_t h = nheader(XFER_COMPLETE, 0);
-        write(g_opts.send_pipe[1], &h, sizeof(header_t));
-
-//        pthread_join(transfer_thread, NULL);
-    }
-
-    verb(VERB_2, "[%s] Waiting for acknowledgement of complete", __func__);
-    header_t h = nheader(XFER_WAIT, 0);
-    while (read(g_opts.recv_pipe[0], &h, sizeof(header_t))) {
-        if (h.type == XFER_COMPLETE) {
-            break;
-        } else {
-            verb(VERB_2, "[%s] received non-end-of-transfer message\n", __func__);
-        }
-    }
-    verb(VERB_2, "[%s] Received acknowledgement of completion", __func__);
-
-    return RET_SUCCESS;
-} */
-
 void init_parcel(int argc, char *argv[])
 {
     // set structs g_opts and g_remote_args to their default values
@@ -1325,6 +1122,7 @@ void init_parcel(int argc, char *argv[])
     init_receiver();
     
 }
+
 
 void cleanup_parcel()
 {
