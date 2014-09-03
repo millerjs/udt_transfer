@@ -1,6 +1,7 @@
 #include <openssl/evp.h>
 #include <openssl/crypto.h>
-
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
 
 #include <time.h>
 
@@ -16,16 +17,16 @@
 
 #include "crypto.h"
 
-#define pris(x)            if (DEBUG)fprintf(stderr,"[crypto] %s\n",x)   
+#define pris(x)            if (DEBUG)fprintf(stderr,"[crypto] %s\n",x)
 
-#define MUTEX_TYPE	   pthread_mutex_t
-#define MUTEX_SETUP(x)	   pthread_mutex_init(&(x), NULL)
-#define MUTEX_CLEANUP(x)   pthread_mutex_destroy(&x) 
-#define MUTEX_LOCK(x)	   pthread_mutex_lock(&x)
-#define MUTEX_UNLOCK(x)	   pthread_mutex_unlock(&x)
-#define THREAD_ID	   pthread_self()
+#define MUTEX_TYPE          pthread_mutex_t
+#define MUTEX_SETUP(x)      pthread_mutex_init(&(x), NULL)
+#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x) 
+#define MUTEX_LOCK(x)       pthread_mutex_lock(&x)
+#define MUTEX_UNLOCK(x)     pthread_mutex_unlock(&x)
+#define THREAD_ID           pthread_self()
 
-#define AES_BLOCK_SIZE 8
+#define AES_BLOCK_SIZE      8
 
 static MUTEX_TYPE *mutex_buf = NULL;
 static void locking_function(int mode, int n, const char*file, int line);
@@ -34,16 +35,17 @@ void pric(uchar* s, int len)
 {
     int i;
     fprintf(stderr, "data: ");
-    for (i = 0; i < len/4; i ++){
-	fprintf(stderr, "%x ",  s[i]);
+    for (i = 0; i < len/4; i ++) {
+        fprintf(stderr, "%x ",  s[i]);
     }
     fprintf(stderr, "\n");
 }
 
 void prii(int i)
 {
-    if (DEBUG)
-	fprintf(stderr, "             -> %d\n", i);
+    if (DEBUG) {
+        fprintf(stderr, "             -> %d\n", i);
+    }
 }
 
 const int max_block_size = 64*1024;
@@ -117,27 +119,27 @@ int crypto_update(char* in, char* out, int len, crypto *c)
     c->lock_data(i);
 
     if (len == 0) {
-	
+
         // FINALIZE CIPHER
         if (!EVP_CipherFinal_ex(&c->ctx[i], (uchar*)in, &evp_outlen)) {
-                fprintf(stderr, "encryption error\n");
-                exit(EXIT_FAILURE);
+            fprintf(stderr, "encryption error\n");
+            exit(EXIT_FAILURE);
         }
 
     } else {
 
-    	// [EN][DE]CRYPT
-    	if(!EVP_CipherUpdate(&c->ctx[i], (uchar*)in, &evp_outlen, (uchar*)in, len)){
-    	    fprintf(stderr, "encryption error\n");
-    	    exit(EXIT_FAILURE);
-    	}
+        // [EN][DE]CRYPT
+        if(!EVP_CipherUpdate(&c->ctx[i], (uchar*)in, &evp_outlen, (uchar*)in, len)){
+            fprintf(stderr, "encryption error\n");
+            exit(EXIT_FAILURE);
+        }
 
-    	// DOUBLE CHECK
-    	if (evp_outlen-len){
-    	    fprintf(stderr, "Did not encrypt full length of data [%d-%d]", 
-    		    evp_outlen, len);
-    	    exit(EXIT_FAILURE);
-    	}
+        // DOUBLE CHECK
+        if (evp_outlen-len){
+            fprintf(stderr, "Did not encrypt full length of data [%d-%d]", 
+                evp_outlen, len);
+            exit(EXIT_FAILURE);
+        }
 
     }
 
@@ -155,7 +157,6 @@ void *crypto_update_thread(void* _args)
 
     if (!_args){
         fprintf(stderr, "Null argument passed to crypto_update_thread\n");
-//        exit(1);
     } else {
 
         e_thread_args* args = (e_thread_args*)_args;
@@ -175,7 +176,6 @@ void *crypto_update_thread(void* _args)
                          args->in+total, &evp_outlen, 
                          args->out+total, args->len-total)) {
                     fprintf(stderr, "encryption error\n");
-//                    exit(EXIT_FAILURE);
                     error = 1;
                     break;
                 }
@@ -190,14 +190,12 @@ void *crypto_update_thread(void* _args)
 
             if (len != args->len){
                 fprintf(stderr, "error: The length changed during encryption.\n\n");
-//                exit(1);
                 break;
             }
 
             if (total != args->len){
                 fprintf(stderr, "error: Did not encrypt full length of data %d [%d-%d]", 
                     args->thread_id, total, args->len);
-//                exit(1);
                 break;
             }
             
@@ -296,3 +294,44 @@ const EVP_CIPHER* figure_encryption_type(char* encrypt_str)
     return cipher;
     
 }
+
+//
+// generate_session_key
+//
+// generates an RSA key, needs to be freed when done
+//
+char* generate_session_key(void)
+{
+
+    // fly - NIST says 65537, so there, no longer magic
+    // http://en.wikipedia.org/wiki/RSA_%28cryptosystem%29#Faulty_key_generation
+    const int kExp = 65537;
+    const int kBits = 1024;
+
+    int keylen;
+    char *pem_key;
+
+    // fly - Hey kids, look at how many steps it takes OpenSSL to just
+    // generate a string of an RSA key!  Can you add some routines that 
+    // always have to be bundled together to make this more convoluted?
+    // I bet you can if you try!
+
+    RSA *rsa = RSA_generate_key(kBits, kExp, 0, 0);
+
+    BIO *bio = BIO_new(BIO_s_mem());
+    PEM_write_bio_RSAPrivateKey(bio, rsa, NULL, NULL, 0, NULL, NULL);
+
+    keylen = BIO_pending(bio);
+    pem_key = (char*)malloc(sizeof(char) * keylen + 1);
+    memset(pem_key, 0, sizeof(char) * keylen);
+
+    BIO_read(bio, pem_key, keylen);
+
+    BIO_free_all(bio);
+    RSA_free(rsa);
+
+    return(pem_key);
+}
+
+
+

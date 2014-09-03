@@ -40,18 +40,16 @@ and limitations under the License.
 
 #include "thread_manager.h"
 
-#define MUTEX_TYPE		pthread_mutex_t
-#define MUTEX_SETUP(x)		pthread_mutex_init(&(x), NULL)
-#define MUTEX_CLEANUP(x)	pthread_mutex_destroy(&x) 
-#define MUTEX_LOCK(x)		pthread_mutex_lock(&x)
-#define MUTEX_UNLOCK(x)		pthread_mutex_unlock(&x)
-#define THREAD_ID		pthread_self()
+#define MUTEX_TYPE          pthread_mutex_t
+#define MUTEX_SETUP(x)      pthread_mutex_init(&(x), NULL)
+#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x) 
+#define MUTEX_LOCK(x)       pthread_mutex_lock(&x)
+#define MUTEX_UNLOCK(x)	    pthread_mutex_unlock(&x)
+#define THREAD_ID           pthread_self()
 
 int THREAD_setup(void);
 int THREAD_cleanup(void);
 void *enrypt_threaded(void* _args);
-
-
 
 using namespace std;
 
@@ -102,13 +100,13 @@ class crypto
         N_CRYPTO_THREADS = n_threads;
 
         THREAD_setup();
-	 //free_key( password ); can't free here because is reused by threads
+        //free_key( password ); can't free here because is reused by threads
         const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
 
         if ( !cipher ) {
-            exit(EXIT_FAILURE);            
+            exit(EXIT_FAILURE);
         }
-        
+
         //aes-128|aes-256|bf|des-ede3
         //log_set_maximum_verbosity(LOG_DEBUG);
         //log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
@@ -128,7 +126,7 @@ class crypto
             }
             
         }
-	
+
 
         pthread_mutex_init(&id_lock, NULL);
         for (int i = 0; i < N_CRYPTO_THREADS; i++) {
@@ -161,18 +159,21 @@ class crypto
         }
     }
 
-    int get_num_crypto_threads(){
+    int get_num_crypto_threads() 
+    {
         return N_CRYPTO_THREADS;
     }
 
-    int get_thread_id(){
+    int get_thread_id()
+    {
         pthread_mutex_lock(&id_lock);
         int id = thread_id;
         pthread_mutex_unlock(&id_lock);
         return id;
     }
 
-    int increment_thread_id(){
+    int increment_thread_id()
+    {
         pthread_mutex_lock(&id_lock);
         thread_id++;
         if (thread_id >= N_CRYPTO_THREADS) {
@@ -182,19 +183,23 @@ class crypto
         return 1;
     }
 
-    int set_thread_ready(int thread_id){
+    int set_thread_ready(int thread_id)
+    {
         return pthread_mutex_unlock(&thread_ready[thread_id]);
     }
 
-    int wait_thread_ready(int thread_id){
+    int wait_thread_ready(int thread_id)
+    {
         return pthread_mutex_lock(&thread_ready[thread_id]);
     }
     
-    int lock_data(int thread_id){
+    int lock_data(int thread_id)
+    {
         return pthread_mutex_lock(&c_lock[thread_id]);
     }
     
-    int unlock_data(int thread_id){
+    int unlock_data(int thread_id)
+    {
         return pthread_mutex_unlock(&c_lock[thread_id]);
     }
 
@@ -222,21 +227,23 @@ class crypto
             }
             return evp_outlen;
         }
-	
+
         if(!EVP_CipherUpdate(&ctx[0], (unsigned char *)out, &evp_outlen, (unsigned char *)in, len))
-	  {
+        {
             fprintf(stderr, "encryption error\n");
             exit(EXIT_FAILURE);
-	  }
+        }
         return evp_outlen;
     }
 
-    
 };
 
 int crypto_update(char* in, char* data, int len, crypto *c);
 int join_all_encryption_threads(crypto *c);
 int pass_to_enc_thread(char* in, char* out, int len, crypto*c);
+
+// generates an RSA key, needs to be freed when done
+char* generate_session_key(void);
 
 #endif
 
