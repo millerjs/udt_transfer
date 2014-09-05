@@ -32,10 +32,8 @@ global_data_t    global_receive_data;
 
 int read_header(header_t *header) 
 {
-
     // return read(fileno(stdin), header, sizeof(header_t));
     return read(g_opts.recv_pipe[0], header, sizeof(header_t));
-
 }
 
 // wrapper for read
@@ -96,7 +94,7 @@ int receive_files(char*base_path)
     while ( !global_receive_data.complete ) {
         if (global_receive_data.read_new_header) {
             if ((global_receive_data.rs = read_header(&header)) <= 0) {
-                ERR("Bad header read");
+                ERR("Bad header read, errno: %d", errno);
             }
         }
         

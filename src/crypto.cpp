@@ -153,7 +153,7 @@ int crypto_update(char* in, char* out, int len, crypto *c)
 void *crypto_update_thread(void* _args)
 {
 
-    int evp_outlen = 0, error = 0;
+    int         evp_outlen = 0, error = 0;
 
     if (!_args){
         fprintf(stderr, "Null argument passed to crypto_update_thread\n");
@@ -163,8 +163,11 @@ void *crypto_update_thread(void* _args)
         crypto *c = (crypto*)args->c;
         
         while (1) {
-
-            // fprintf(stderr, "[%d] Waiting for thread_ready %d\n", pthread_self(), args->thread_id);
+            if ( CheckForExit() ) {
+                break;
+            }
+            
+            fprintf(stderr, "[%s %lu] Waiting for thread_ready %d\n", __func__, pthread_self(), args->thread_id);
             c->wait_thread_ready(args->thread_id);
 
             int len = args->len;
@@ -199,7 +202,7 @@ void *crypto_update_thread(void* _args)
                 break;
             }
             
-            // fprintf(stderr, "[%d] Done with thread %d\n", pthread_self(), args->thread_id);	
+            fprintf(stderr, "[%s %lu] Done with thread %d\n", __func__, pthread_self(), args->thread_id);
             c->unlock_data(args->thread_id);
         
         }
@@ -295,6 +298,60 @@ const EVP_CIPHER* figure_encryption_type(char* encrypt_str)
     
 }
 
+
+//
+// cull_rsa_key
+//
+// culls the header and footer off of a key
+//
+int cull_rsa_key(char* key)
+{
+    // fly - ok, so assumption here...the basic base64 encoding
+    // does NOT use the '-' character, so the assumption is if
+    // we run into one, we know we're looking at the beginning 
+    // or ending line.  Looking into possibilities, there *are*
+    // base64 web encodings that will replace the '+' and '=' with 
+    // '-' and '_', so if that ever changes, this routine will break
+    
+    unsigned int i = 0, j = 0;
+    int retVal = 0, skipLine = 0, delimiterCount = 0, keyLen;
+    char* tmpKey = NULL;
+
+    keyLen = strlen(key) + 1;
+
+    // make some temp space for a smaller copy
+    tmpKey = (char*)malloc(sizeof(char) * keyLen);
+    memset(tmpKey, 0, keyLen);
+    while ( i < strlen(key) ) {
+        if ( skipLine ) {
+            if ( key[i] == '\n' ) {
+                skipLine = 0;
+            }
+            i++;
+        } else {
+            if ( (key[i] != '\n') && (key[i] != '-') ) {
+                tmpKey[j++] = key[i++];
+            } else {
+                if ( key[i] == '-' ) {
+                    if ( delimiterCount == 1 ) {
+                        break;
+                    }
+                    delimiterCount++;
+                    skipLine = 1;
+                }
+                i++;
+            }
+        }
+    }
+
+    // ok, we're done, let's zero out the original and copy over
+    memset(key, 0, keyLen);
+    strncpy(key, tmpKey, strlen(tmpKey));
+
+    return retVal;
+}
+
+
 //
 // generate_session_key
 //
@@ -306,7 +363,10 @@ char* generate_session_key(void)
     // fly - NIST says 65537, so there, no longer magic
     // http://en.wikipedia.org/wiki/RSA_%28cryptosystem%29#Faulty_key_generation
     const int kExp = 65537;
-    const int kBits = 1024;
+    
+    // fly - less than 1024 is considered insecure, so I'm using double that for
+    // now
+    const int kBits = 2048;
 
     int keylen;
     char *pem_key;
@@ -323,15 +383,16 @@ char* generate_session_key(void)
 
     keylen = BIO_pending(bio);
     pem_key = (char*)malloc(sizeof(char) * keylen + 1);
-    memset(pem_key, 0, sizeof(char) * keylen);
+    memset(pem_key, 0, (sizeof(char) * keylen) + 1);
 
     BIO_read(bio, pem_key, keylen);
+
+    cull_rsa_key(pem_key);
 
     BIO_free_all(bio);
     RSA_free(rsa);
 
     return(pem_key);
 }
-
 
 

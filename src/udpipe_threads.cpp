@@ -71,42 +71,39 @@ void *monitor_timeout(void* arg) {
 
 
 
-void send_full(UDTSOCKET sock, char* buffer, int len){  
-    
+void send_full(UDTSOCKET sock, char* buffer, int len)
+{
     int sent = 0;
     int rs = 0;
-    while (sent < len){
-	rs = UDT::send(sock, buffer+sent, len-sent, 0);
-	if (UDT::ERROR == rs) {
-	    if (UDT::getlasterror().getErrorCode() != ECONNLOST)
-		cerr << "recv:" << UDT::getlasterror().getErrorMessage() << 
-		    "send_full: Unable to send data." << endl;
-	    exit(1);    
-	}
-	sent += rs;
+    while (sent < len) {
+        rs = UDT::send(sock, buffer+sent, len-sent, 0);
+        if (UDT::ERROR == rs) {
+            if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
+                cerr << "recv:" << UDT::getlasterror().getErrorMessage() <<
+                    "send_full: Unable to send data." << endl;
+                exit(1);
+            }
+        }
+        sent += rs;
     }
-    
-    
 }
 
 void recv_full(UDTSOCKET sock, char* buffer, int len)
 {
-    
     int recvd = 0;
     int rs = 0;
-    while (recvd < len){
-	rs = UDT::recv(sock, buffer+recvd, len-recvd, 0);
-	if (UDT::ERROR == rs) {
-	    if (UDT::getlasterror().getErrorCode() != ECONNLOST)
-		cerr << "recv:" << UDT::getlasterror().getErrorMessage() << 
-		    "send_full: Unable to send data." << endl;
-	    exit(1);    
-	}
-	timeout_sem = 1;
-	recvd += rs;
+    while (recvd < len) {
+    rs = UDT::recv(sock, buffer+recvd, len-recvd, 0);
+        if (UDT::ERROR == rs) {
+            if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
+                cerr << "recv:" << UDT::getlasterror().getErrorMessage() << 
+                    "send_full: Unable to send data." << endl;
+                exit(1);
+            }
+        }
+        timeout_sem = 1;
+        recvd += rs;
     }
-    
-    
 }
 
 const int KEY_LEN = 1026;
@@ -130,17 +127,17 @@ void auth_peer(rs_args* args)
     recv_full(*args->usocket, signed_key, KEY_LEN);
 
     int crypt_len = KEY_LEN/args->n_crypto_threads;
-    for (int i = 0; i < args->n_crypto_threads; i ++)
-	pass_to_enc_thread(signed_key+i*crypt_len, signed_key+i*crypt_len, 
-			   crypt_len, args->c);
+    for (int i = 0; i < args->n_crypto_threads; i ++) {
+        pass_to_enc_thread(signed_key+i*crypt_len, signed_key+i*crypt_len, 
+                crypt_len, args->c);
+    }
 
     join_all_encryption_threads(args->c);
 
 
-    if (memcmp(key, signed_key, KEY_LEN)){
-	fprintf(stderr, "Authorization failed\n");
-	exit(1);
-
+    if (memcmp(key, signed_key, KEY_LEN)) {
+        fprintf(stderr, "Authorization failed\n");
+        exit(1);
     }
 
 }
@@ -148,15 +145,15 @@ void auth_peer(rs_args* args)
 
 void sign_auth(rs_args* args)
 {
-    
     char key[KEY_LEN];
 
     recv_full(*args->usocket, key, KEY_LEN);
 
     int crypt_len = KEY_LEN/args->n_crypto_threads;
-    for (int i = 0; i < args->n_crypto_threads; i ++)
-	pass_to_enc_thread(key+i*crypt_len, key+i*crypt_len, 
-			   crypt_len, args->c);
+    for (int i = 0; i < args->n_crypto_threads; i ++) {
+        pass_to_enc_thread(key+i*crypt_len, key+i*crypt_len, 
+                crypt_len, args->c);
+    }
 
     join_all_encryption_threads(args->c);
 
@@ -171,15 +168,15 @@ void* recvdata(void * _args)
 {
     pthread_t   tid;
     tid = pthread_self();
-    
+
     rs_args * args = (rs_args*)_args;
-    
-    verb(VERB_2, "[recv thread %lu] Initializing receive thread...", tid);
-    
+
+    verb(VERB_2, "[%s %lu] Initializing receive thread...", __func__, tid);
+
     if (args->use_crypto) {
-        verb(VERB_2, "[recv thread %lu] Receive encryption is on.", tid);
+        verb(VERB_2, "[%s %lu] Receive encryption is on.", __func__, tid);
     }
-    
+
     UDTSOCKET recver = *args->usocket;
 
     int crypto_buff_len = BUFF_SIZE / args->n_crypto_threads;
@@ -191,9 +188,10 @@ void* recvdata(void * _args)
         exit(EXIT_FAILURE);
     }
 
-    if (args->use_crypto) {
+    // fly - we have keys, so this should be unnecessary
+/*    if (args->use_crypto) {
         auth_peer(args);
-    }
+    } */
 
     timeout_sem = 2;
 
@@ -211,15 +209,15 @@ void* recvdata(void * _args)
     int offset = sizeof(int)/sizeof(char);
     int crypto_cursor;
 
-    verb(VERB_2, "[recv thread %lu] Listening on receive thread.", tid);
-    
+    verb(VERB_2, "[%s %lu] Listening on receive thread.", __func__, tid);
+
     // Set monitor thread to expect a timeout
     if (args->timeout) {
         timeout_sem = 1;
     }
-    
+
     if(args->use_crypto) {
-        verb(VERB_2, "[recv thread %lu] Entering crypto loop...", tid);
+        verb(VERB_2, "[%s %lu] Entering crypto loop...", __func__, tid);
         while(true) {
             int rs;
             if (new_block) {
@@ -230,12 +228,8 @@ void* recvdata(void * _args)
                 if (UDT::ERROR == rs) {
                     if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
                         cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
-//                        free(indata);
-//                        exit(1);
                         break;
                     }
-//                    free(indata);
-//                    exit(0);
                     break;
                 }
 
@@ -243,9 +237,9 @@ void* recvdata(void * _args)
                 buffer_cursor = 0;
                 crypto_cursor = 0;
 
-            }	
-            
-            rs = UDT::recv(recver, indata+buffer_cursor, 
+            }
+
+            rs = UDT::recv(recver, indata+buffer_cursor,
                    block_size-buffer_cursor, 0);
 
 
@@ -290,16 +284,16 @@ void* recvdata(void * _args)
                 buffer_cursor = 0;
                 crypto_cursor = 0;
                 new_block = 1;
-            } 
+            }
             if ( CheckForExit() ) {
-                verb(VERB_2, "[recv thread %lu] Got exit signal, exiting", tid);
+                verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
         }
 
-    } else { 
+    } else {
         tid = pthread_self();
-        verb(VERB_2, "[recv thread %lu] Entering non-crypto loop...", tid);
+        verb(VERB_2, "[%s %lu] Entering non-crypto loop...", __func__, tid);
         int rs;
         while (1) {
 
@@ -307,30 +301,26 @@ void* recvdata(void * _args)
             if (UDT::ERROR == rs) {
                 if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
                     cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
-                    verb(VERB_2, "[recv thread %lu] Exiting on error 1...", tid);
-//                    free(indata);
-//                    exit(1);
+                    verb(VERB_2, "[%s %lu] Exiting on error 1...", __func__, tid);
                     break;
                 }
-                verb(VERB_2, "[recv thread %lu] Exiting on error 0...", tid);
-//                free(indata);
-//                exit(0);
-                break;
-            }
-            
-            if ( CheckForExit() ) {
-                verb(VERB_2, "[recv thread %lu] Got exit signal, exiting", tid);
+                verb(VERB_2, "[%s %lu] Exiting on error 0...", __func__, tid);
                 break;
             }
 
-            timeout_sem = 1;	
-            write(args->recv_pipe[1], indata, rs);	
+            if ( CheckForExit() ) {
+                verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
+                break;
+            }
+
+            timeout_sem = 1;
+            write(args->recv_pipe[1], indata, rs);
         }
     }
 
-    verb(VERB_2, "[recv thread %lu] Closing up and heading out...", tid);
+    verb(VERB_2, "[%s %lu] Closing up and heading out...", __func__, tid);
 //    UDT::close(recver);
-    
+
     free(indata);
     ExitThread(GetMyThreadId());
     return NULL;
@@ -348,18 +338,18 @@ void* senddata(void* _args)
     rs_args * args = (rs_args*) _args;
     pthread_t   tid;
     int error = 0;
-    
+
     pthread_cleanup_push(senddata_cleanup_handler, NULL);
-    
+
     tid = pthread_self();
-    verb(VERB_2, "[send thread %lu] Initializing send thread...", tid);
+    verb(VERB_2, "[%s %lu] Initializing send thread...", __func__, tid);
 
     UDTSOCKET client = *(UDTSOCKET*)args->usocket;
 
     if (args->use_crypto) {
-        verb(VERB_2, "[send thread %lu] Send encryption is on.", tid);
+        verb(VERB_2, "[%s %lu] Send encryption is on.", __func__, tid);
     }
-    
+
     char* outdata = (char*)malloc(BUFF_SIZE*sizeof(char));
 
     int crypto_buff_len = BUFF_SIZE / args->n_crypto_threads;
@@ -368,10 +358,11 @@ void* senddata(void* _args)
     int bytes_read;
 
 
-    if (args->use_crypto) {
-        verb(VERB_2, "[send thread %lu] Sending encryption status...", tid);
+    // fly - since the key is already sent, we shouldn't need to do this
+/*    if (args->use_crypto) {
+        verb(VERB_2, "[%s %lu] Sending encryption status...", tid);
         sign_auth(args);
-    }
+    } */
 
     // long local_openssl_version;
     // if (args->use_crypto)
@@ -387,36 +378,30 @@ void* senddata(void* _args)
     // }
 
     while (!READ_IN);
-	
-    verb(VERB_2, "[send thread %lu] Send thread listening on stdin.", tid);
+
+    verb(VERB_2, "[%s %lu] Send thread listening on stdin.", __func__, tid);
 
     if (args->use_crypto) {
-        verb(VERB_2, "[send thread %lu] Entering crypto loop", tid);
+        verb(VERB_2, "[%s %lu] Entering crypto loop", __func__, tid);
         while(true) {
             if ( CheckForExit() ) {
-                verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
+                verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
 
             int ss;
             bytes_read = read(args->send_pipe[0], outdata+offset, BUFF_SIZE);
-        
+
             if(bytes_read < 0) {
                 cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-//                UDT::close(client);
-//                free(outdata);
-//                exit(1);
                 break;
             }
 
             if(bytes_read == 0) {
                 sleep(1);
-//               UDT::close(client);
-//                free(outdata);
-//                return NULL;
                 break;
             }
-        
+
             // fly - why this check again? if we're in here, isn't it
             // already assumed to be crypto?
             if(args->use_crypto) {
@@ -426,13 +411,13 @@ void* senddata(void* _args)
 
                 while (crypto_cursor < bytes_read) {
                     int size = min(crypto_buff_len, bytes_read-crypto_cursor);
-                    pass_to_enc_thread(outdata+crypto_cursor+offset, 
-                               outdata+crypto_cursor+offset, 
+                    pass_to_enc_thread(outdata+crypto_cursor+offset,
+                               outdata+crypto_cursor+offset,
                                size, args->c);
-                
+
                     crypto_cursor += size;
                 }
-                
+
                 join_all_encryption_threads(args->c);
                 bytes_read += offset;
 
@@ -444,8 +429,6 @@ void* senddata(void* _args)
                                   bytes_read - ssize, 0))) {
 
                     cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-//                    free(outdata);
-//                    return NULL;
                     error = 1;
                     break;
                 }
@@ -456,18 +439,18 @@ void* senddata(void* _args)
                 }
                 ssize += ss;
             }
-            
+
             if ( CheckForExit() ) {
-                verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
+                verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
         }
 
     } else {
-        verb(VERB_2, "[send thread %lu] Entering non-crypto loop", tid);
+        verb(VERB_2, "[%s %lu] Entering non-crypto loop", __func__, tid);
         while (1) {
             if ( CheckForExit() ) {
-                verb(VERB_2, "[send thread %lu] Got exit signal, exiting", tid);
+                verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
 
@@ -476,28 +459,15 @@ void* senddata(void* _args)
             int ss;
 
             if(bytes_read == 0) {
-
-              // fprintf(stderr, "Transfer complete\n");
-              
-              // sleep (1);
-
-              //UDT::close(client);
-              //UDT::close(*args->usocket);
-                verb(VERB_2, "[send thread %lu] No data read, leaving", tid);
-//                free(outdata);
-//                return NULL;
+                verb(VERB_2, "[%s %lu] No data read, leaving", __func__, tid);
                 break;
-
-              //exit(0);
             }
 
             while(ssize < bytes_read) {
                 if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize, 
                                   bytes_read - ssize, 0))) {
                     cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-                    verb(VERB_2, "[send thread %lu] Leaving on error", tid);
-    //                free(outdata);
-    //                return NULL;
+                    verb(VERB_2, "[%s %lu] Leaving on error", __func__, tid);
                     error = 1;
                     break;
                 }
@@ -508,12 +478,11 @@ void* senddata(void* _args)
                 }
                 ssize += ss;
             }
-        }	
+        }
     }
 
     sleep(1);
-    verb(VERB_2, "[send thread %lu] Freeing data & exiting", tid);
-//    UDT::close(client);
+    verb(VERB_2, "[%s %lu] Freeing data & exiting", __func__, tid);
     free(outdata);
     ExitThread(GetMyThreadId());
     pthread_cleanup_pop(0);

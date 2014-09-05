@@ -22,8 +22,6 @@ and limitations under the License.
 #include "postmaster.h"
 #include "sender.h"
 
-// send header specifying that the sending stream is complete
-
 parcel_block    sender_block;
 
 postmaster_t*    send_postmaster;
@@ -101,7 +99,7 @@ off_t write_block(header_t header, int len)
     memcpy(sender_block.buffer, &header, sizeof(header_t));
 
     if (len > BUFFER_LEN)
-	ERR("data out of bounds");
+    ERR("data out of bounds");
 
     int send_len = len + sizeof(header_t);
 
@@ -154,7 +152,7 @@ int send_file(file_object_t *file)
     header_t header;
 
     if (file->mode == S_IFDIR) {
-	
+
         // create a header to specify that the subsequent data is a
         // directory name and send
         header = nheader(XFER_DIRNAME, strlen(file->path)+1);
@@ -280,16 +278,20 @@ int send_filelist(file_LL* fileList, int totalSize)
 
 file_LL* send_and_wait_for_filelist(file_LL* fileList)
 {
+    verb(VERB_2, "[%s] Enter", __func__);
     header_t header;
     int total_size = get_filelist_size(fileList);
+    verb(VERB_2, "[%s] Filelist size = %d", __func__, total_size);
 
     while (!g_opts.socket_ready) {
         usleep(10000);
     }
+    verb(VERB_2, "[%s] Socket ready", __func__);
 
     int alloc_len = BUFFER_LEN - sizeof(header_t);
     global_send_data.data = (char*) malloc( alloc_len * sizeof(char));
-    
+
+    verb(VERB_2, "[%s] Sending filelist", __func__);
     send_filelist(fileList, total_size);
     
     // Read in headers and data until signalled completion
@@ -300,17 +302,18 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
         global_send_data.user_data = (void*)fileList;
         if (global_send_data.read_new_header) {
             if ((global_send_data.rs = read_header(&header)) <= 0) {
-                ERR("Bad header read");
+                ERR("Bad header read, errno: %d", errno);
             }
         }
-        
+
         if (global_send_data.rs) {
-            verb(VERB_3, "[%s] Dispatching message to sender: %d", __func__, header.type);
+//            verb(VERB_2, "[%s] Dispatching message to sender: %d", __func__, header.type);
             dispatch_message(send_postmaster, header, &global_send_data);
         }
         
     }
 
+    verb(VERB_2, "[%s] Exit", __func__);
     // free up the memory on the way out
     free(global_send_data.data);
 

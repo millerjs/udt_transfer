@@ -60,7 +60,7 @@ void *run_client(void *_args_)
     int mss = args->mss;
 
     verb(VERB_2, "[%s] Starting UDT...", __func__);
-    
+
     // start UDT
     UDT::startup();
 
