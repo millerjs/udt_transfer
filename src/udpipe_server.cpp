@@ -42,7 +42,7 @@ void *run_server(void *_args_)
 {
     thread_args * args = (thread_args*) _args_;
 
-    verb(VERB_2, "[server] Running server...");
+    verb(VERB_2, "[%s] Running server...", __func__);
 
     // initial setup
     char *port = args->port;
@@ -51,7 +51,7 @@ void *run_server(void *_args_)
     int udp_buff = args->udp_buff; // 67108864;
     int mss = args->mss;
 
-    verb(VERB_2, "[server] Starting UDT...");
+    verb(VERB_2, "[%s] Starting UDT...", __func__);
 
     // start UDT
     UDT::startup();
@@ -64,7 +64,7 @@ void *run_server(void *_args_)
     int specify_ip = !(args->listen_ip == NULL);
 
     if (specify_ip) {
-        verb(VERB_2, "Listening on specific ip: %s", args->listen_ip);
+        verb(VERB_2, "[%s] Listening on specific ip: %s", __func__ , args->listen_ip);
     }
     
     // char* ip;
@@ -73,11 +73,12 @@ void *run_server(void *_args_)
     // 	ip = strdup(args->listen_ip);
 
     if (specify_ip) {
-        my_addr.sin_family = AF_INET;     
+        my_addr.sin_family = AF_INET;
         my_addr.sin_port = htons(atoi(port)); 
         my_addr.sin_addr.s_addr = inet_addr(args->listen_ip);
 
-        bzero(&(my_addr.sin_zero), 8);    
+//        bzero(&(my_addr.sin_zero), 8);
+        memset(&(my_addr.sin_zero), 0, sizeof(my_addr.sin_zero));
     } else {
         memset(&hints, 0, sizeof(struct addrinfo));
     
@@ -95,13 +96,18 @@ void *run_server(void *_args_)
 
     buffer_size = udt_buff;
 
-    verb(VERB_2, "[server] Creating socket...");
+    verb(VERB_2, "[%s] Creating socket...", __func__);
 
     UDTSOCKET serv;
-    if (specify_ip){
+    if (specify_ip) {
         serv = UDT::socket(AF_INET, SOCK_STREAM, 0);
     } else { 
         serv = UDT::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    }
+
+    if ( UDT::INVALID_SOCK == serv ) {
+        verb(VERB_1, "[%s] UDTError socket (%d) %s", __func__, UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
+        return NULL;
     }
 
     // UDT Options
@@ -115,7 +121,7 @@ void *run_server(void *_args_)
 
     // printf("Binding to %s\n", inet_ntoa(sin.sin_addr));
     
-    verb(VERB_2, "[server] Binding socket...");
+    verb(VERB_2, "[%s] Binding socket...", __func__);
     
     int r;
 
@@ -126,13 +132,13 @@ void *run_server(void *_args_)
     }
 
     if (UDT::ERROR == r) {
-    	cerr << "bind: " << UDT::getlasterror().getErrorMessage() << endl;
-    	return NULL;
+        verb(VERB_1, "[%s] UDTError bind (%d) %s", __func__, UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
+        return NULL;
     }
 
 
     if (UDT::ERROR == UDT::listen(serv, 10)) {
-        cerr << "listen: " << UDT::getlasterror().getErrorMessage() << endl;
+        verb(VERB_1, "[%s] UDTError listen (%d) %s", __func__, UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
         return NULL;
     }
 
@@ -142,25 +148,25 @@ void *run_server(void *_args_)
     UDTSOCKET recver;
     pthread_t rcvthread, sndthread;
 
-    verb(VERB_2, "[server] Listening for client...");
+    verb(VERB_2, "[%s] Listening for client...", __func__);
 
     if (UDT::INVALID_SOCK == (recver = UDT::accept(serv,
-						   (sockaddr*)&clientaddr, &addrlen))) {
+                            (sockaddr*)&clientaddr, &addrlen))) {
 
         cerr << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
         return NULL;
     }
 
-    verb(VERB_2, "[server] New client connection...");
+    verb(VERB_2, "[%s] New client connection...", __func__);
 
     char clienthost[NI_MAXHOST];
     char clientservice[NI_MAXSERV];
     getnameinfo((sockaddr *)&clientaddr, addrlen, clienthost,
-		sizeof(clienthost), clientservice, sizeof(clientservice),
-		NI_NUMERICHOST|NI_NUMERICSERV);
+        sizeof(clienthost), clientservice, sizeof(clientservice),
+        NI_NUMERICHOST|NI_NUMERICSERV);
 
 
-    verb(VERB_2, "[server] Creating receive thread...");
+    verb(VERB_2, "[%s] Creating receive thread...", __func__);
 
     rs_args rcvargs;
     rcvargs.usocket = new UDTSOCKET(recver);
@@ -175,7 +181,7 @@ void *run_server(void *_args_)
         rcvargs.send_pipe = args->send_pipe;
         rcvargs.recv_pipe = args->recv_pipe;
     } else {
-        fprintf(stderr, "[udpipe_server] server pipes uninitialized\n");
+        fprintf(stderr, "[%s] server pipes uninitialized\n", __func__ );
         exit(1);
     }
     
@@ -183,9 +189,9 @@ void *run_server(void *_args_)
     pthread_detach(rcvthread);
     RegisterThread(rcvthread, "recvdata");
     
-    verb(VERB_2, "[server] Receive thread created: %lu", rcvthread);
+    verb(VERB_2, "[%s] Receive thread created: %lu", __func__ , rcvthread);
 
-    verb(VERB_2, "[server] Creating send thread");
+    verb(VERB_2, "[%s] Creating send thread", __func__);
 
     rs_args send_args;
     send_args.usocket = new UDTSOCKET(recver);
@@ -210,14 +216,14 @@ void *run_server(void *_args_)
         pthread_create(&sndthread, NULL, senddata, &send_args);
         RegisterThread(sndthread, "senddata");
         
-        verb(VERB_2, "[server] Waiting for send thread to complete");
+        verb(VERB_2, "[%s] Waiting for send thread to complete", __func__);
         pthread_join(sndthread, NULL);
         
     } else { 
-        fprintf(stderr, "[udpipe_server] send or receive pipe uninitialized\n");
+        fprintf(stderr, "[%s] send or receive pipe uninitialized\n", __func__);
     }
     
-    verb(VERB_2, "[server] Exiting and cleaning up");
+    verb(VERB_2, "[%s] Exiting and cleaning up", __func__);
     UDT::close(*rcvargs.usocket);
     UDT::close(*send_args.usocket);
     

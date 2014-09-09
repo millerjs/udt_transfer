@@ -21,6 +21,7 @@ and limitations under the License.
 #include <netdb.h>
 #include <iostream>
 #include <pthread.h>
+#include <sys/types.h>
 
 #include <udt.h>
 

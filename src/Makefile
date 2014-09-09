@@ -1,4 +1,7 @@
 C++ = g++
+APP = parcel
+APPOUT = ../parcel
+DIR = $(shell pwd)
 
 ifndef os
    os = LINUX
@@ -26,7 +29,7 @@ ifeq ($(arch), SPARC)
    CCFLAGS += -DSPARC
 endif
 
-LDFLAGS = -L../src ../udt/src/libudt.a -lstdc++ -lpthread -lm -lssl -lcrypto -lrt
+LDFLAGS = -L../src ../udt/src/libudt.a -lstdc++ -lpthread -lm -lssl -lcrypto -lrt -Wl,-Map=$(APP).map,--cref
 
 ifeq ($(os), UNIX)
    LDFLAGS += -lsocket
@@ -36,17 +39,12 @@ ifeq ($(os), SUNOS)
    LDFLAGS += -lrt -lsocket
 endif
 
-DIR = $(shell pwd)
-
-APP = parcel
-APPOUT = ../parcel
-
 all: $(APP) 
 
 %.o: %.cpp 
 	$(C++) $(CCFLAGS) $< -c
 
-parcel: parcel.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o postmaster.o thread_manager.o util.h
+parcel: parcel.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o postmaster.o thread_manager.o util.h debug_output.o
 	$(C++) $^ -o $(APPOUT) $(LDFLAGS)
 
 clean:

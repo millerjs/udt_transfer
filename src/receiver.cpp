@@ -394,6 +394,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     // now, walk the list
     file_node_t* cursor = fileList->head;
     while ( cursor != NULL ) {
+        verb(VERB_3, "[%s] checking %s", __func__, cursor->curr->path);
         // remove the root directory from the destination path
         char destination[MAX_PATH_LEN];
         int root_len = strlen(cursor->curr->root);
@@ -421,12 +422,14 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
         }
         cursor = cursor->next;
     }
+    verb(VERB_3, "[%s] Done walking", __func__);
     
     // return the list
     // get size of list and such
     int totalSize = get_filelist_size(fileList);
 
     while (!g_opts.socket_ready) {
+        verb(VERB_3, "[%s] Socket not ready, waiting", __func__);
         usleep(10000);
     }
 
@@ -446,7 +449,8 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 
 void init_receiver()
 {
-    
+    verb(VERB_3, "[%s] Initializing receiver", __func__);
+
     // initialize the data
     global_receive_data.f_size = 0;
     global_receive_data.complete = 0;
@@ -464,7 +468,9 @@ void init_receiver()
     register_callback(receive_postmaster, XFER_DATA, pst_rec_callback_data);
     register_callback(receive_postmaster, XFER_DATA_COMPLETE, pst_rec_callback_data_complete);
     register_callback(receive_postmaster, XFER_FILELIST, pst_rec_callback_filelist);
-    
+
+    verb(VERB_3, "[%s] Done initializing receiver", __func__);
+
 }
 
 void cleanup_receiver()

@@ -23,6 +23,7 @@ and limitations under the License.
 #include "files.h"
 #include "postmaster.h"
 #include "thread_manager.h"
+#include "debug_output.h"
 
 #include <ifaddrs.h>
 #include <arpa/inet.h>
@@ -35,11 +36,17 @@ and limitations under the License.
 #define PARCEL_FLAG_MASTER      0x01
 #define PARCEL_FLAG_MINION      0x02
 
-int g_opt_verbosity = 1;
-int g_opt_debug_file_logging = 0;
+#define PARCEL_MAX_TEMP_KEY_LENGTH  4096
+
+#define PARCEL_DEBUG_SSH_METHOD_2   1
+
+//int g_opt_verbosity = 1;
+//int g_opt_debug_file_logging = 0;
 char g_base_path[MAX_PATH_LEN];
 
-char g_logfilename[] = "debug.log";
+//char g_logfilename_prefix[] = "debug";
+//char g_logfilename_suffix[] = "log";
+//char g_logfilename[128];
 
 char* g_session_key = (char*)NULL;
 
@@ -157,82 +164,22 @@ void usage(int EXIT_STAT)
 
 
 /* 
- * void verb
- * - print message to stdout depending on user's selection of verbosity
- */
-void verb(int verbosity, char* fmt, ... )
-{
-    if (g_opt_verbosity >= verbosity) {
-        va_list args; va_start(args, fmt);
-        vfprintf(stderr, fmt, args);
-        fprintf(stderr, "\n");
-        va_end(args);
-        if ( g_opt_debug_file_logging ) {
-            FILE* debug_file = fopen(g_logfilename, "a+");
-            va_list args; va_start(args, fmt);
-            vfprintf(debug_file, fmt, args);
-            fprintf(debug_file, "\n");
-            fflush(debug_file);
-            fclose(debug_file);
-            va_end(args);
-        }
-    }
-}
-
-
-/* 
- * void warn
- * - warn the user unless verbosity set to VERB_0 (0)
- */
-void warn(char* fmt, ... )
-{
-    if (g_opt_verbosity > VERB_0){
-        va_list args; va_start(args, fmt);
-        fprintf(stderr, "%s: warning:", __func__);
-        vfprintf(stderr, fmt, args);
-        fprintf(stderr, "\n");
-        va_end(args);
-    }
-}
-
-
-// /* 
-//  * void error
-//  * - print error to stdout and quit
-//  * - note: error() takes a variable number of arguments with 
-//  *   format string (like printf)
-//  */
-// void error(char* fmt, ... )
-// {
-//     va_list args; va_start(args, fmt);
-//     fprintf(stderr, "%s: error:", __func__);
-//     vfprintf(stderr, fmt, args);
-//     if (errno) perror(" ");
-//     fprintf(stderr, "\n");
-//     va_end(args);
-//     clean_exit(EXIT_FAILURE);
-// }
-
-
-/* 
  * int kill_children
  * - Make sure that we have killed any zombie or orphaned children
  * - returns: returns 0 on success, does not return on failure
  */
-int kill_children(int verbosity)
+int kill_children()
 {
 
     // Clean up the ssh process
     if (g_remote_args.ssh_pid && g_remote_args.remote_pid){
 
-        if (g_opt_verbosity >= verbosity) 
-            fprintf(stderr, "[%d %s] Killing child ssh process... ", g_flags, __func__);
+        verb(VERB_2, "[%d %s] Killing child ssh process... ", g_flags, __func__);
 
         if (kill(g_remote_args.ssh_pid, SIGINT)){
-            if (g_opt_verbosity >= verbosity) 
-                perror("FAILURE");
+            ERR("FAILURE");
         } else {
-            verb(verbosity, "success.");
+            verb(VERB_2, "success.");
         }
 
         int ssh_kill_pid;
@@ -241,8 +188,7 @@ int kill_children(int verbosity)
         // CHILD
         if (ssh_kill_pid == 0) {
 
-            if (g_opt_verbosity >= verbosity) 
-                fprintf(stderr, "[%d %s] Killing remote parcel process... ", g_flags, __func__);
+            verb(VERB_2, "[%d %s] Killing remote parcel process... ", g_flags, __func__);
 
             char kill_cmd[MAX_PATH_LEN];
             sprintf(kill_cmd, "kill -s SIGINT %d 2> /dev/null", g_remote_args.remote_pid);
@@ -250,7 +196,7 @@ int kill_children(int verbosity)
 
             // Execute the pipe process
             if (execvp(args[0], args)){
-                fprintf(stderr, "[%d %s] WARNING: unable to kill remote process.", g_flags, __func__);
+                verb(VERB_2, "[%d %s] WARNING: unable to kill remote process.", g_flags, __func__);
                 exit(EXIT_FAILURE);
             }
         // PARENT
@@ -258,7 +204,7 @@ int kill_children(int verbosity)
             int stat;
             waitpid(ssh_kill_pid, &stat, 0);
             if (!stat){
-                verb(verbosity, "success.");
+                verb(VERB_2, "success.");
             }
         }
     }
@@ -391,7 +337,7 @@ void sig_handler(int signal)
     }
 
     // Kill children and let user know
-    kill_children(VERB_2);
+    kill_children();
     clean_exit(EXIT_FAILURE);
 }
 
@@ -458,8 +404,8 @@ int run_ssh_command()
     if (g_remote_args.ssh_pid == 0) {
 
         char remote_pipe_cmd[MAX_PATH_LEN];
-        char cmd_options[MAX_PATH_LEN];        
-        
+        char cmd_options[MAX_PATH_LEN];
+
         memset(remote_pipe_cmd, 0, sizeof(char) * MAX_PATH_LEN);
         memset(cmd_options, 0, sizeof(char) * MAX_PATH_LEN);
 
@@ -479,6 +425,10 @@ int run_ssh_command()
             char n_crypto_threads[MAX_PATH_LEN];     
             sprintf(n_crypto_threads, "--crypto-threads %d ", g_opts.n_crypto_threads);
             strcat(remote_pipe_cmd, n_crypto_threads);
+        }
+
+        if ( get_file_logging() ) { 
+            strcat(remote_pipe_cmd, " -b ");
         }
 
         if (g_opts.mode == MODE_SEND) {
@@ -557,12 +507,17 @@ int run_ssh_command2()
 
     sprintf(remote_pipe_cmd, "%s ", g_remote_args.udpipe_location);
 
-    if (g_opts.encryption){
+    if (g_opts.encryption) {
         strcat(remote_pipe_cmd, " -n ");
         char n_crypto_threads[MAX_PATH_LEN];     
         sprintf(n_crypto_threads, "--crypto-threads %d ", g_opts.n_crypto_threads);
         strcat(remote_pipe_cmd, n_crypto_threads);
     }
+    
+    if ( get_file_logging() ) { 
+        strcat(remote_pipe_cmd, " -b ");
+    }
+    
 
     if (g_opts.mode == MODE_SEND) {
 
@@ -930,7 +885,7 @@ int get_options(int argc, char *argv[])
 
             case 'v':
                 // default verbose
-                g_opts.verbosity = 2;
+                set_verbosity_level(VERB_2);
                 break;
 
             case '6':
@@ -955,8 +910,8 @@ int get_options(int argc, char *argv[])
                 break;
 
             case 'b':
-                g_opt_debug_file_logging = 1;
-                g_opts.verbosity = 2;
+                set_file_logging(1);
+//                g_opts.verbosity = 2;
                 break;
 
             default:
@@ -966,8 +921,8 @@ int get_options(int argc, char *argv[])
         }
     }
 
-    g_opt_verbosity = g_opts.verbosity;
-    if (g_opt_verbosity < VERB_1) {
+//    g_opt_verbosity = g_opts.verbosity;
+    if (get_verbosity_level() < VERB_1) {
         g_opts.progress = 0;
     }
 
@@ -997,7 +952,11 @@ int set_handlers()
     return RET_SUCCESS;
 }
 
-
+/* 
+ * int initialize_pipes
+ * - initializes the file descriptor pipes to be used for UDT
+ * - returns: RET_SUCCESS
+ */
 int initialize_pipes()
 {
     g_opts.send_pipe = (int*) malloc(2*sizeof(int));
@@ -1006,10 +965,17 @@ int initialize_pipes()
     ERR_IF(pipe(g_opts.send_pipe), "unable to create server's send pipe");
     ERR_IF(pipe(g_opts.recv_pipe), "unable to create server's receiver pipe");
 
+    verb(VERB_2, "[%d %s] send_pipe[0] = %d, send_pipe[1] = %d", g_flags, __func__, g_opts.send_pipe[0], g_opts.send_pipe[1]);
+    verb(VERB_2, "[%d %s] recv_pipe[0] = %d, recv_pipe[1] = %d", g_flags, __func__, g_opts.recv_pipe[0], g_opts.recv_pipe[1]);
+
     return RET_SUCCESS;
 }
 
-
+/* 
+ * void cleanup_pipes
+ * - closes & frees the pipes for tidy exit
+ * - returns: nothing
+ */
 void cleanup_pipes()
 {
     // fly - closing these means the reads will die in the threads properly, so we should be good
@@ -1031,6 +997,11 @@ void cleanup_pipes()
 }
 
 
+/* 
+ * pthread_t start_udpipe_thread
+ * - starts the correct type of udpipe thread
+ * - returns: pthread_t - pointer to thread started
+ */
 pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_type)
 {
     thread_args *args = (thread_args*) malloc(sizeof(thread_args));
@@ -1066,7 +1037,101 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
     return udpipe_thread;
 }
 
+/* 
+ * int master_transfer_setup
+ * - sets up shop for the master's transfer
+ * - returns: RET_SUCCESS
+ */
+int master_transfer_setup()
+{
+    char    tmpBuf[PARCEL_MAX_TEMP_KEY_LENGTH];
 
+    if ( g_opts.remote_to_local ) {
+        verb(VERB_2, "[%d %s] Starting local_to_remote receiver", g_flags, __func__);
+    } else {
+        verb(VERB_2, "[%d %s] Starting remote_to_local sender", g_flags, __func__);
+    }
+    
+    // spawn process on remote host and let it create the server
+    verb(VERB_2, "[%d %s] Running ssh to remote path %s", g_flags, __func__, g_remote_args.remote_path);
+
+
+#if PARCEL_DEBUG_SSH_METHOD_2 == 0
+    run_ssh_command();
+#else
+    run_ssh_command2();
+#endif
+    verb(VERB_2, "[%d %s] Done running ssh", g_flags, __func__);
+
+    // fly - ok, we have to get the key now that the ssh has started
+    // read the key in from the handle
+    memset(tmpBuf, 0, sizeof(char) * PARCEL_MAX_TEMP_KEY_LENGTH);
+    if ( g_ssh_file_handle && g_opts.encryption ) {
+        verb(VERB_2, "[%d %s] Looking for key...", g_flags, __func__);
+        int i = 0;
+        fread(&tmpBuf[i], 1, 1, g_ssh_file_handle);
+        while ( (tmpBuf[i] != '\0') && (i < PARCEL_MAX_TEMP_KEY_LENGTH) ) {
+            verb(VERB_3, "[%d %s] %d: Read %c (%02X)", g_flags, __func__, i, tmpBuf[i], tmpBuf[i]);
+            i++;
+            fread(&tmpBuf[i], 1, 1, g_ssh_file_handle);
+        }
+        if ( i >= PARCEL_MAX_TEMP_KEY_LENGTH ) {
+            ERR("[%d %s] received key of improper length", g_flags, __func__);
+        }
+        verb(VERB_3, "[%d %s] Got key back of len %d:", g_flags, __func__, strlen(tmpBuf));
+        verb(VERB_3, "%s", tmpBuf);
+        
+        // copy it to our key
+        g_session_key = (char*)malloc(sizeof(char) * strlen(tmpBuf) + 1);
+        memset(g_session_key, 0, sizeof(char) * strlen(tmpBuf) + 1);
+        strncpy(g_session_key, tmpBuf, sizeof(char) * strlen(tmpBuf) + 1);
+        verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
+        verb(VERB_3, "%s", g_session_key);
+    }
+
+    if (g_opts.encryption) {
+        char* cipher = (char*) "aes-128";
+        // fly - here is where we use the key instead of the password
+        if ( !g_session_key ) {
+            verb(VERB_2, "[%d %s] No session key found, populating with default", g_flags, __func__);
+            g_session_key = (char*)malloc(sizeof(char) * strlen(tmpBuf) + 1);
+            memset(g_session_key, 0, sizeof(char) * strlen(tmpBuf) + 1);
+            strncpy(g_session_key, "password", sizeof(char) * strlen("password") + 1);
+            verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
+            verb(VERB_3, "%s", g_session_key);
+        } else {
+            Crypto enc(EVP_ENCRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+            Crypto dec(EVP_DECRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+            g_opts.enc = &enc;
+            g_opts.dec = &dec;
+        }
+    }
+
+    return RET_SUCCESS;
+}
+
+/* 
+ * int minion_transfer_setup
+ * - sets up shop for the minion's transfer
+ * - not a lot here now, but centralized in case
+ * - returns: RET_SUCCESS
+ */
+int minion_transfer_setup()
+{
+    if ( g_opts.remote_to_local ) {
+       verb(VERB_2, "[%d %s] Starting remote_to_local receiver", g_flags, __func__);
+    } else {
+       verb(VERB_2, "[%d %s] Starting local_to_remote sender", g_flags, __func__);
+    }
+    return RET_SUCCESS;
+}
+
+
+/* 
+ * int start_transfer
+ * - starts a transfer for either side
+ * - returns: RET_SUCCESS
+ */
 int start_transfer(int argc, char*argv[], int optind)
 {
     file_LL *fileList = NULL;
@@ -1080,59 +1145,21 @@ int start_transfer(int argc, char*argv[], int optind)
         read_checkpoint(g_opts.restart_path);
     }
 
+    if ( g_flags & PARCEL_FLAG_MASTER ) {
+        master_transfer_setup();
+    } else {
+        minion_transfer_setup();
+    }
+
     if (g_opts.mode & MODE_RCV) {
 
-        if ( g_opts.remote_to_local ) {
-            verb(VERB_2, "[%d %s] Starting local_to_remote receiver\n", __func__);
-            // spawn process on remote host and let it create the server
-            verb(VERB_2, "[%d %s] Running ssh to remote path %s\n", g_flags, __func__, g_remote_args.remote_path);
-
-            char    tmpBuf[4096];
-            memset(tmpBuf, 0, sizeof(char) * 4096);
-
-            run_ssh_command2();
-
-            // fly - ok, we have to get the key now that the ssh has started
-            
-            // read the key in from the handle
-            if ( g_ssh_file_handle ) {
-                verb(VERB_2, "[%d %s] Looking for key...", g_flags, __func__);
-                int i = 0;
-                fread(&tmpBuf[i], 1, 1, g_ssh_file_handle);
-                while ( tmpBuf[i] != '\0' ) {
-//                    verb(VERB_2, "[%d %s] %d: Read %c (%02X)", g_flags, __func__, i, tmpBuf[i], tmpBuf[i]);
-                    i++;
-                    fread(&tmpBuf[i], 1, 1, g_ssh_file_handle);
-                }
-                verb(VERB_2, "[%d %s] Got key back:", g_flags, __func__);
-                verb(VERB_2, "%s", tmpBuf);
-                
-                // copy it to our key
-                g_session_key = (char*)malloc(sizeof(char) * strlen(tmpBuf) + 1);
-                memset(g_session_key, 0, sizeof(char) * strlen(tmpBuf) + 1);
-                strncpy(g_session_key, tmpBuf, sizeof(char) * strlen(tmpBuf) + 1);
-                verb(VERB_2, "[%d %s] g_session_key:", g_flags, __func__);
-                verb(VERB_2, "%s", g_session_key);
-            }
-
-            if (g_opts.encryption) {
-                char* cipher = (char*) "aes-128";
-                // fly - here is where we use the key instead of the password
-                if ( !g_session_key ) {
-                    verb(VERB_2, "[%d %s] Warning!! No session key found", g_flags, __func__);
-                } else {
-                    crypto enc(EVP_ENCRYPT, PASSPHRASE_SIZE, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-                    crypto dec(EVP_DECRYPT, PASSPHRASE_SIZE, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-                    g_opts.enc = &enc;
-                    g_opts.dec = &dec;
-                }
-            }
-            
+/*        if ( g_opts.remote_to_local ) {
+            master_transfer_setup();
         } else {
-            verb(VERB_2, "[%d %s] Starting remote_to_local receiver\n", g_flags, __func__);
-        }
+            minion_transfer_setup();
+        } */
 
-        verb(VERB_2, "[%d %s] Done running ssh\n", g_flags, __func__);
+        // sending pid if other side needs to kill?
         pid_t pid = getpid();
         write(g_opts.send_pipe[1], &pid, sizeof(pid_t));
         g_opts.socket_ready = 1;
@@ -1152,55 +1179,12 @@ int start_transfer(int argc, char*argv[], int optind)
 
     } else if (g_opts.mode & MODE_SEND) {
 
-        if ( !g_opts.remote_to_local ) {
-            verb(VERB_2, "[%d %s] Starting remote_to_local sender\n", g_flags, __func__);
-            
-            char    tmpBuf[4096];
-            memset(tmpBuf, 0, sizeof(char) * 4096);
-            run_ssh_command2();
-
-            // fly - ok, we have to get the key now that the ssh has started
-            if ( g_ssh_file_handle && g_opts.encryption ) {
-                verb(VERB_2, "[%d %s] Looking for key...", g_flags, __func__);
-                int i = 0;
-                fread(&tmpBuf[i], 1, 1, g_ssh_file_handle);
-                while ( tmpBuf[i] != '\0' ) {
-//                    verb(VERB_2, "[%d %s] %d: Read %c (%02X)", g_flags, __func__, i, tmpBuf[i], tmpBuf[i]);
-                    i++;
-                    fread(&tmpBuf[i], 1, 1, g_ssh_file_handle);
-                }
-//                verb(VERB_2, "[%d %s] Got key back:", g_flags, __func__);
-//                verb(VERB_2, "%s", tmpBuf);
-                
-                // copy it to our key
-                g_session_key = (char*)malloc(sizeof(char) * strlen(tmpBuf) + 1);
-                memset(g_session_key, 0, sizeof(char) * strlen(tmpBuf) + 1);
-                strncpy(g_session_key, tmpBuf, sizeof(char) * strlen(tmpBuf) + 1);
-//                verb(VERB_2, "[%d %s] g_session_key:", g_flags, __func__);
-//                verb(VERB_2, "%s", g_session_key);
-            }
-            
-            if (g_opts.encryption) {
-                char* cipher = (char*) "aes-128";
-                // fly - here is where we use the key instead of the password
-                if ( !g_session_key ) {
-                    verb(VERB_2, "[%d %s] Warning!! No session key found", g_flags, __func__);
-                } else {
-                    crypto enc(EVP_ENCRYPT, PASSPHRASE_SIZE, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-                    crypto dec(EVP_DECRYPT, PASSPHRASE_SIZE, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-                    g_opts.enc = &enc;
-                    g_opts.dec = &dec;
-                }
-            }
-            
+/*        if ( !g_opts.remote_to_local ) {
+            master_transfer_setup();
         } else {
-            verb(VERB_2, "[%d %s] Starting local_to_remote sender\n",g_flags,  __func__);
-            
-            // fly - we have to create a key and send it over
-            g_session_key = generate_session_key();
-        }
+            minion_transfer_setup();
+        } */
 
-        verb(VERB_2, "[%d %s] Done running ssh", g_flags, __func__);
 
         // delay proceeding for slow ssh connection
         if (g_opts.delay) {
@@ -1208,18 +1192,15 @@ int start_transfer(int argc, char*argv[], int optind)
             sleep(g_opts.delay);
         }
 
-        verb(VERB_2, "[%d %s] Starting udpipe thread", g_flags, __func__);
-
+        verb(VERB_2, "[%d %s] Running with file source mode", g_flags, __func__);
         // connect to receiving server
         start_udpipe_thread(&g_remote_args, UDPIPE_CLIENT);
 
-//        verb(VERB_2, "[%d %s] Starting getting remote pid\n", g_flags, __func__);
         // get the pid of the remote process in case we need to kill it
-//        get_remote_pid();
+        get_remote_pid();
 
         ERR_IF(optind >= argc, "Please specify files to send");
 
-        verb(VERB_2, "[%d %s] Running with file source mode", g_flags, __func__);
 
         int n_files = argc-optind;
         char **path_list = argv+optind;
@@ -1234,20 +1215,24 @@ int start_transfer(int argc, char*argv[], int optind)
         // Visit all directories and send all files
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
-        handle_files(fileList, remote_fileList);
+        send_files(fileList, remote_fileList);
         
         // signal the end of the transfer
         send_and_wait_for_ack_of_complete();
 
         // free the remote list
         free_file_list(remote_fileList);
-        
     }
 
     return RET_SUCCESS;
 }
 
 
+/* 
+ * void init_parcel
+ * - main init routine for parcel
+ * - returns: nothing
+ */
 void init_parcel(int argc, char *argv[])
 {
     // set structs g_opts and g_remote_args to their default values
@@ -1269,6 +1254,9 @@ void init_parcel(int argc, char *argv[])
             g_flags |= PARCEL_FLAG_MINION;
         }
     }
+
+    init_debug_output_file(g_flags & PARCEL_FLAG_MASTER);
+
     if ( g_flags & PARCEL_FLAG_MINION ) {
         if ( g_opts.encryption ) {
             verb(VERB_2, "[%d %s] we are the minion", g_flags, __func__);
@@ -1298,20 +1286,6 @@ void init_parcel(int argc, char *argv[])
         optind++;
     }
     get_base_path(argc, argv, optind);
-
-    if ( g_opt_debug_file_logging ) {
-        verb(VERB_2, "[%d %s] opening log file %s", g_flags, __func__, g_logfilename);
-        FILE* debug_file = fopen(g_logfilename, "a");
-        if ( !debug_file ) {
-            g_opt_debug_file_logging = 0;
-            verb(VERB_2, "[%d %s] unable to open log file, error %d", g_flags, __func__, g_logfilename, errno);
-        }
-        fclose(debug_file);
-        verb(VERB_2, "********", g_flags, __func__, g_logfilename);
-        verb(VERB_2, "********", g_flags, __func__, g_logfilename);
-        verb(VERB_2, "[%d %s] log file opened as %s", g_flags, __func__, g_logfilename);
-    }
-
 
     verb(VERB_2, "[%d %s] parcel started as id %d", g_flags, __func__, getpid());
 

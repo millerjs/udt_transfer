@@ -16,8 +16,9 @@
 #define DEBUG 0
 
 #include "crypto.h"
+#include "debug_output.h"
 
-#define pris(x)            if (DEBUG)fprintf(stderr,"[crypto] %s\n",x)
+#define pris(x)            if (DEBUG)fprintf(stderr,"[%s] %s\n",__func__,x)
 
 #define MUTEX_TYPE          pthread_mutex_t
 #define MUTEX_SETUP(x)      pthread_mutex_init(&(x), NULL)
@@ -31,22 +32,164 @@
 static MUTEX_TYPE *mutex_buf = NULL;
 static void locking_function(int mode, int n, const char*file, int line);
 
-void pric(uchar* s, int len)
+
+
+
+Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
 {
-    int i;
-    fprintf(stderr, "data: ");
-    for (i = 0; i < len/4; i ++) {
-        fprintf(stderr, "%x ",  s[i]);
+    verb(VERB_2, "[%s]: New crypto object, direc = %d, len = %d, keyLen = %lu, type = %s, threads = %d", 
+        __func__, direc, len, strlen((const char*)password), encryption_type, n_threads);
+
+    N_CRYPTO_THREADS = n_threads;
+
+    THREAD_setup();
+    //free_key( password ); can't free here because is reused by threads
+    const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
+
+    if ( !cipher ) {
+        exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "\n");
+
+    //aes-128|aes-256|bf|des-ede3
+    //log_set_maximum_verbosity(LOG_DEBUG);
+    //log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
+
+    direction = direc;
+
+    // EVP stuff
+    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+
+        memset(ivec, 0, 1024);
+
+        EVP_CIPHER_CTX_init(&ctx[i]);
+        verb(VERB_2, "[%s]: Max key length = %d", __func__, EVP_MAX_KEY_LENGTH);
+        if ( (len > EVP_MAX_KEY_LENGTH) || (strlen((const char*)password) > EVP_MAX_KEY_LENGTH) ) {
+            verb(VERB_2, "[%s]: Key too long, defaulting to crappy one", __func__);
+            if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, (const unsigned char*)"password", ivec, direc)) {
+                verb(VERB_2, "[%s]: Error setting encryption scheme", __func__);
+                exit(EXIT_FAILURE);
+            }
+        } else {
+        if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
+            verb(VERB_2, "[%s]: Error setting encryption scheme", __func__);
+            exit(EXIT_FAILURE);
+        }
+        }
+    }
+
+    pthread_mutexattr_t tempAttr;
+    verb(VERB_2, "[%s]: initializing mutex", __func__);
+    pthread_mutexattr_settype(&tempAttr, PTHREAD_MUTEX_ERRORCHECK);
+    if ( pthread_mutex_init(&id_lock, &tempAttr) ) {
+        verb(VERB_2, "[%s]: unable to init mutex id_lock", __func__);
+    }
+    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+        pthread_mutex_init(&c_lock[i], NULL);
+        pthread_mutex_init(&thread_ready[i], NULL);
+        pthread_mutex_lock(&thread_ready[i]);
+    }
+
+    // ----------- [ Initialize and set thread detached attribute
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    thread_id = 0;
+
+    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+
+        e_args[i].thread_id = i;
+        e_args[i].ctx = &ctx[i];
+        e_args[i].c = this;
+
+        int ret = pthread_create(&threads[i],
+                 &attr, &crypto_update_thread, 
+                 &e_args[i]);
+        RegisterThread(threads[i], "crypto_update_thread");
+    
+        if (ret) {
+            verb(VERB_2, "Unable to create thread: %d", ret);
+        }
+    }
 }
 
-void prii(int i)
+int Crypto::get_num_crypto_threads() 
 {
-    if (DEBUG) {
-        fprintf(stderr, "             -> %d\n", i);
-    }
+    return N_CRYPTO_THREADS;
 }
+
+int Crypto::get_thread_id()
+{
+    if ( pthread_mutex_lock(&id_lock) ) {
+        verb(VERB_2, "[%s]: unable to lock mutex id_lock", __func__);
+    }
+    int id = thread_id;
+    pthread_mutex_unlock(&id_lock);
+    return id;
+}
+
+int Crypto::increment_thread_id()
+{
+    pthread_mutex_lock(&id_lock);
+    thread_id++;
+    if (thread_id >= N_CRYPTO_THREADS) {
+        thread_id = 0;
+    }
+    pthread_mutex_unlock(&id_lock);
+    return 1;
+}
+
+int Crypto::set_thread_ready(int thread_id)
+{
+    return pthread_mutex_unlock(&thread_ready[thread_id]);
+}
+
+int Crypto::wait_thread_ready(int thread_id)
+{
+    return pthread_mutex_lock(&thread_ready[thread_id]);
+}
+
+int Crypto::lock_data(int thread_id)
+{
+    return pthread_mutex_lock(&c_lock[thread_id]);
+}
+
+int Crypto::unlock_data(int thread_id)
+{
+    return pthread_mutex_unlock(&c_lock[thread_id]);
+}
+
+
+//    Crypto::~Crypto()
+//    {
+//        // i guess thread issues break this but it needs to be done
+//        //TODO: find out why this is bad and breaks things
+//        EVP_CIPHER_CTX_cleanup(&ctx);
+//    }
+
+
+// Returns how much has been encrypted and will call encrypt final when
+// given len of 0
+int Crypto::encrypt(char *in, char *out, int len)
+{
+    int evp_outlen;
+
+    if (len == 0) {
+        if (!EVP_CipherFinal_ex(&ctx[0], (unsigned char *)out, &evp_outlen)) {
+            verb(VERB_2, "encryption error");
+            exit(EXIT_FAILURE);
+        }
+        return evp_outlen;
+    }
+
+    if(!EVP_CipherUpdate(&ctx[0], (unsigned char *)out, &evp_outlen, (unsigned char *)in, len))
+    {
+        verb(VERB_2, "encryption error");
+        exit(EXIT_FAILURE);
+    }
+    return evp_outlen;
+}
+
 
 const int max_block_size = 64*1024;
 
@@ -110,7 +253,7 @@ int THREAD_cleanup(void)
 }
 
 
-int crypto_update(char* in, char* out, int len, crypto *c)
+int crypto_update(char* in, char* out, int len, Crypto *c)
 {
 
     int evp_outlen = 0;
@@ -122,7 +265,7 @@ int crypto_update(char* in, char* out, int len, crypto *c)
 
         // FINALIZE CIPHER
         if (!EVP_CipherFinal_ex(&c->ctx[i], (uchar*)in, &evp_outlen)) {
-            fprintf(stderr, "encryption error\n");
+            verb(VERB_2, "encryption error");
             exit(EXIT_FAILURE);
         }
 
@@ -130,13 +273,13 @@ int crypto_update(char* in, char* out, int len, crypto *c)
 
         // [EN][DE]CRYPT
         if(!EVP_CipherUpdate(&c->ctx[i], (uchar*)in, &evp_outlen, (uchar*)in, len)){
-            fprintf(stderr, "encryption error\n");
+            verb(VERB_2, "encryption error");
             exit(EXIT_FAILURE);
         }
 
         // DOUBLE CHECK
         if (evp_outlen-len){
-            fprintf(stderr, "Did not encrypt full length of data [%d-%d]", 
+            verb(VERB_2, "Did not encrypt full length of data [%d-%d]", 
                 evp_outlen, len);
             exit(EXIT_FAILURE);
         }
@@ -156,18 +299,18 @@ void *crypto_update_thread(void* _args)
     int         evp_outlen = 0, error = 0;
 
     if (!_args){
-        fprintf(stderr, "Null argument passed to crypto_update_thread\n");
+        verb(VERB_2,  "Null argument passed to crypto_update_thread");
     } else {
 
         e_thread_args* args = (e_thread_args*)_args;
-        crypto *c = (crypto*)args->c;
+        Crypto *c = (Crypto*)args->c;
         
         while (1) {
             if ( CheckForExit() ) {
                 break;
             }
             
-            fprintf(stderr, "[%s %lu] Waiting for thread_ready %d\n", __func__, pthread_self(), args->thread_id);
+            verb(VERB_2, "[%s %lu] Waiting for thread_ready %d", __func__, pthread_self(), args->thread_id);
             c->wait_thread_ready(args->thread_id);
 
             int len = args->len;
@@ -178,7 +321,7 @@ void *crypto_update_thread(void* _args)
                 if(!EVP_CipherUpdate(&c->ctx[args->thread_id], 
                          args->in+total, &evp_outlen, 
                          args->out+total, args->len-total)) {
-                    fprintf(stderr, "encryption error\n");
+                    verb(VERB_2, "encryption error");
                     error = 1;
                     break;
                 }
@@ -192,17 +335,17 @@ void *crypto_update_thread(void* _args)
             }
 
             if (len != args->len){
-                fprintf(stderr, "error: The length changed during encryption.\n\n");
+                verb(VERB_2, "error: The length changed during encryption.\n\n");
                 break;
             }
 
             if (total != args->len){
-                fprintf(stderr, "error: Did not encrypt full length of data %d [%d-%d]", 
+                verb(VERB_2, "error: Did not encrypt full length of data %d [%d-%d]", 
                     args->thread_id, total, args->len);
                 break;
             }
             
-            fprintf(stderr, "[%s %lu] Done with thread %d\n", __func__, pthread_self(), args->thread_id);
+            verb(VERB_2, "[%s %lu] Done with thread %d\n", __func__, pthread_self(), args->thread_id);
             c->unlock_data(args->thread_id);
         
         }
@@ -213,11 +356,11 @@ void *crypto_update_thread(void* _args)
     
 }
 
-int join_all_encryption_threads(crypto *c)
+int join_all_encryption_threads(Crypto *c)
 {
 
     if (!c) {
-        fprintf(stderr, "error: join_all_encryption_threads passed null pointer\n");
+        verb(VERB_2, "error: join_all_encryption_threads passed null pointer\n");
         return 0;
     }
     
@@ -230,7 +373,7 @@ int join_all_encryption_threads(crypto *c)
 
 }
 
-int pass_to_enc_thread(char* in, char*out, int len, crypto*c)
+int pass_to_enc_thread(char* in, char*out, int len, Crypto*c)
 {
 
     if (len > 0) {
@@ -291,7 +434,7 @@ const EVP_CIPHER* figure_encryption_type(char* encrypt_str)
         cipher = EVP_bf_cfb();
     }
     else {
-        fprintf(stderr, "error unsupported encryption type %s\n", encrypt_str);
+        verb(VERB_2, "error unsupported encryption type %s\n", encrypt_str);
     }
     
     return cipher;
@@ -314,14 +457,15 @@ int cull_rsa_key(char* key)
     // '-' and '_', so if that ever changes, this routine will break
     
     unsigned int i = 0, j = 0;
-    int retVal = 0, skipLine = 0, delimiterCount = 0, keyLen;
-    char* tmpKey = NULL;
+    int retVal = 0, skipLine = 0, delimiterCount = 0, key_len;
+    char* tmp_key = NULL;
 
-    keyLen = strlen(key) + 1;
+    key_len = strlen(key) + 1;
+    verb(VERB_2, "[%s]: creating temp of size %d\n", __func__, key_len);
 
     // make some temp space for a smaller copy
-    tmpKey = (char*)malloc(sizeof(char) * keyLen);
-    memset(tmpKey, 0, keyLen);
+    tmp_key = (char*)malloc(sizeof(char) * key_len);
+    memset(tmp_key, 0, key_len);
     while ( i < strlen(key) ) {
         if ( skipLine ) {
             if ( key[i] == '\n' ) {
@@ -330,7 +474,7 @@ int cull_rsa_key(char* key)
             i++;
         } else {
             if ( (key[i] != '\n') && (key[i] != '-') ) {
-                tmpKey[j++] = key[i++];
+                tmp_key[j++] = key[i++];
             } else {
                 if ( key[i] == '-' ) {
                     if ( delimiterCount == 1 ) {
@@ -345,8 +489,9 @@ int cull_rsa_key(char* key)
     }
 
     // ok, we're done, let's zero out the original and copy over
-    memset(key, 0, keyLen);
-    strncpy(key, tmpKey, strlen(tmpKey));
+    memset(key, 0, key_len);
+    strncpy(key, tmp_key, strlen(tmp_key));
+    free(tmp_key);
 
     return retVal;
 }
@@ -368,7 +513,7 @@ char* generate_session_key(void)
     // now
     const int kBits = 2048;
 
-    int keylen;
+    int key_len;
     char *pem_key;
 
     // fly - Hey kids, look at how many steps it takes OpenSSL to just
@@ -376,21 +521,32 @@ char* generate_session_key(void)
     // always have to be bundled together to make this more convoluted?
     // I bet you can if you try!
 
-    RSA *rsa = RSA_generate_key(kBits, kExp, 0, 0);
+    if ( 0 ) {
+        RSA *rsa = RSA_generate_key(kBits, kExp, 0, 0);
 
-    BIO *bio = BIO_new(BIO_s_mem());
-    PEM_write_bio_RSAPrivateKey(bio, rsa, NULL, NULL, 0, NULL, NULL);
+        BIO *bio = BIO_new(BIO_s_mem());
+        PEM_write_bio_RSAPrivateKey(bio, rsa, NULL, NULL, 0, NULL, NULL);
 
-    keylen = BIO_pending(bio);
-    pem_key = (char*)malloc(sizeof(char) * keylen + 1);
-    memset(pem_key, 0, (sizeof(char) * keylen) + 1);
+        key_len = BIO_pending(bio);
+        verb(VERB_2, "[%s]: creating pem_key of size %d\n", __func__, key_len);
+        pem_key = (char*)malloc(sizeof(char) * key_len + 1);
+        memset(pem_key, 0, (sizeof(char) * key_len) + 1);
 
-    BIO_read(bio, pem_key, keylen);
+        BIO_read(bio, pem_key, key_len);
 
-    cull_rsa_key(pem_key);
+        cull_rsa_key(pem_key);
 
-    BIO_free_all(bio);
-    RSA_free(rsa);
+        BIO_free_all(bio);
+        RSA_free(rsa);
+    } else {
+        key_len = strlen("password   ");
+        verb(VERB_2, "[%s]: creating pem_key of size %d\n", __func__, key_len);
+        pem_key = (char*)malloc(sizeof(char) * key_len + 1);
+        memset(pem_key, 0, (sizeof(char) * key_len) + 1);
+        strncpy(pem_key, "password", strlen("password"));
+        
+    }
+
 
     return(pem_key);
 }

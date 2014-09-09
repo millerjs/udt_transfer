@@ -69,7 +69,7 @@ typedef struct e_thread_args
 void *crypto_update_thread(void* _args);
 const EVP_CIPHER* figure_encryption_type(char* encrypt_str);
 
-class crypto
+class Crypto
 {
  private:
     //BF_KEY key;
@@ -78,7 +78,7 @@ class crypto
     pthread_mutex_t c_lock[MAX_CRYPTO_THREADS];
     pthread_mutex_t thread_ready[MAX_CRYPTO_THREADS];
 
-    pthread_mutex_t id_lock;
+    pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
 
     int passphrase_size;
     int hex_passphrase_size;
@@ -87,6 +87,7 @@ class crypto
 
     int thread_id;
 
+    pthread_mutex_t id_lock_bak;
 
  public:
     // EVP stuff
@@ -94,153 +95,22 @@ class crypto
     e_thread_args   e_args[MAX_CRYPTO_THREADS];
     pthread_t       threads[MAX_CRYPTO_THREADS];
 
-    crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
-    {
-
-        N_CRYPTO_THREADS = n_threads;
-
-        THREAD_setup();
-        //free_key( password ); can't free here because is reused by threads
-        const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
-
-        if ( !cipher ) {
-            exit(EXIT_FAILURE);
-        }
-
-        //aes-128|aes-256|bf|des-ede3
-        //log_set_maximum_verbosity(LOG_DEBUG);
-        //log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
-
-        direction = direc;
-
-        // EVP stuff
-        for (int i = 0; i < N_CRYPTO_THREADS; i++) {
-
-            memset(ivec, 0, 1024);
-
-            EVP_CIPHER_CTX_init(&ctx[i]);
-
-            if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
-                fprintf(stderr, "error setting encryption scheme\n");
-                exit(EXIT_FAILURE);
-            }
-            
-        }
-
-
-        pthread_mutex_init(&id_lock, NULL);
-        for (int i = 0; i < N_CRYPTO_THREADS; i++) {
-            pthread_mutex_init(&c_lock[i], NULL);
-            pthread_mutex_init(&thread_ready[i], NULL);
-            pthread_mutex_lock(&thread_ready[i]);
-        }
-
-        // ----------- [ Initialize and set thread detached attribute
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-        thread_id = 0;
-
-        for (int i = 0; i < N_CRYPTO_THREADS; i++) {
-
-            e_args[i].thread_id = i;
-            e_args[i].ctx = &ctx[i];
-            e_args[i].c = this;
-
-            int ret = pthread_create(&threads[i],
-                     &attr, &crypto_update_thread, 
-                     &e_args[i]);
-            RegisterThread(threads[i], "crypto_update_thread");
-        
-            if (ret) {
-                fprintf(stderr, "Unable to create thread: %d\n", ret);
-            }
-        }
-    }
-
-    int get_num_crypto_threads() 
-    {
-        return N_CRYPTO_THREADS;
-    }
-
-    int get_thread_id()
-    {
-        pthread_mutex_lock(&id_lock);
-        int id = thread_id;
-        pthread_mutex_unlock(&id_lock);
-        return id;
-    }
-
-    int increment_thread_id()
-    {
-        pthread_mutex_lock(&id_lock);
-        thread_id++;
-        if (thread_id >= N_CRYPTO_THREADS) {
-            thread_id = 0;
-        }
-        pthread_mutex_unlock(&id_lock);
-        return 1;
-    }
-
-    int set_thread_ready(int thread_id)
-    {
-        return pthread_mutex_unlock(&thread_ready[thread_id]);
-    }
-
-    int wait_thread_ready(int thread_id)
-    {
-        return pthread_mutex_lock(&thread_ready[thread_id]);
-    }
-    
-    int lock_data(int thread_id)
-    {
-        return pthread_mutex_lock(&c_lock[thread_id]);
-    }
-    
-    int unlock_data(int thread_id)
-    {
-        return pthread_mutex_unlock(&c_lock[thread_id]);
-    }
-
-
-//    ~crypto()
-//    {
-//        // i guess thread issues break this but it needs to be done
-//        //TODO: find out why this is bad and breaks things
-//        EVP_CIPHER_CTX_cleanup(&ctx);
-//    }
-
-
-
-
-    // Returns how much has been encrypted and will call encrypt final when
-    // given len of 0
-    int encrypt(char *in, char *out, int len)
-    {
-        int evp_outlen;
-
-        if (len == 0) {
-            if (!EVP_CipherFinal_ex(&ctx[0], (unsigned char *)out, &evp_outlen)) {
-                fprintf(stderr, "encryption error\n");
-                exit(EXIT_FAILURE);
-            }
-            return evp_outlen;
-        }
-
-        if(!EVP_CipherUpdate(&ctx[0], (unsigned char *)out, &evp_outlen, (unsigned char *)in, len))
-        {
-            fprintf(stderr, "encryption error\n");
-            exit(EXIT_FAILURE);
-        }
-        return evp_outlen;
-    }
-
+    // member function declarations
+    Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads);
+    int get_num_crypto_threads();
+    int get_thread_id();
+    int increment_thread_id();
+    int set_thread_ready(int thread_id);
+    int wait_thread_ready(int thread_id);
+    int lock_data(int thread_id);
+    int unlock_data(int thread_id);
+//    ~Crypto();
+    int encrypt(char *in, char *out, int len);
 };
 
-int crypto_update(char* in, char* data, int len, crypto *c);
-int join_all_encryption_threads(crypto *c);
-int pass_to_enc_thread(char* in, char* out, int len, crypto*c);
+int crypto_update(char* in, char* data, int len, Crypto *c);
+int join_all_encryption_threads(Crypto *c);
+int pass_to_enc_thread(char* in, char* out, int len, Crypto*c);
 
 // generates an RSA key, needs to be freed when done
 char* generate_session_key(void);

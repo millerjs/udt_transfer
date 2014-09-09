@@ -1,5 +1,5 @@
 /*****************************************************************************
-Copyright 2013 Laboratory for Advanced Computing at the University of Chicago
+Copyright 2014 Laboratory for Advanced Computing at the University of Chicago
 
 This file is part of parcel, being a basic way of tracking threads
 
@@ -19,7 +19,7 @@ and limitations under the License.
 #include <string.h>
 
 #include "thread_manager.h"
-#include "parcel.h"
+#include "debug_output.h"
 
 struct thread_info_t    activeThreads[THREAD_POOL_SIZE];
 int thread_count;
@@ -65,7 +65,8 @@ int ExitThread(pthread_t threadId)
     verb(VERB_2, "[%s] Thread ID %lu requested", __func__, threadId);
     
     for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
-        if ( activeThreads[i].threadId == threadId ) {
+//        if ( activeThreads[i].threadId == threadId ) {
+        if ( pthread_equal(activeThreads[i].threadId, threadId) ) {
                 verb(VERB_2, "[%s]: Thread %s found (%lu), clearing", __func__, activeThreads[i].threadName, threadId);
                 activeThreads[i].threadId = 0;
                 activeThreads[i].threadUsed = 0;

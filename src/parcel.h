@@ -41,6 +41,7 @@ and limitations under the License.
 
 #include "files.h"
 #include "crypto.h"
+#include "debug_output.h"
 
 /* The buffer len is calculated as the optimal udt block - block
    header len = 67108864 - 16 */
@@ -97,23 +98,6 @@ typedef enum : uint8_t {
     NUM_CTRL_MSGS
 } ctrl_t;
 
-/* 
-Levels of Verbosity:
- VERB_0: Withhold WARNING messages 
- VERB_1: Update user on file transfers
- VERB_2: Update user on underlying processes, i.e. directory creation 
- VERB_3: Unassigned 
- VERB_4: Unassigned 
-*/
-
-typedef enum{
-    VERB_0,
-    VERB_1,
-    VERB_2,
-    VERB_3,
-    VERB_4
-} verb_t;
-
 #define MODE_SEND   1<<0 
 #define MODE_RCV    1<<1
 #define MODE_CLIENT 1<<2
@@ -163,8 +147,8 @@ typedef struct parcel_opt_t{
     int encryption;
     int n_crypto_threads;
 
-    crypto *enc;
-    crypto *dec;
+    Crypto *enc;
+    Crypto *dec;
 
     char restart_path[MAX_PATH_LEN];
 

@@ -87,7 +87,7 @@
 #define NOTE(cmd)				\
     do {					\
 	cmd;					\
-	if (g_opt_verbosity >= VERB_3){		\
+	if (get_verbosity_level() >= VERB_3){		\
 	    INFO_DUMP(__red__ "NOTE" __nrm__);	\
 	    fprintf(stderr, "%s;\n", STR(cmd));	\
 	}					\

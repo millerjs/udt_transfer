@@ -73,6 +73,7 @@ void *run_client(void *_args_)
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
+    verb(VERB_2, "[%s] Calling getaddrinfo for port %s", __func__, port);
     if (0 != getaddrinfo(NULL, port, &hints, &local)) {
         cerr << "incorrect network address.\n" << endl;
         return NULL;
@@ -90,6 +91,11 @@ void *run_client(void *_args_)
     while (NOT_CONNECTED && connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
 
         client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
+
+        if ( UDT::INVALID_SOCK == client ) {
+            verb(VERB_1, "[%s] UDTError socket %s", __func__, UDT::getlasterror().getErrorMessage());
+            return NULL;
+        }
 
         // UDT Options
         if (blast)
@@ -109,7 +115,7 @@ void *run_client(void *_args_)
         verb(VERB_2, "[%s] Connecting to server...", __func__);
         
         if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
-            verb(VERB_2, "[%s] UDTError %s", __func__, UDT::getlasterror().getErrorMessage());
+            verb(VERB_1, "[%s] UDTError %s", __func__, UDT::getlasterror().getErrorMessage());
         
             // cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
             if (args->verbose) {

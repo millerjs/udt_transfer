@@ -604,7 +604,7 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime)
 
     if ( utimensat(AT_FDCWD, filename, times, 0) < 0 ) {
         retVal = errno;
-        fprintf(stdout, "ERROR: Unable to set timestamp on %s, error code %d\n", filename, retVal);
+        fprintf(stderr, "ERROR: Unable to set timestamp on %s, error code %d\n", filename, retVal);
     } else {
         verb(VERB_3, "setting - mtime: %d, mtime_nsec: %ld\n", mtime, mtime_nsec);        
     }

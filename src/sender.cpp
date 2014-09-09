@@ -50,7 +50,6 @@ int allocate_block(parcel_block *block)
     }
 
     // record parameters in block
-
     block->dlen = BUFFER_LEN;
     block->data = block->buffer + sizeof(header_t);
 
@@ -294,6 +293,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
     verb(VERB_2, "[%s] Sending filelist", __func__);
     send_filelist(fileList, total_size);
     
+    verb(VERB_2, "[%s] Filelist sent, waiting for response", __func__);
     // Read in headers and data until signalled completion
     while ( !global_send_data.complete ) {
 
@@ -313,7 +313,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
         
     }
 
-    verb(VERB_2, "[%s] Exit", __func__);
+    verb(VERB_2, "[%s] Response received", __func__);
     // free up the memory on the way out
     free(global_send_data.data);
 
@@ -348,7 +348,7 @@ void send_and_wait_for_ack_of_complete()
 // main loop for send mode, takes a linked list of files and streams
 // them
 
-int handle_files(file_LL* fileList, file_LL* remote_fileList)
+int send_files(file_LL* fileList, file_LL* remote_fileList)
 {
     
     if ( ((fileList != NULL) && (remote_fileList != NULL)) && (fileList->count == remote_fileList->count) ) {
@@ -471,8 +471,10 @@ int pst_snd_callback_control(header_t header, global_data_t* global_data)
 
 void init_sender()
 {
-    
+
+    verb(VERB_2, "[%s] Initializing sender_block, current length = %d, buffer addy = %0X", __func__, sender_block.dlen, sender_block.buffer);
     allocate_block(&sender_block);
+    verb(VERB_2, "[%s] sender_block initialized, current length = %d, buffer addy = %0X", __func__, sender_block.dlen, sender_block.buffer);
 
     // initialize the data
     global_send_data.f_size = 0;
