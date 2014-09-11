@@ -83,7 +83,7 @@ int map_fd(int fd, off_t size)
 int unmap_fd(int fd, off_t size)
 {
     if (munmap(f_map, size) < 0) {
-	// ERR("unable to un-mmap the file");
+    // ERR("unable to un-mmap the file");
     }
     return RET_SUCCESS;
 }
@@ -245,7 +245,7 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN])
     while (cursor > path && *cursor != '/') {
         cursor--;
     }
-		    
+
     if (cursor <= path) {
         parent_dir[0] = '\0';
     } else {

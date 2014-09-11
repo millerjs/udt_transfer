@@ -87,8 +87,6 @@ class Crypto
 
     int thread_id;
 
-    pthread_mutex_t id_lock_bak;
-
  public:
     // EVP stuff
     EVP_CIPHER_CTX  ctx[MAX_CRYPTO_THREADS];
@@ -106,6 +104,7 @@ class Crypto
     int unlock_data(int thread_id);
 //    ~Crypto();
     int encrypt(char *in, char *out, int len);
+
 };
 
 int crypto_update(char* in, char* data, int len, Crypto *c);

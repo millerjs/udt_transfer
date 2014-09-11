@@ -71,7 +71,7 @@ and limitations under the License.
 #define LABEL_PB "PB"
 
 // Undefine this to have a backtrace spit out on segfault
-//#define DEBUG_BACKTRACE
+//#define DEBUG_BACKTRACE     1
 
 // Global variables
 

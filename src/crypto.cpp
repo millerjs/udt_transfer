@@ -33,8 +33,6 @@ static MUTEX_TYPE *mutex_buf = NULL;
 static void locking_function(int mode, int n, const char*file, int line);
 
 
-
-
 Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
 {
     verb(VERB_2, "[%s]: New crypto object, direc = %d, len = %d, keyLen = %lu, type = %s, threads = %d", 
@@ -62,27 +60,28 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
         memset(ivec, 0, 1024);
 
         EVP_CIPHER_CTX_init(&ctx[i]);
-        verb(VERB_2, "[%s]: Max key length = %d", __func__, EVP_MAX_KEY_LENGTH);
+//        verb(VERB_2, "[%s]: Max key length = %d", __func__, EVP_MAX_KEY_LENGTH);
         if ( (len > EVP_MAX_KEY_LENGTH) || (strlen((const char*)password) > EVP_MAX_KEY_LENGTH) ) {
             verb(VERB_2, "[%s]: Key too long, defaulting to crappy one", __func__);
             if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, (const unsigned char*)"password", ivec, direc)) {
                 verb(VERB_2, "[%s]: Error setting encryption scheme", __func__);
                 exit(EXIT_FAILURE);
             }
+            
         } else {
-        if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
-            verb(VERB_2, "[%s]: Error setting encryption scheme", __func__);
-            exit(EXIT_FAILURE);
-        }
+            if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
+                verb(VERB_2, "[%s]: Error setting encryption scheme", __func__);
+                exit(EXIT_FAILURE);
+            }
         }
     }
 
-    pthread_mutexattr_t tempAttr;
-    verb(VERB_2, "[%s]: initializing mutex", __func__);
-    pthread_mutexattr_settype(&tempAttr, PTHREAD_MUTEX_ERRORCHECK);
-    if ( pthread_mutex_init(&id_lock, &tempAttr) ) {
+    verb(VERB_2, "[%s]: id_lock before: %0x", __func__, &id_lock);
+    if ( pthread_mutex_init(&id_lock, NULL) ) {
         verb(VERB_2, "[%s]: unable to init mutex id_lock", __func__);
     }
+    verb(VERB_2, "[%s]: id_lock after: %0x", __func__, &id_lock);
+
     for (int i = 0; i < N_CRYPTO_THREADS; i++) {
         pthread_mutex_init(&c_lock[i], NULL);
         pthread_mutex_init(&thread_ready[i], NULL);
@@ -102,6 +101,7 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
         e_args[i].ctx = &ctx[i];
         e_args[i].c = this;
 
+        verb(VERB_2, "[%s]: Creating thread, id = %d", __func__, e_args[i].thread_id);
         int ret = pthread_create(&threads[i],
                  &attr, &crypto_update_thread, 
                  &e_args[i]);
@@ -120,10 +120,11 @@ int Crypto::get_num_crypto_threads()
 
 int Crypto::get_thread_id()
 {
+//    verb(VERB_2, "[%s]: Checking id_lock at %0x (%d)", __func__, id_lock, sizeof(pthread_mutex_t));
     if ( pthread_mutex_lock(&id_lock) ) {
         verb(VERB_2, "[%s]: unable to lock mutex id_lock", __func__);
     }
-    int id = thread_id;
+    int id = this->thread_id;
     pthread_mutex_unlock(&id_lock);
     return id;
 }
@@ -296,7 +297,7 @@ int crypto_update(char* in, char* out, int len, Crypto *c)
 void *crypto_update_thread(void* _args)
 {
 
-    int         evp_outlen = 0, error = 0;
+    int evp_outlen = 0, error = 0;
 
     if (!_args){
         verb(VERB_2,  "Null argument passed to crypto_update_thread");
@@ -304,13 +305,19 @@ void *crypto_update_thread(void* _args)
 
         e_thread_args* args = (e_thread_args*)_args;
         Crypto *c = (Crypto*)args->c;
-        
+//        verb(VERB_2, "[%s %lu] Enter with thread_id: %d", __func__, pthread_self(), args->thread_id);
+
         while (1) {
+//            verb(VERB_2, "[%s %lu] Enter loop with thread id: %d", __func__, pthread_self(), args->thread_id);
             if ( CheckForExit() ) {
                 break;
             }
-            
-            verb(VERB_2, "[%s %lu] Waiting for thread_ready %d", __func__, pthread_self(), args->thread_id);
+
+//            verb(VERB_2, "[%s %lu] Checking thread id: %d", __func__, pthread_self(), args->thread_id);
+            if ( args->thread_id > MAX_CRYPTO_THREADS ) {
+                verb(VERB_2, "[%s %lu] Whoops, thread_id %d out of range!", __func__, pthread_self(), args->thread_id);
+                exit(0);
+            }
             c->wait_thread_ready(args->thread_id);
 
             int len = args->len;
@@ -344,8 +351,8 @@ void *crypto_update_thread(void* _args)
                     args->thread_id, total, args->len);
                 break;
             }
-            
-            verb(VERB_2, "[%s %lu] Done with thread %d\n", __func__, pthread_self(), args->thread_id);
+
+//            verb(VERB_2, "[%s %lu] Done with thread %d\n", __func__, pthread_self(), args->thread_id);
             c->unlock_data(args->thread_id);
         
         }
@@ -392,9 +399,9 @@ int pass_to_enc_thread(char* in, char*out, int len, Crypto*c)
         // fprintf(stderr, "[%d] posting thread %d in pass\n", getpid(), thread_id);
         c->set_thread_ready(thread_id);
 
-        fflush(stderr);
+        // fflush(stderr);
     }
-    
+
     return 0;
 }
 
@@ -521,7 +528,7 @@ char* generate_session_key(void)
     // always have to be bundled together to make this more convoluted?
     // I bet you can if you try!
 
-    if ( 0 ) {
+    if ( 1 ) {
         RSA *rsa = RSA_generate_key(kBits, kExp, 0, 0);
 
         BIO *bio = BIO_new(BIO_s_mem());
@@ -544,7 +551,6 @@ char* generate_session_key(void)
         pem_key = (char*)malloc(sizeof(char) * key_len + 1);
         memset(pem_key, 0, (sizeof(char) * key_len) + 1);
         strncpy(pem_key, "password", strlen("password"));
-        
     }
 
 

@@ -290,7 +290,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
     int alloc_len = BUFFER_LEN - sizeof(header_t);
     global_send_data.data = (char*) malloc( alloc_len * sizeof(char));
 
-    verb(VERB_2, "[%s] Sending filelist", __func__);
+    verb(VERB_2, "[%s] Sending filelist, size %d", __func__, alloc_len);
     send_filelist(fileList, total_size);
     
     verb(VERB_2, "[%s] Filelist sent, waiting for response", __func__);
@@ -439,7 +439,8 @@ int send_files(file_LL* fileList, file_LL* remote_fileList)
 //
 int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
 {
-    
+
+    verb(VERB_2, "[%s] creating file list size of %d", __func__, header.data_len);
     // all we need to do is unpack data and stuff into global_data
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
     

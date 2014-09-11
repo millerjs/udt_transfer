@@ -49,7 +49,7 @@ void *run_client(void *_args_)
     thread_args *args = (thread_args*) _args_;
 
     verb(VERB_2, "[%s] Running client...", __func__);
-    
+
     // initial setup
     char *ip = args->ip; 
     char *port = args->port;
@@ -135,8 +135,12 @@ void *run_client(void *_args_)
     }
 
     verb(VERB_2, "[%s] Creating receive thread...", __func__);
-    
-    
+
+    if ( args->dec == NULL && args->use_crypto ) {
+        verb(VERB_2, "[%s] dec crypto isn't initialized!!", __func__);
+        exit(0);
+    }
+
     // set the socket up and send to the receive thread
     pthread_t rcvthread, sndthread;
     rs_args rcvargs;
@@ -162,7 +166,12 @@ void *run_client(void *_args_)
     verb(VERB_2, "[%s] Receive thread created: %lu", __func__, rcvthread);
 
     verb(VERB_2, "[%s] Creating send thread...", __func__);
-    
+
+    if ( args->enc == NULL && args->use_crypto ) {
+        verb(VERB_2, "[%s] enc crypto isn't initialized!!", __func__);
+        exit(0);
+    }
+
     // same thing, but with the send thread
     rs_args send_args;
     send_args.usocket = new UDTSOCKET(client);

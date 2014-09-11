@@ -42,7 +42,7 @@ int RegisterThread(pthread_t threadId, char* threadName)
     int i;
 
     verb(VERB_2, "[%s] Thread %s (%lu) added", __func__, threadName, threadId);
-    
+
     for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
         if ( !(activeThreads[i].threadUsed) ) {
             break;
@@ -55,7 +55,7 @@ int RegisterThread(pthread_t threadId, char* threadName)
         thread_count++;
     }
     verb(VERB_2, "[%s] Thread count now %d", __func__, thread_count);
-    
+
     return(thread_count);
 }
 
@@ -63,7 +63,7 @@ int ExitThread(pthread_t threadId)
 {
     int i;
     verb(VERB_2, "[%s] Thread ID %lu requested", __func__, threadId);
-    
+
     for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
 //        if ( activeThreads[i].threadId == threadId ) {
         if ( pthread_equal(activeThreads[i].threadId, threadId) ) {
@@ -75,7 +75,7 @@ int ExitThread(pthread_t threadId)
                 break;
         }
     }
-    
+
     verb(VERB_2, "[%s]: Thread count now %d", __func__, thread_count);
     return(thread_count);
 }
@@ -93,26 +93,26 @@ pthread_t GetMyThreadId(void)
 void PrintThreads(void)
 {
     int i;
-    
+
     for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
         if ( activeThreads[i].threadUsed ) {
             verb(VERB_2, "%d: Thread ID %lu - %s", i, activeThreads[i].threadId, activeThreads[i].threadName);
         }
     }
-    
+
 }
 
 void SetExit(void)
 {
     verb(VERB_2, "[%s]: Time to wrap this up", __func__);
     time_to_exit = 1;
-    
+
 }
 
 
 int CheckForExit(void)
 {
     return time_to_exit;
-    
+
 }
 

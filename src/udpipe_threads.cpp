@@ -148,8 +148,10 @@ void sign_auth(rs_args* args)
 {
     char key[KEY_LEN];
 
+    // appears to try and receive a key
     recv_full(*args->usocket, key, KEY_LEN);
 
+    // pass the key to the encode thread
     int crypt_len = KEY_LEN/args->n_crypto_threads;
     for (int i = 0; i < args->n_crypto_threads; i ++) {
         pass_to_enc_thread(key+i*crypt_len, key+i*crypt_len, 
@@ -158,8 +160,10 @@ void sign_auth(rs_args* args)
 
     join_all_encryption_threads(args->c);
 
+    // send the key back
     send_full(*args->usocket, key, KEY_LEN);
 
+    // set the signed_auth to true
     signed_auth = 1;
 
 }
@@ -172,10 +176,14 @@ void* recvdata(void * _args)
 
     rs_args * args = (rs_args*)_args;
 
-    verb(VERB_2, "[%s %lu] Initializing receive thread...", __func__, tid);
+    verb(VERB_2, "[%s %lu] Initializing receive thread, args->c = %0x", __func__, tid, args->c);
 
     if (args->use_crypto) {
         verb(VERB_2, "[%s %lu] Receive encryption is on.", __func__, tid);
+        if ( args->c == NULL ) {
+            fprintf(stderr, "[%s %lu] crypto is NULL on enter, exiting!", __func__, tid);
+            exit(0);
+        }
     }
 
     UDTSOCKET recver = *args->usocket;
@@ -210,7 +218,7 @@ void* recvdata(void * _args)
     int offset = sizeof(int)/sizeof(char);
     int crypto_cursor;
 
-    verb(VERB_2, "[%s %lu] Listening on receive thread.", __func__, tid);
+    verb(VERB_2, "[%s %lu] Listening on receive thread, args->c = %0x", __func__, tid, args->c);
 
     // Set monitor thread to expect a timeout
     if (args->timeout) {
@@ -219,6 +227,10 @@ void* recvdata(void * _args)
 
     if(args->use_crypto) {
         verb(VERB_2, "[%s %lu] Entering crypto loop...", __func__, tid);
+        if ( args->c == NULL ) {
+            fprintf(stderr, "crypto class is NULL, exiting!\n");
+            exit(0);
+        }
         while(true) {
             int rs;
             if (new_block) {
@@ -263,6 +275,8 @@ void* recvdata(void * _args)
 
             buffer_cursor += rs;
 
+            verb(VERB_2, "[%s %lu] args->c = %0x", __func__, tid, args->c);
+
             // Decrypt any full encryption buffer sectors
             while (crypto_cursor + crypto_buff_len < buffer_cursor) {
                 pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor, 
@@ -274,6 +288,10 @@ void* recvdata(void * _args)
             if (buffer_cursor == block_size) {
             
                 int size = buffer_cursor - crypto_cursor;
+                if ( args->c == NULL ) {
+                    fprintf(stderr, "[%s %lu] crypto class is NULL before thread, exiting!\n", __func__, tid);
+                    exit(0);
+                }
                 pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor, 
                            size, args->c);
                 crypto_cursor += size;
@@ -355,9 +373,8 @@ void* senddata(void* _args)
 
     int crypto_buff_len = BUFF_SIZE / args->n_crypto_threads;
     
-    int	offset = sizeof(int)/sizeof(char);
+    int offset = sizeof(int)/sizeof(char);
     int bytes_read;
-
 
     // fly - since the key is already sent, we shouldn't need to do this
 /*    if (args->use_crypto) {
@@ -391,7 +408,7 @@ void* senddata(void* _args)
             }
 
             int ss;
-            bytes_read = read(args->send_pipe[0], outdata+offset, BUFF_SIZE);
+            bytes_read = read(args->send_pipe[0], outdata+offset, (BUFF_SIZE - offset));
 
             if(bytes_read < 0) {
                 cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -412,6 +429,7 @@ void* senddata(void* _args)
 
                 while (crypto_cursor < bytes_read) {
                     int size = min(crypto_buff_len, bytes_read-crypto_cursor);
+                    verb(VERB_2, "[%s %lu] Passing %d data to encode thread", __func__, tid, size);
                     pass_to_enc_thread(outdata+crypto_cursor+offset,
                                outdata+crypto_cursor+offset,
                                size, args->c);
@@ -419,6 +437,7 @@ void* senddata(void* _args)
                     crypto_cursor += size;
                 }
 
+                verb(VERB_2, "[%s %lu] Joining encryption threads", __func__, tid);
                 join_all_encryption_threads(args->c);
                 bytes_read += offset;
 
@@ -445,6 +464,7 @@ void* senddata(void* _args)
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
+            verb(VERB_2, "[%s %lu] Loop...", __func__, tid);
         }
 
     } else {

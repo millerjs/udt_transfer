@@ -94,7 +94,7 @@ int receive_files(char*base_path)
     while ( !global_receive_data.complete ) {
         if (global_receive_data.read_new_header) {
             if ((global_receive_data.rs = read_header(&header)) <= 0) {
-                ERR("Bad header read, errno: %d", errno);
+                ERR("[%s] Bad header read, errno: %d", __func__, errno);
             }
         }
         
@@ -204,7 +204,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
         if (g_opts.verbosity > VERB_3) {
             perror("WARNING: Unable to advise file write");
         }
-    }		
+    }
 
     global_data->read_new_header = 1;
     global_data->expecting_data = 1;

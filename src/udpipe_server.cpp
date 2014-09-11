@@ -122,7 +122,7 @@ void *run_server(void *_args_)
     // printf("Binding to %s\n", inet_ntoa(sin.sin_addr));
     
     verb(VERB_2, "[%s] Binding socket...", __func__);
-    
+
     int r;
 
     if (specify_ip) { 
@@ -173,6 +173,10 @@ void *run_server(void *_args_)
     rcvargs.use_crypto = args->use_crypto;
     rcvargs.verbose = args->verbose;
     rcvargs.n_crypto_threads = args->n_crypto_threads;
+    if ( (args->dec == NULL) && (args->use_crypto) ) {
+        fprintf(stderr, "[%s] crypto class 'dec' uninitialized\n", __func__ );
+        exit(1);
+    }
     rcvargs.c = args->dec;
     rcvargs.timeout = args->timeout;
 
@@ -201,6 +205,10 @@ void *run_server(void *_args_)
     send_args.n_crypto_threads = args->n_crypto_threads;
     send_args.c = args->enc;
     send_args.timeout = args->timeout;
+    if ( (args->enc == NULL) && (args->use_crypto) ) {
+        fprintf(stderr, "[%s] crypto class 'enc' uninitialized\n", __func__ );
+        exit(1);
+    }
 
     if (args->send_pipe && args->recv_pipe) {
         
