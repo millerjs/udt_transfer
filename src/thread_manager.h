@@ -23,18 +23,26 @@ and limitations under the License.
 
 #include <pthread.h>
 
+typedef enum : unsigned char {
+    THREAD_TYPE_1,
+    THREAD_TYPE_2,
+    THREAD_TYPE_ALL,
+    NUM_THREAD_TYPES
+} thread_type_t;
+
 typedef struct thread_info_t {
-    pthread_t   threadId;
-    char        threadName[MAX_THREAD_NAME];
-    int         threadUsed;
+    pthread_t       threadId;
+    char            threadName[MAX_THREAD_NAME];
+    int             threadUsed;
+    thread_type_t   threadType;
 } thread_info_t;
 
-int RegisterThread(pthread_t threadId, char* threadName);
+int RegisterThread(pthread_t threadId, char* threadName, thread_type_t threadType);
 int ExitThread(pthread_t threadId);
-int GetThreadCount(void);
+int GetThreadCount(thread_type_t threadType);
 pthread_t GetMyThreadId(void);
 void PrintThreads(void);
 void SetExit(void);
-int CheckForExit(void);
+int CheckForExit(thread_type_t threadType);
 
 #endif // THREAD_MANAGER_H

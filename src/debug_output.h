@@ -17,6 +17,8 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
+#include <execinfo.h>
+
 #ifndef DEBUG_OUTPUT_H
 #define DEBUG_OUTPUT_H
 
@@ -57,6 +59,8 @@ void msg(char* str);
 void warn(char* fmt, ...);
 
 void verb(verb_t verbosity, char* fmt, ...);
+
+void print_backtrace();
 
 //void error(char* fmt, ...);
 

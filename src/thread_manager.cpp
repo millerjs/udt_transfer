@@ -37,7 +37,7 @@ void InitThreadManager(void)
     }
 }
 
-int RegisterThread(pthread_t threadId, char* threadName)
+int RegisterThread(pthread_t threadId, char* threadName, thread_type_t threadType)
 {
     int i;
 
@@ -52,6 +52,11 @@ int RegisterThread(pthread_t threadId, char* threadName)
         strncpy(activeThreads[i].threadName, threadName, MAX_THREAD_NAME - 1);
         activeThreads[i].threadId = threadId;
         activeThreads[i].threadUsed = 1;
+        if ( threadType < NUM_THREAD_TYPES ) {
+            activeThreads[i].threadType = threadType;
+        } else {
+            activeThreads[i].threadType = THREAD_TYPE_1;
+        }
         thread_count++;
     }
     verb(VERB_2, "[%s] Thread count now %d", __func__, thread_count);
@@ -80,8 +85,18 @@ int ExitThread(pthread_t threadId)
     return(thread_count);
 }
 
-int GetThreadCount(void)
+int GetThreadCount(thread_type_t threadType)
 {
+    int i, tmpThreadCount = thread_count;
+
+    if ( threadType < THREAD_TYPE_ALL ) {
+        for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
+            if ( activeThreads[i].threadType != threadType ) {
+                tmpThreadCount--;
+            }
+        }
+    }
+
     return(thread_count);
 }
 
@@ -110,9 +125,24 @@ void SetExit(void)
 }
 
 
-int CheckForExit(void)
+int CheckForExit(thread_type_t threadType)
 {
-    return time_to_exit;
+    int i, should_exit = time_to_exit;
+//    verb(VERB_2, "[%s]: threadType = %d", __func__, threadType);
 
+    // type 1 needs to check if any 2s are running, if we even have to
+    // worry about exiting
+    if ( (threadType == THREAD_TYPE_1) && should_exit) { 
+        for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
+            // bail from loop & don't exit if any 2s are still running
+            if ( (activeThreads[i].threadType == THREAD_TYPE_2) && activeThreads[i].threadUsed ) {
+//                verb(VERB_2, "[%s] %d: still active - thread ID %lu - %s", __func__, i, activeThreads[i].threadId, activeThreads[i].threadName);
+                should_exit = 0;
+                break;
+            }
+        }
+    }
+
+    return should_exit;
 }
 

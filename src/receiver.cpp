@@ -130,7 +130,7 @@ int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
     // Read directory name from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
-    verb(VERB_2, "[%s] Making directory: %s\n", __func__, global_data->data_path);
+    verb(VERB_2, "[%s] Making directory: %s", __func__, global_data->data_path);
     
     // make directory, if any parent in directory path
     // doesnt exist, make that as well
@@ -160,12 +160,12 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
     // hang on to mtime data until we're done
     global_data->mtime_sec = header.mtime_sec;
     global_data->mtime_nsec = header.mtime_nsec;
-    verb(VERB_3, "[%s] Header mtime: %d, mtime_nsec: %ld\n", __func__, global_data->mtime_sec, global_data->mtime_nsec);
+    verb(VERB_3, "[%s] Header mtime: %d, mtime_nsec: %ld", __func__, global_data->mtime_sec, global_data->mtime_nsec);
     
     // Read filename from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
-    verb(VERB_3, "[%s] Initializing file receive: %s\n", __func__, global_data->data_path + global_data->bl);
+    verb(VERB_3, "[%s] Initializing file receive: %s", __func__, global_data->data_path + global_data->bl);
 
 
     global_data->fout = open(global_data->data_path, f_mode, f_perm);

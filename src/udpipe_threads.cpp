@@ -197,10 +197,10 @@ void* recvdata(void * _args)
         exit(EXIT_FAILURE);
     }
 
-    // fly - we have keys, so this should be unnecessary
-/*    if (args->use_crypto) {
+//    // fly - we have keys, so this should be unnecessary
+    if (args->use_crypto) {
         auth_peer(args);
-    } */
+    }
 
     timeout_sem = 2;
 
@@ -208,7 +208,7 @@ void* recvdata(void * _args)
     if (args->timeout > 0) {
         pthread_t monitor_thread;
         pthread_create(&monitor_thread, NULL, &monitor_timeout, &args->timeout);
-        RegisterThread(monitor_thread, "monitor_timeout");
+        RegisterThread(monitor_thread, "monitor_timeout", THREAD_TYPE_2);
     }
 
     READ_IN = 1;
@@ -255,16 +255,12 @@ void* recvdata(void * _args)
             rs = UDT::recv(recver, indata+buffer_cursor,
                    block_size-buffer_cursor, 0);
 
-
             if (UDT::ERROR == rs) {
                 if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
                     cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
-//                    free(indata);
-//                    exit(1);
                     break;
                 }
-//                free(indata);
-//                exit(0);
+
                 break;
             }
 
@@ -275,8 +271,6 @@ void* recvdata(void * _args)
 
             buffer_cursor += rs;
 
-            verb(VERB_2, "[%s %lu] args->c = %0x", __func__, tid, args->c);
-
             // Decrypt any full encryption buffer sectors
             while (crypto_cursor + crypto_buff_len < buffer_cursor) {
                 pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor, 
@@ -286,7 +280,6 @@ void* recvdata(void * _args)
 
             // If we received the whole block
             if (buffer_cursor == block_size) {
-            
                 int size = buffer_cursor - crypto_cursor;
                 if ( args->c == NULL ) {
                     fprintf(stderr, "[%s %lu] crypto class is NULL before thread, exiting!\n", __func__, tid);
@@ -304,7 +297,7 @@ void* recvdata(void * _args)
                 crypto_cursor = 0;
                 new_block = 1;
             }
-            if ( CheckForExit() ) {
+            if ( CheckForExit(THREAD_TYPE_2) ) {
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
@@ -323,11 +316,11 @@ void* recvdata(void * _args)
                     verb(VERB_2, "[%s %lu] Exiting on error 1...", __func__, tid);
                     break;
                 }
-                verb(VERB_2, "[%s %lu] Exiting on error 0...", __func__, tid);
+                verb(VERB_2, "[%s %lu] Connection lost, exiting", __func__, tid);
                 break;
             }
 
-            if ( CheckForExit() ) {
+            if ( CheckForExit(THREAD_TYPE_2) ) {
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
@@ -376,11 +369,11 @@ void* senddata(void* _args)
     int offset = sizeof(int)/sizeof(char);
     int bytes_read;
 
-    // fly - since the key is already sent, we shouldn't need to do this
-/*    if (args->use_crypto) {
-        verb(VERB_2, "[%s %lu] Sending encryption status...", tid);
+    // verifies that we can encrypt/decrypt
+    if (args->use_crypto) {
+        verb(VERB_2, "[%s %lu] Sending encryption status...", __func__, tid);
         sign_auth(args);
-    } */
+    } 
 
     // long local_openssl_version;
     // if (args->use_crypto)
@@ -402,7 +395,7 @@ void* senddata(void* _args)
     if (args->use_crypto) {
         verb(VERB_2, "[%s %lu] Entering crypto loop", __func__, tid);
         while(true) {
-            if ( CheckForExit() ) {
+            if ( CheckForExit(THREAD_TYPE_2) ) {
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
@@ -460,7 +453,7 @@ void* senddata(void* _args)
                 ssize += ss;
             }
 
-            if ( CheckForExit() ) {
+            if ( CheckForExit(THREAD_TYPE_2) ) {
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
@@ -470,7 +463,7 @@ void* senddata(void* _args)
     } else {
         verb(VERB_2, "[%s %lu] Entering non-crypto loop", __func__, tid);
         while (1) {
-            if ( CheckForExit() ) {
+            if ( CheckForExit(THREAD_TYPE_2) ) {
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }

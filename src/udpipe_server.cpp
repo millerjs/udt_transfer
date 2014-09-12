@@ -191,7 +191,7 @@ void *run_server(void *_args_)
     
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
-    RegisterThread(rcvthread, "recvdata");
+    RegisterThread(rcvthread, "recvdata", THREAD_TYPE_2);
     
     verb(VERB_2, "[%s] Receive thread created: %lu", __func__ , rcvthread);
 
@@ -218,11 +218,11 @@ void *run_server(void *_args_)
         if (args->print_speed){
             pthread_t mon_thread;
             pthread_create(&mon_thread, NULL, monitor, &recver);
-            RegisterThread(mon_thread, "monitor");
+            RegisterThread(mon_thread, "monitor", THREAD_TYPE_2);
         }
 
         pthread_create(&sndthread, NULL, senddata, &send_args);
-        RegisterThread(sndthread, "senddata");
+        RegisterThread(sndthread, "senddata", THREAD_TYPE_2);
         
         verb(VERB_2, "[%s] Waiting for send thread to complete", __func__);
         pthread_join(sndthread, NULL);

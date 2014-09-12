@@ -31,7 +31,6 @@ and limitations under the License.
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
-#include <execinfo.h>
 
 #define PARCEL_FLAG_MASTER      0x01
 #define PARCEL_FLAG_MINION      0x02
@@ -39,7 +38,7 @@ and limitations under the License.
 #define PARCEL_MAX_TEMP_KEY_LENGTH  4096
 
 #define PARCEL_DEBUG_SSH_METHOD_2   1
-#define DONT_CHECK_FILELIST         0
+//#define DONT_CHECK_FILELIST         0
 
 char g_base_path[MAX_PATH_LEN];
 
@@ -282,9 +281,9 @@ void clean_exit(int status)
 
     int counter = 0;
     verb(VERB_2, "\n");
-    while ( (GetThreadCount() > 0) && (status != EXIT_FAILURE) ) {
+    while ( (GetThreadCount(THREAD_TYPE_ALL) > 0) && (status != EXIT_FAILURE) ) {
         if ( counter == 0 ) {
-            verb(VERB_2, "[%d %s] Waiting on %d threads to exit", g_flags, __func__, GetThreadCount());
+            verb(VERB_2, "[%d %s] Waiting on %d threads to exit", g_flags, __func__, GetThreadCount(THREAD_TYPE_ALL));
             PrintThreads();
             counter = MAX_OUTPUT_COUNT;
         } else {
@@ -292,6 +291,9 @@ void clean_exit(int status)
         }
         usleep(100);
     }
+
+    delete(g_opts.enc);
+    delete(g_opts.dec);
 
     exit(status);
 }
@@ -312,22 +314,7 @@ void sig_handler(int signal)
     if (signal == SIGSEGV){
         verb(VERB_0, "\nERROR: [%d] received SIGSEV, caught SEGFAULT cleaning up and exiting...", getpid());
 #ifdef DEBUG_BACKTRACE
-        fprintf( stderr, "\n********* SEGMENTATION FAULT *********\n\n" );
-
-        void *trace[32];
-        size_t size, i;
-        char **strings;
-
-        size    = backtrace( trace, 32 );
-        strings = backtrace_symbols( trace, size );
-
-        fprintf( stderr, "\nBACKTRACE:\n\n" );
-
-        for( i = 0; i < size; i++ ){
-            fprintf( stderr, "  %s\n", strings[i] );
-        }
-
-        fprintf( stderr, "\n***************************************\n" );
+        print_backtrace();
 #endif
         abort();
     }
@@ -575,7 +562,7 @@ int get_remote_pid()
 
     // Read something from the pipe, proceed
     else {
-        verb(VERB_2, "[%d %s] Remote process pid: %d\n", g_flags, __func__, g_remote_args.remote_pid);
+        verb(VERB_2, "[%d %s] Remote process pid: %d", g_flags, __func__, g_remote_args.remote_pid);
     }
     return 0;
 }
@@ -694,7 +681,7 @@ int get_base_path(int argc, char** argv, int optind)
     }
 
     if (g_opts.mode & MODE_RCV) { 
-        verb(VERB_2, "[%d %s] MODE_RCV detected", g_flags, __func__);
+        verb(VERB_2, "[%d %s] MODE_RCV detected (%0x)", g_flags, __func__, g_opts.mode);
         // Destination directory was passed
         if (optind < argc) {
             // Generate a base path for file locations
@@ -704,7 +691,7 @@ int get_base_path(int argc, char** argv, int optind)
             // Are there any remaining command line args? Warn user
             verb(VERB_2, "[%d %s] Unused command line args:", g_flags, __func__);
             for (; optind < argc-1; optind++) {
-                verb(VERB_2, "Unused %s\n", argv[optind]);
+                verb(VERB_2, "Unused %s", argv[optind]);
             }
         }
         verb(VERB_2, "[%d %s] g_base_path = %s", g_flags, __func__, g_base_path);
@@ -1006,7 +993,7 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 {
     thread_args *args = (thread_args*) malloc(sizeof(thread_args));
     initialize_udpipe_args(args);
-    verb(VERB_3, "[%d %s] args addy = %0X", g_flags, __func__, args);
+    verb(VERB_3, "[%d %s] args addy = %0x", g_flags, __func__, args);
 
     char *host = (char*)malloc(1028*sizeof(char));
     char *at_ptr = NULL;
@@ -1030,18 +1017,18 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
     args->enc              = g_opts.enc;
     args->dec              = g_opts.dec;
 
-    verb(VERB_2, "[%d %s] g_opts->enc = %0X", g_flags, __func__, g_opts.enc);
-    verb(VERB_2, "[%d %s] g_opts->dec = %0X", g_flags, __func__, g_opts.dec);
+    verb(VERB_2, "[%d %s] g_opts->enc = %0x", g_flags, __func__, g_opts.enc);
+    verb(VERB_2, "[%d %s] g_opts->dec = %0x", g_flags, __func__, g_opts.dec);
 
 //    verb(VERB_3, "[%d %s] enc thread_id = %d", g_flags, __func__, args->enc->get_thread_id());
 //    verb(VERB_3, "[%d %s] dec thread_id = %d", g_flags, __func__, args->enc->get_thread_id());
     pthread_t udpipe_thread;
     if ( udpipe_server_type == UDPIPE_SERVER ) {
         pthread_create(&udpipe_thread, NULL, &run_server, args);
-        RegisterThread(udpipe_thread, "run_server");
+        RegisterThread(udpipe_thread, "run_server", THREAD_TYPE_2);
     } else {
         pthread_create(&udpipe_thread, NULL, &run_client, args);
-        RegisterThread(udpipe_thread, "run_client");
+        RegisterThread(udpipe_thread, "run_client", THREAD_TYPE_2);
     }
 
     return udpipe_thread;
@@ -1056,12 +1043,6 @@ int master_transfer_setup()
 {
     char    tmpBuf[PARCEL_MAX_TEMP_KEY_LENGTH];
 
-    if ( g_opts.remote_to_local ) {
-        verb(VERB_2, "[%d %s] Starting local_to_remote receiver", g_flags, __func__);
-    } else {
-        verb(VERB_2, "[%d %s] Starting remote_to_local sender", g_flags, __func__);
-    }
-    
     // spawn process on remote host and let it create the server
     verb(VERB_2, "[%d %s] Running ssh to remote path %s", g_flags, __func__, g_remote_args.remote_path);
 
@@ -1111,10 +1092,8 @@ int master_transfer_setup()
             verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
             verb(VERB_3, "%s", g_session_key);
         }
-        Crypto enc(EVP_ENCRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-        Crypto dec(EVP_DECRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-        g_opts.enc = &enc;
-        g_opts.dec = &dec;
+        g_opts.enc = new Crypto(EVP_ENCRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+        g_opts.dec = new Crypto(EVP_DECRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
 //        verb(VERB_3, "[%d %s] enc thread_id = %d", g_flags, __func__, enc.get_thread_id());
 //        verb(VERB_3, "[%d %s] dec thread_id = %d", g_flags, __func__, enc.get_thread_id());
     }
@@ -1131,12 +1110,7 @@ int master_transfer_setup()
 int minion_transfer_setup()
 {
     char    tmpBuf[PARCEL_MAX_TEMP_KEY_LENGTH];
-    
-    if ( g_opts.remote_to_local ) {
-       verb(VERB_2, "[%d %s] Starting remote_to_local receiver", g_flags, __func__);
-    } else {
-       verb(VERB_2, "[%d %s] Starting local_to_remote sender", g_flags, __func__);
-    }
+
     if (g_opts.encryption) {
         char* cipher = (char*) "aes-128";
         // fly - here is where we use the key instead of the password
@@ -1148,10 +1122,8 @@ int minion_transfer_setup()
             verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
             verb(VERB_3, "%s", g_session_key);
         } else {
-            Crypto enc(EVP_ENCRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-            Crypto dec(EVP_DECRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-            g_opts.enc = &enc;
-            g_opts.dec = &dec;
+            g_opts.enc = new Crypto(EVP_ENCRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+            g_opts.dec = new Crypto(EVP_DECRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
 //            verb(VERB_3, "[%d %s] enc thread_id = %d", g_flags, __func__, enc.get_thread_id());
 //            verb(VERB_3, "[%d %s] dec thread_id = %d", g_flags, __func__, enc.get_thread_id());
         }
@@ -1177,9 +1149,21 @@ int start_transfer(int argc, char*argv[], int optind)
         verb(VERB_2, "[%d %s] Loading restart checkpoint [%d %s].", g_flags, __func__, g_opts.restart_path);
         read_checkpoint(g_opts.restart_path);
     }
-    verb(VERB_2, "[%d %s] g_opts->enc = %0x", g_flags, __func__, g_opts.enc);
-    verb(VERB_2, "[%d %s] g_opts->dec = %0x", g_flags, __func__, g_opts.dec);
 
+    if ( g_opts.mode & MODE_RCV ){
+        if ( g_opts.remote_to_local ) {
+           verb(VERB_2, "[%d %s] Starting remote_to_local receiver", g_flags, __func__);
+        } else {
+           verb(VERB_2, "[%d %s] Starting local_to_remote receiver", g_flags, __func__);
+        }
+    } else {
+        if ( !g_opts.remote_to_local ) {
+           verb(VERB_2, "[%d %s] Starting remote_to_local sender", g_flags, __func__);
+        } else {
+           verb(VERB_2, "[%d %s] Starting local_to_remote sender", g_flags, __func__);
+        }
+    }
+    
     if ( g_flags & PARCEL_FLAG_MASTER ) {
         master_transfer_setup();
     } else {
@@ -1192,8 +1176,8 @@ int start_transfer(int argc, char*argv[], int optind)
 
         // sending pid if other side needs to kill?
 /*        pid_t pid = getpid();
-        write(g_opts.send_pipe[1], &pid, sizeof(pid_t));
-        g_opts.socket_ready = 1;*/
+        write(g_opts.send_pipe[1], &pid, sizeof(pid_t)); */
+        g_opts.socket_ready = 1;
 
         verb(VERB_2, "[%d %s] Running with file destination mode",g_flags, __func__);
         start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
@@ -1243,10 +1227,6 @@ int start_transfer(int argc, char*argv[], int optind)
         // send the file list, requesting version from dest
         file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
 
-//        verb(VERB_3, "[%d %s SEND] enc thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
-//        verb(VERB_3, "[%d %s SEND] dec thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
-
-
         // Visit all directories and send all files
         // This is where we pass the remainder of the work to the
         // file handler in sender.cpp
@@ -1277,7 +1257,11 @@ void init_parcel(int argc, char *argv[])
 
     // parse user command line input and get the remaining argument index
     int optind = get_options(argc, argv);
-    
+
+    // fly- we have to do this before the master/minion is set, because g_opts.mode
+    // is changed in here depending
+    get_remote_host(argc, argv);
+
     if (g_opts.mode & MODE_RCV) {
         if ( g_opts.remote_to_local ) {
             g_flags |= PARCEL_FLAG_MASTER;
@@ -1294,6 +1278,12 @@ void init_parcel(int argc, char *argv[])
 
     init_debug_output_file(g_flags & PARCEL_FLAG_MASTER);
 
+    if (g_opts.mode & MODE_RCV) { 
+        verb(VERB_2, "[%d %s] set to MODE_RCV (%0x)", g_flags, __func__, g_opts.mode);
+    } else {
+        verb(VERB_2, "[%d %s] set to MODE_SEND (%0x)", g_flags, __func__, g_opts.mode);
+    }
+
     if ( g_flags & PARCEL_FLAG_MINION ) {
         if ( g_opts.encryption ) {
             verb(VERB_2, "[%d %s] we are the minion", g_flags, __func__);
@@ -1307,18 +1297,10 @@ void init_parcel(int argc, char *argv[])
     }
 
     verb(VERB_2, "[%d %s] optind = %d, argc = %d", g_flags, __func__, optind, argc);
-    
-    if (g_opts.mode & MODE_RCV) { 
-        verb(VERB_2, "[%d %s] set to MODE_RCV", g_flags, __func__);
-    }
-    if (g_opts.mode & MODE_SEND) { 
-        verb(VERB_2, "[%d %s] set to MODE_SEND", g_flags, __func__);
-    }
 
     // specify how to catch signals
     set_handlers();
 
-    get_remote_host(argc, argv);
     if ( g_opts.remote_to_local ) { 
         optind++;
     }
@@ -1338,6 +1320,7 @@ void cleanup_parcel()
 
     cleanup_receiver();
     cleanup_sender();
+    
     clean_exit(EXIT_SUCCESS);
 }
 
@@ -1363,6 +1346,7 @@ int main_loop()
 
 int main(int argc, char *argv[])
 {
+
     init_parcel(argc, argv);
 
     g_timer = start_timer("send_timer");

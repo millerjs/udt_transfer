@@ -71,7 +71,7 @@ and limitations under the License.
 #define LABEL_PB "PB"
 
 // Undefine this to have a backtrace spit out on segfault
-//#define DEBUG_BACKTRACE     1
+#define DEBUG_BACKTRACE     1
 
 // Global variables
 
@@ -98,10 +98,10 @@ typedef enum : uint8_t {
     NUM_CTRL_MSGS
 } ctrl_t;
 
-#define MODE_SEND   1<<0 
-#define MODE_RCV    1<<1
-#define MODE_CLIENT 1<<2
-#define MODE_SERVER 1<<3
+#define MODE_SEND               1<<0 
+#define MODE_RCV                1<<1
+#define MODE_CLIENT             1<<2
+#define MODE_SERVER             1<<3
 
 #define HEADER_TYPE_LEN         4
 #define HEADER_DATA_LEN_LEN     4

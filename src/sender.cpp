@@ -290,7 +290,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
     int alloc_len = BUFFER_LEN - sizeof(header_t);
     global_send_data.data = (char*) malloc( alloc_len * sizeof(char));
 
-    verb(VERB_2, "[%s] Sending filelist, size %d", __func__, alloc_len);
+    verb(VERB_2, "[%s] Sending filelist, total data buffer size %d", __func__, alloc_len);
     send_filelist(fileList, total_size);
     
     verb(VERB_2, "[%s] Filelist sent, waiting for response", __func__);
@@ -462,8 +462,12 @@ int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
 //
 int pst_snd_callback_control(header_t header, global_data_t* global_data)
 {
+    verb(VERB_2, "[%s] control message received:", __func__);
     if ( header.ctrl_msg == CTRL_ACK ) {
+        verb(VERB_2, "[%s] data complete msg", __func__);
         global_data->complete = 1;
+    } else {
+        verb(VERB_2, "[%s] unknown message received: %d", __func__, header.ctrl_msg);
     }
     
     return 0;
@@ -473,9 +477,9 @@ int pst_snd_callback_control(header_t header, global_data_t* global_data)
 void init_sender()
 {
 
-    verb(VERB_2, "[%s] Initializing sender_block, current length = %d, buffer addy = %0X", __func__, sender_block.dlen, sender_block.buffer);
+    verb(VERB_2, "[%s] Initializing sender_block, current length = %d, buffer addy = %0x", __func__, sender_block.dlen, sender_block.buffer);
     allocate_block(&sender_block);
-    verb(VERB_2, "[%s] sender_block initialized, current length = %d, buffer addy = %0X", __func__, sender_block.dlen, sender_block.buffer);
+    verb(VERB_2, "[%s] sender_block initialized, current length = %d, buffer addy = %0x", __func__, sender_block.dlen, sender_block.buffer);
 
     // initialize the data
     global_send_data.f_size = 0;

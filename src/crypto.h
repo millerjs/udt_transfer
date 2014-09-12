@@ -92,6 +92,9 @@ class Crypto
     EVP_CIPHER_CTX  ctx[MAX_CRYPTO_THREADS];
     e_thread_args   e_args[MAX_CRYPTO_THREADS];
     pthread_t       threads[MAX_CRYPTO_THREADS];
+//    EVP_CIPHER_CTX*  ctx;
+//    e_thread_args*   e_args;
+//    pthread_t*       threads;
 
     // member function declarations
     Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads);
@@ -102,7 +105,7 @@ class Crypto
     int wait_thread_ready(int thread_id);
     int lock_data(int thread_id);
     int unlock_data(int thread_id);
-//    ~Crypto();
+    ~Crypto();
     int encrypt(char *in, char *out, int len);
 
 };
@@ -111,7 +114,7 @@ int crypto_update(char* in, char* data, int len, Crypto *c);
 int join_all_encryption_threads(Crypto *c);
 int pass_to_enc_thread(char* in, char* out, int len, Crypto*c);
 
-// generates an RSA key, needs to be freed when done
+// generates a key, needs to be freed when done
 char* generate_session_key(void);
 
 #endif

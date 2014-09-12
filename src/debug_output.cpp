@@ -23,7 +23,7 @@ and limitations under the License.
 #include <errno.h>
 #include <stdarg.h>
 
-#define MAX_LOG_FILE_NAME_LEN   128
+#define MAX_LOG_FILE_NAME_LEN   256
 
 #include "debug_output.h"
 
@@ -32,7 +32,8 @@ int g_debug_file_logging = 0;
 
 char g_logfilename_prefix[] = "debug";
 char g_logfilename_suffix[] = "log";
-char g_logfilename[MAX_LOG_FILE_NAME_LEN];
+char g_logfilename[MAX_LOG_FILE_NAME_LEN / 2] = "";
+char g_full_log_filename[MAX_LOG_FILE_NAME_LEN] = "";
 
 void set_verbosity_level(verb_t verbosity)
 {
@@ -60,6 +61,7 @@ int init_debug_output_file(int is_master)
 //    g_debug_file_logging = 0;
     char tmpPath[128];
 
+    getcwd(tmpPath, sizeof(tmpPath));
     memset(g_logfilename, 0, sizeof(char) * MAX_LOG_FILE_NAME_LEN);
 
     if ( is_master != 0 ) {
@@ -68,20 +70,21 @@ int init_debug_output_file(int is_master)
         sprintf(g_logfilename, "%s-%s.%s", g_logfilename_prefix, "minion", g_logfilename_suffix);
     }
 
+    snprintf(g_full_log_filename, MAX_LOG_FILE_NAME_LEN, "%s/%s", tmpPath, g_logfilename);
+
     if ( g_debug_file_logging > 0 ) {
-        getcwd(tmpPath, sizeof(tmpPath));
-        verb(VERB_2, "[%s] opening log file %s/%s", __func__, tmpPath, g_logfilename);
+        verb(VERB_2, "[%s] opening log file g_full_log_filename", __func__, g_full_log_filename);
         fflush(stdout);
-        FILE* debug_file = fopen(g_logfilename, "a");
+        FILE* debug_file = fopen(g_full_log_filename, "w");
         if ( !debug_file ) {
             g_debug_file_logging = 0;
-            verb(VERB_2, "[%s] unable to open log file, error %d", __func__, g_logfilename, errno);
+            verb(VERB_2, "[%s] unable to open log file, error %d", __func__, g_full_log_filename, errno);
         } else {
             fclose(debug_file);
         }
         verb(VERB_2, "********");
         verb(VERB_2, "********");
-        verb(VERB_2, "[%s] log file opened as %s", __func__, g_logfilename);
+        verb(VERB_2, "[%s] log file opened as %s", __func__, g_full_log_filename);
     }
     return 0;
 }
@@ -98,8 +101,8 @@ void verb(verb_t verbosity, char* fmt, ... )
         fprintf(stderr, "\n");
         va_end(args);
     }
-    if ( g_debug_file_logging > 0 ) {
-        FILE* debug_file = fopen(g_logfilename, "a+");
+    if ( (g_debug_file_logging > 0) && strlen(g_full_log_filename) ) {
+        FILE* debug_file = fopen(g_full_log_filename, "a+");
         va_list args; va_start(args, fmt);
         vfprintf(debug_file, fmt, args);
         fprintf(debug_file, "\n");
@@ -125,6 +128,26 @@ void warn(char* fmt, ... )
     }
 }
 
+
+/* 
+ * void print_backtrace
+ * - prints a backtrace from strings generated
+ */
+void print_backtrace()
+{
+    void *trace[32];
+    size_t size, i;
+    char **strings;
+
+    fprintf( stderr, "\n********* BACKTRACE *********\n\n" );
+    size    = backtrace( trace, 32 );
+    strings = backtrace_symbols( trace, size );
+
+    for( i = 0; i < size; i++ ) {
+        fprintf( stderr, "  %s\n", strings[i] );
+    }
+    fprintf( stderr, "\n***************************************\n" );
+}
 
 // /* 
 //  * void error

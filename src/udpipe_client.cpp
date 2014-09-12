@@ -161,7 +161,7 @@ void *run_client(void *_args_)
 
     pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
     pthread_detach(rcvthread);
-    RegisterThread(rcvthread, "recvdata");
+    RegisterThread(rcvthread, "recvdata", THREAD_TYPE_2);
     
     verb(VERB_2, "[%s] Receive thread created: %lu", __func__, rcvthread);
 
@@ -196,18 +196,18 @@ void *run_client(void *_args_)
         CUDPBlast* cchandle = NULL;
         int temp;
         UDT::getsockopt(client, 0, UDT_CC, &cchandle, &temp);
-	if (NULL != cchandle)
-	    cchandle->setRate(blast_rate);
+    if (NULL != cchandle)
+        cchandle->setRate(blast_rate);
     }
 
     if (args->print_speed) {
         pthread_t mon_thread;
         pthread_create(&mon_thread, NULL, monitor, &client);
-        RegisterThread(mon_thread, "monitor");
+        RegisterThread(mon_thread, "monitor", THREAD_TYPE_2);
     }
 
     pthread_create(&sndthread, NULL, senddata, &send_args);
-    RegisterThread(sndthread, "senddata");
+    RegisterThread(sndthread, "senddata", THREAD_TYPE_2);
     
     g_opts.socket_ready = 1;
 
