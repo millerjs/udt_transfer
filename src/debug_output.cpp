@@ -149,6 +149,48 @@ void print_backtrace()
     fprintf( stderr, "\n***************************************\n" );
 }
 
+
+//
+// debug_print 
+//
+// prints a buffer of data, [output_line_len] bytes in a line
+// 32 bytes max
+//
+#define TMP_STR_SIZE 33
+void print_bytes(char* data, int length, int output_line_len)
+{
+    char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
+    int i;
+
+    if ( output_line_len > (TMP_STR_SIZE - 1) ) {
+        output_line_len = (TMP_STR_SIZE - 1);
+    }
+
+    while (length > 0 ) {
+        memset(asciiStr, '\0', TMP_STR_SIZE);
+        memset(hexStr, '\0', TMP_STR_SIZE);
+        memset(tmpChar, '\0', 8);
+
+        for (i = 0; i < output_line_len; i++ ) {
+            if ( length > 0 ) {
+                sprintf(tmpChar, " %c", data[i]);
+                strcat(asciiStr, tmpChar);
+                sprintf(tmpChar, "%02X ", (unsigned char)data[i]);
+                strcat(hexStr, tmpChar);
+                length--;
+            } else {
+                sprintf(tmpChar, "  ");
+                strcat(asciiStr, tmpChar);
+                sprintf(tmpChar, "-- ");
+                strcat(hexStr, tmpChar);
+            }
+        }
+        data += output_line_len;
+        verb(VERB_2, "%s *** %s", hexStr, asciiStr);
+    }
+}
+
+
 // /* 
 //  * void error
 //  * - print error to stdout and quit

@@ -168,28 +168,28 @@ void *run_server(void *_args_)
 
     verb(VERB_2, "[%s] Creating receive thread...", __func__);
 
-    rs_args rcvargs;
-    rcvargs.usocket = new UDTSOCKET(recver);
-    rcvargs.use_crypto = args->use_crypto;
-    rcvargs.verbose = args->verbose;
-    rcvargs.n_crypto_threads = args->n_crypto_threads;
+    rs_args recv_args;
+    recv_args.usocket = new UDTSOCKET(recver);
+    recv_args.use_crypto = args->use_crypto;
+    recv_args.verbose = args->verbose;
+    recv_args.n_crypto_threads = args->n_crypto_threads;
     if ( (args->dec == NULL) && (args->use_crypto) ) {
         fprintf(stderr, "[%s] crypto class 'dec' uninitialized\n", __func__ );
         exit(1);
     }
-    rcvargs.c = args->dec;
-    rcvargs.timeout = args->timeout;
+    recv_args.c = args->dec;
+    recv_args.timeout = args->timeout;
 
     // Set sender file descriptors
     if (args->send_pipe && args->recv_pipe){
-        rcvargs.send_pipe = args->send_pipe;
-        rcvargs.recv_pipe = args->recv_pipe;
+        recv_args.send_pipe = args->send_pipe;
+        recv_args.recv_pipe = args->recv_pipe;
     } else {
         fprintf(stderr, "[%s] server pipes uninitialized\n", __func__ );
         exit(1);
     }
     
-    pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
+    pthread_create(&rcvthread, NULL, recvdata, &recv_args);
     pthread_detach(rcvthread);
     RegisterThread(rcvthread, "recvdata", THREAD_TYPE_2);
     
@@ -232,12 +232,15 @@ void *run_server(void *_args_)
     }
     
     verb(VERB_2, "[%s] Exiting and cleaning up", __func__);
-    UDT::close(*rcvargs.usocket);
+    UDT::close(*recv_args.usocket);
     UDT::close(*send_args.usocket);
-    
+    delete(send_args.usocket);
+    delete(recv_args.usocket);
     UDT::cleanup();
-
+    freeaddrinfo(res);
     free(args->ip);
+    free(args->port);
+    free(args);
     ExitThread(GetMyThreadId());
     return NULL;
 }

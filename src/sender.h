@@ -55,14 +55,14 @@ void send_and_wait_for_ack_of_complete();
 
 // write header data to out fd
 
-int write_header(header_t header);
+int write_header(header_t* header);
 
 
 int fill_data(void* data, size_t len);
 
 // write data block to out fd
 
-off_t write_block(header_t header, int len);
+off_t write_block(header_t* header, int len);
 
 
 #endif

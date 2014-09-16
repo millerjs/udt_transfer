@@ -289,40 +289,40 @@ file_object_t* new_file_object(char*path, char*root)
     }
 
     switch (file->stats.st_mode & S_IFMT) {
-        case S_IFBLK:  
-            file->mode = S_IFBLK;     
-            file->filetype = (char*)  "block device";
+        case S_IFBLK:
+            file->mode = S_IFBLK;
+            file->filetype = strdup((char*) "block device");
             break;
-        case S_IFCHR:  
-            file->mode = S_IFCHR;     
-            file->filetype = (char*) "character device";
+        case S_IFCHR:
+            file->mode = S_IFCHR;
+            file->filetype = strdup((char*) "character device");
             break;
-        case S_IFDIR:  
-            file->mode = S_IFDIR;     
-            file->filetype = (char*) "directory";
+        case S_IFDIR:
+            file->mode = S_IFDIR;
+            file->filetype = strdup((char*) "directory");
             file->mtime_sec = file->stats.st_mtime;
             file->mtime_nsec = file->stats.st_mtim.tv_nsec;
             break;
-        case S_IFIFO:  
-            file->mode = S_IFIFO;     
-            file->filetype = (char*) "named pipe";
+        case S_IFIFO:
+            file->mode = S_IFIFO;
+            file->filetype = strdup((char*) "named pipe");
             break;
-        case S_IFLNK:  
-            file->mode = S_IFLNK;     
-            file->filetype = (char*) "symlink";
+        case S_IFLNK:
+            file->mode = S_IFLNK;
+            file->filetype = strdup((char*) "symlink");
             break;
-        case S_IFREG:  
-            file->mode = S_IFREG;     
-            file->filetype = (char*) "regular file";
+        case S_IFREG:
+            file->mode = S_IFREG;
+            file->filetype = strdup((char*) "regular file");
             file->length = file->stats.st_size;
             file->mtime_sec = file->stats.st_mtime;
             file->mtime_nsec = file->stats.st_mtim.tv_nsec;
             break;
-        case S_IFSOCK: 
-            file->mode = S_IFSOCK;    
-            file->filetype = (char*) "socket";
+        case S_IFSOCK:
+            file->mode = S_IFSOCK;
+            file->filetype = strdup((char*) "socket");
             break;
-        default:       
+        default:
             fprintf(stderr, "Filetype uknown: %s", file->path);
             break;
     }
@@ -635,10 +635,9 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
             fprintf(stderr, "ERROR: bad pointer passed to get_mod_time\n");
         }
     }
-    
+
     return retVal;
 
-    
 }
 
 //
@@ -649,7 +648,7 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 int get_filelist_size(file_LL *fileList)
 {
     int total_size = 0;
-    
+
     if ( fileList != NULL ) {
         file_node_t* cursor = fileList->head;
         int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
@@ -659,9 +658,7 @@ int get_filelist_size(file_LL *fileList)
             cursor = cursor->next;
         }
     }
-    
     return total_size;
-    
 }
 
 
@@ -676,12 +673,12 @@ void debug_print(char* data, int length)
 {
     char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
     int i;
-    
+
     while (length > 0 ) {
         memset(asciiStr, '\0', TMP_STR_SIZE);
         memset(hexStr, '\0', TMP_STR_SIZE);
         memset(tmpChar, '\0', 8);
-        
+
         for (i = 0; i < TMP_DEBUG_LINE_SIZE; i++ ) {
 //            sprintf(&hexStr[i*2], "%02X", data++);
             sprintf(tmpChar, " %c", data[i]);
@@ -689,15 +686,14 @@ void debug_print(char* data, int length)
             sprintf(tmpChar, "%02X ", (unsigned char)data[i]);
             strcat(hexStr, tmpChar);
             length--;
-            
+
             if ( length == 0 ) {
                 break;
             }
         }
         data += TMP_DEBUG_LINE_SIZE;
         verb(VERB_3, "%s *** %s", hexStr, asciiStr);
-    }    
-    
+    }
 }
 
 //
@@ -850,14 +846,18 @@ void free_file_object(file_object_t* file)
 {
     if ( file ) {
         // free all the malloc'ed strings
-        free(file->filetype);
-        free(file->path);
-        free(file->root);
-        
+        if ( file->filetype ) {
+            free(file->filetype);
+        }
+        if ( file->path ) {
+            free(file->path);
+        }
+        if ( file->root ) {
+            free(file->root);
+        }
         // now free the file (everything else is good)
         free(file);
     }
-    
 }
 
 
@@ -875,14 +875,14 @@ void free_file_list(file_LL* fileList)
             // free what it's pointing at
             free_file_object(cursor->curr);
             cursor = cursor->next;
-            
+
             // now free the node
             free(tmp_cursor);
             tmp_cursor = cursor;
         }
         // finally, free the list struct itself
         free(fileList);
-    }      
+    }
 }
 
 

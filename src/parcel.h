@@ -80,21 +80,21 @@ extern off_t G_TOTAL_XFER;
 extern int g_opt_verbosity;
 
 typedef enum : uint8_t {
-    XFER_DATA,
-    XFER_FILENAME,
-    XFER_DIRNAME,
-    XFER_F_SIZE,
-    XFER_COMPLETE,
-    XFER_WAIT,
-    XFER_DATA_COMPLETE,
-    XFER_FILELIST,
-    XFER_CONTROL,
+    XFER_DATA,              // 0
+    XFER_FILENAME,          // 1
+    XFER_DIRNAME,           // 2
+    XFER_F_SIZE,            // 3
+    XFER_COMPLETE,          // 4
+    XFER_WAIT,              // 5
+    XFER_DATA_COMPLETE,     // 6
+    XFER_FILELIST,          // 7
+    XFER_CONTROL,           // 8
     NUM_XFER_CMDS
 } xfer_t;
 
 
 typedef enum : uint8_t {
-    CTRL_ACK,
+    CTRL_ACK,               // 0
     NUM_CTRL_MSGS
 } ctrl_t;
 
@@ -214,7 +214,7 @@ void sig_handler(int signal);
 
 int print_progress(char* descrip, off_t read, off_t total);
 
-header_t nheader(xfer_t type, off_t size);
+header_t* nheader(xfer_t type, off_t size);
 
 // wrapper for read
 

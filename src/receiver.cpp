@@ -64,12 +64,11 @@ int acknowlege_complete_xfer()
 
     // Send completition header
 
-    header_t header;
-    header.type = XFER_CONTROL;
-    header.ctrl_msg = CTRL_ACK;
-    header.data_len = 0;
+    header_t* header = nheader(XFER_CONTROL, 0);
+    header->ctrl_msg = CTRL_ACK;
     write_header(header);
-    
+    free(header);
+
     return RET_SUCCESS;
 
 }

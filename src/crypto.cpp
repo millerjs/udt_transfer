@@ -70,7 +70,6 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
         memset(ivec, 0, 1024);
 
         EVP_CIPHER_CTX_init(&ctx[i]);
-//        verb(VERB_2, "[%s]: Max key length = %d", __func__, EVP_MAX_KEY_LENGTH);
         if ( (len > EVP_MAX_KEY_LENGTH) || (strlen((const char*)password) > EVP_MAX_KEY_LENGTH) ) {
             verb(VERB_2, "[%s] Key too long, defaulting to crappy one", __func__);
             if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, (const unsigned char*)"password", ivec, direc)) {
@@ -133,6 +132,11 @@ Crypto::~Crypto()
         free(mutex_buf);
         mutex_buf = NULL;
     }
+    
+    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+        EVP_CIPHER_CTX_cleanup(&ctx[i]);
+    }
+
 }
 
 int Crypto::get_num_crypto_threads() 
@@ -239,22 +243,23 @@ static void threadid_func(CRYPTO_THREADID * id)
 int THREAD_setup(void)
 {
     pris("Setting up threads");
-    mutex_buf = (MUTEX_TYPE*)malloc(CRYPTO_num_locks()*sizeof(MUTEX_TYPE));
-  
-    if ( mutex_buf ) {
+    if ( !mutex_buf ) {
+        mutex_buf = (MUTEX_TYPE*)malloc(CRYPTO_num_locks()*sizeof(MUTEX_TYPE));
 
-        int i;
-        for (i = 0; i < CRYPTO_num_locks(); i++) {
-            MUTEX_SETUP(mutex_buf[i]);
+        if ( mutex_buf ) {
+
+            int i;
+            for (i = 0; i < CRYPTO_num_locks(); i++) {
+                MUTEX_SETUP(mutex_buf[i]);
+            }
+
+            // CRYPTO_set_id_callback(threadid_func);
+            CRYPTO_THREADID_set_callback(threadid_func);
+            CRYPTO_set_locking_callback(locking_function);
+
+            pris("Locking and callback functions set");
         }
-
-        // CRYPTO_set_id_callback(threadid_func);
-        CRYPTO_THREADID_set_callback(threadid_func);
-        CRYPTO_set_locking_callback(locking_function);
-
-        pris("Locking and callback functions set");
     }
-    
     return 0;
 }
 

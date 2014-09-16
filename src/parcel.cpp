@@ -31,6 +31,7 @@ and limitations under the License.
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stddef.h>
 
 #define PARCEL_FLAG_MASTER      0x01
 #define PARCEL_FLAG_MINION      0x02
@@ -75,33 +76,19 @@ void cleanup_pipes();
 
 
 /* 
- * void print_bytes:
- * - print the bytes at pointer object for length size
- */
-void print_bytes(const void *object, size_t size) 
-{
-    size_t i;
-    
-    fprintf(stderr, "[ ");
-    for(i = 0; i < size; i++){
-        fprintf(stderr, "%02x ", ((const unsigned char *) object)[i] & 0xff);
-    }
-    fprintf(stderr, "]\n");
-}
-
-
-/* 
  * header_t nheader
  * - creates and initializes a new header with type [type] and length [size]
  * - returns: new header
  */
-header_t nheader(xfer_t type, off_t size)
+header_t* nheader(xfer_t type, off_t size)
 {
-    header_t header;
-    header.type = type;
-    header.data_len = size;
-    header.mtime_sec = 88;
-    header.mtime_nsec = 88;
+    header_t* header;
+    header = (header_t*)malloc(sizeof(header_t));
+    memset(header, 0, sizeof(header_t));
+    header->type = type;
+    header->data_len = size;
+    header->mtime_sec = 88;
+    header->mtime_nsec = 88;
     return header;
 }
 
@@ -291,6 +278,9 @@ void clean_exit(int status)
         }
         usleep(100);
     }
+
+    cleanup_receiver();
+    cleanup_sender();
 
     delete(g_opts.enc);
     delete(g_opts.dec);
@@ -1192,8 +1182,9 @@ int start_transfer(int argc, char*argv[], int optind)
         // Listen to sender for files and data, see receiver.cpp
         receive_files(g_base_path);
 
-        header_t h = nheader(XFER_COMPLETE, 0);
-        write(g_opts.send_pipe[1], &h, sizeof(header_t));
+        header_t* h = nheader(XFER_COMPLETE, 0);
+        write(g_opts.send_pipe[1], h, sizeof(header_t));
+        free(h);
 
     } else if (g_opts.mode & MODE_SEND) {
 
@@ -1238,6 +1229,7 @@ int start_transfer(int argc, char*argv[], int optind)
 #ifndef DONT_CHECK_FILELIST
         // free the remote list
         free_file_list(remote_fileList);
+        free_file_list(fileList);
 #endif
     }
 
@@ -1318,8 +1310,6 @@ void cleanup_parcel()
 {
     verb(VERB_2, "[%d %s] Cleaning up", g_flags, __func__);
 
-    cleanup_receiver();
-    cleanup_sender();
     
     clean_exit(EXIT_SUCCESS);
 }

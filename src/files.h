@@ -148,7 +148,4 @@ void free_file_list(file_LL* fileList);
 // Compare two file timestamps, return zero if the same, non-zero if not
 int compare_timestamps(file_object_t* file1, file_object_t* file2);
 
-// Routine to dump data in raw
-void debug_print(char* data, int length);
-
 #endif

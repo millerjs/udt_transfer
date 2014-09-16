@@ -138,6 +138,10 @@ void auth_peer(rs_args* args)
 
     if (memcmp(key, signed_key, KEY_LEN)) {
         fprintf(stderr, "Authorization failed\n");
+        fprintf(stderr, "key:\n");
+        print_bytes(key, KEY_LEN, 16);
+        fprintf(stderr, "signed_key:\n");
+        print_bytes(signed_key, KEY_LEN, 16);
         exit(1);
     }
 

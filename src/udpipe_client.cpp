@@ -143,23 +143,23 @@ void *run_client(void *_args_)
 
     // set the socket up and send to the receive thread
     pthread_t rcvthread, sndthread;
-    rs_args rcvargs;
-    rcvargs.usocket = new UDTSOCKET(client);
-    rcvargs.use_crypto = args->use_crypto;
-    rcvargs.verbose = args->verbose;
-    rcvargs.n_crypto_threads = args->n_crypto_threads;
-    rcvargs.c = args->dec;
-    rcvargs.timeout = args->timeout;
+    rs_args recv_args;
+    recv_args.usocket = new UDTSOCKET(client);
+    recv_args.use_crypto = args->use_crypto;
+    recv_args.verbose = args->verbose;
+    recv_args.n_crypto_threads = args->n_crypto_threads;
+    recv_args.c = args->dec;
+    recv_args.timeout = args->timeout;
 
     if (args->send_pipe && args->recv_pipe){
-        rcvargs.recv_pipe = args->recv_pipe;
-        rcvargs.send_pipe = args->send_pipe;
+        recv_args.recv_pipe = args->recv_pipe;
+        recv_args.send_pipe = args->send_pipe;
     } else {
         fprintf(stderr, "[%s] send pipe uninitialized\n", __func__);
         exit(1);
     }
 
-    pthread_create(&rcvthread, NULL, recvdata, &rcvargs);
+    pthread_create(&rcvthread, NULL, recvdata, &recv_args);
     pthread_detach(rcvthread);
     RegisterThread(rcvthread, "recvdata", THREAD_TYPE_2);
     
@@ -218,10 +218,16 @@ void *run_client(void *_args_)
     verb(VERB_2, "[%s] Exiting and cleaning up...", __func__);
     // Partial cause of segfault issue commented out for now
     // UDT::cleanup();
-    UDT::close(*rcvargs.usocket);
+    UDT::close(*recv_args.usocket);
     UDT::close(*send_args.usocket);
+    delete(send_args.usocket);
+    delete(recv_args.usocket);
     UDT::cleanup();
-    free(ip);
+    freeaddrinfo(local);
+    freeaddrinfo(peer);
+    free(args->ip);
+    free(args->port);
+    free(args);
     ExitThread(GetMyThreadId());
     return NULL;
 }

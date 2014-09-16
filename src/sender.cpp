@@ -79,30 +79,28 @@ int fill_data(void* data, size_t len)
 }
 
 // write header data to out fd
-int write_header(header_t header) 
+int write_header(header_t* header) 
 {
 
     // should you be using write block?
-
-    // int ret = write(fileno(stdout), &header, sizeof(header_t));
-    int ret = write(g_opts.send_pipe[1], &header, sizeof(header_t));
+    int ret = write(g_opts.send_pipe[1], header, sizeof(header_t));
 
     return ret;
 
 }
 
 // write data block to out fd
-off_t write_block(header_t header, int len) 
+off_t write_block(header_t* header, int len) 
 {
 
-    memcpy(sender_block.buffer, &header, sizeof(header_t));
+    memcpy(sender_block.buffer, header, sizeof(header_t));
 
     if (len > BUFFER_LEN)
     ERR("data out of bounds");
 
     int send_len = len + sizeof(header_t);
 
-    // int ret = write(fileno(stdout), block.buffer, send_len);
+//    verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
     int ret = write(g_opts.send_pipe[1], sender_block.buffer, send_len);
 
     if (ret < 0) {
@@ -122,12 +120,10 @@ int complete_xfer()
     verb(VERB_2, "[%s] Signalling end of transfer", __func__);
 
     // Send completition header
-
-    header_t header;
-    header.type = XFER_COMPLETE;
-    header.data_len = 0;
+    header_t* header = nheader(XFER_COMPLETE, 0);
     write_header(header);
-    
+    free(header);
+
     return RET_SUCCESS;
 
 }
@@ -148,16 +144,16 @@ int send_file(file_object_t *file)
 
     verb(VERB_2, " --- sending [%s] %s", file->filetype, file->path);
 
-    header_t header;
+    header_t* header;
 
     if (file->mode == S_IFDIR) {
 
         // create a header to specify that the subsequent data is a
         // directory name and send
         header = nheader(XFER_DIRNAME, strlen(file->path)+1);
-        memcpy(sender_block.data, file->path, header.data_len);
-        write_block(header, header.data_len);
-
+        memcpy(sender_block.data, file->path, header->data_len);
+        write_block(header, header->data_len);
+        free(header);
     } else {
 
         int fd;
@@ -167,19 +163,19 @@ int send_file(file_object_t *file)
         // create header to specify that subsequent data is a regular
         // filename and send
         header = nheader(XFER_FILENAME, strlen(file->path)+1);
-        
+
         // get the mod times and set them in the header
         int tmp_mtime;
         long int tmp_mtime_nsec;
         get_mod_time(file->path, &tmp_mtime_nsec, &tmp_mtime);
 
-        header.mtime_sec = tmp_mtime;
-        header.mtime_nsec = tmp_mtime_nsec;
-        
+        header->mtime_sec = tmp_mtime;
+        header->mtime_nsec = tmp_mtime_nsec;
+
         // remove the root directory from the destination path
         char destination[MAX_PATH_LEN];
         int root_len = strlen(file->root);
-        
+
         if (g_opts.full_root || !root_len || strncmp(file->path, file->root, root_len)) {
             sprintf(destination, "%s", file->path);
 
@@ -187,10 +183,10 @@ int send_file(file_object_t *file)
             memcpy(destination, file->path+root_len+1, strlen(file->path)-root_len);
         }
 
-        fill_data(destination, header.data_len);
+        fill_data(destination, header->data_len);
+        write_block(header, header->data_len);
+        free(header);
 
-        write_block(header, header.data_len);	
-        
         // open file to send data blocks
         if (!( fd = open(file->path, o_mode))) {
             perror("ERROR: unable to open file");
@@ -201,16 +197,18 @@ int send_file(file_object_t *file)
         if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE) < 0) {
             verb(VERB_3, "[%s] Unable to advise file read", __func__);
         }
-     
+
         // Get the length of the file in advance
         if ((f_size = fsize(fd)) < 0) {
             fprintf(stderr, "[%s] Unable to determine size of file", __func__);
         }
-        
+
         // Send length of file
         header = nheader(XFER_F_SIZE, sizeof(off_t));
-        fill_data(&f_size, header.data_len);
-        write_block(header, header.data_len);
+        fill_data(&f_size, header->data_len);
+        write_block(header, header->data_len);
+
+        free(header);
 
         // buffer and send file
         int rs;
@@ -228,6 +226,7 @@ int send_file(file_object_t *file)
             // create header to specify that we are also sending file data
             header = nheader(XFER_DATA, rs);
             sent += write_block(header, rs);
+            free(header);
 
             // Print progress
             if (g_opts.progress) {
@@ -242,31 +241,33 @@ int send_file(file_object_t *file)
 
         // Done with fd
         close(fd);
-        
+
         // fly - tell the other side we're done with the file
-        header_t header;
-        header.type = XFER_DATA_COMPLETE;
-        header.data_len = 0;
+        header = nheader(XFER_DATA_COMPLETE, 0);
         write_header(header);
+        free(header);
     }
 
     return RET_SUCCESS;
-    
+
 }
 
 int send_filelist(file_LL* fileList, int totalSize)
 {
-    header_t header;
+    while (!g_opts.socket_ready) {
+        usleep(10000);
+    }
+
+    header_t* header = nheader(XFER_FILELIST, totalSize);;
     verb(VERB_2, "[%s] Sending file list of size %d", __func__, totalSize);
-//    totalSize = get_filelist_size(fileList);
-    header = nheader(XFER_FILELIST, totalSize);
-    
+
     if ( sender_block.data != NULL ) {
-        char* tmp_file_list = pack_filelist(fileList, header.data_len);
-        // fly - this is stupid, I should do this in one step
-        memcpy(sender_block.data, tmp_file_list, header.data_len);
+        char* tmp_file_list = pack_filelist(fileList, header->data_len);
+        fill_data(tmp_file_list, header->data_len);
+//        memcpy(sender_block.data, tmp_file_list, header.data_len);
         free(tmp_file_list);
-        write_block(header, header.data_len);
+        write_block(header, header->data_len);
+        free(header);
     } else {
         ERR("[%s] Unable to copy to sender_block.data, value NULL", __func__);        
     }
@@ -281,11 +282,6 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
     header_t header;
     int total_size = get_filelist_size(fileList);
     verb(VERB_2, "[%s] Filelist size = %d", __func__, total_size);
-
-    while (!g_opts.socket_ready) {
-        usleep(10000);
-    }
-    verb(VERB_2, "[%s] Socket ready", __func__);
 
     int alloc_len = BUFFER_LEN - sizeof(header_t);
     global_send_data.data = (char*) malloc( alloc_len * sizeof(char));

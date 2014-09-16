@@ -2,6 +2,10 @@
 
 import os, sys, shutil, getpass, difflib, subprocess, time
 
+g_appName = "parcel"
+TOTAL_WAITS = 3
+SLEEP_TIME = 1
+
 def PrintHelp():
     cmdLineParts = sys.argv[0].split('/')
     for elements in cmdLineParts:
@@ -16,6 +20,8 @@ def PrintHelp():
     print "Options:"
     print "  --source=[DIRECTORY] folder to copy data from (mandatory to run)"
     print "  --target=[DIRECTORY] folder to copy data to (mandatory to run)"
+    print "  --trips=[num] how many round trips to test (default 1)"
+    print "  --crypto=[true/false] whether to use encryption (default false)"
     print "  --help - this help"
     print "  --verbose - verbose output"
 
@@ -34,6 +40,8 @@ def ParseCommandLineArgs():
     commandLineArgs['user'] = getpass.getuser()
     commandLineArgs['remoteSys'] = "localhost"
     commandLineArgs['parcelDir'] = os.getcwd()
+    commandLineArgs['trips'] = 1
+    commandLineArgs['crypto'] = False
 
     if len(sys.argv) >= 2:
         for arg in sys.argv:
@@ -50,6 +58,14 @@ def ParseCommandLineArgs():
                     fileparts = arg.split("=")
                     if len(fileparts) > 1:
                         commandLineArgs['target'] = fileparts[1].strip()
+                elif arg.find("trips") > 0:
+                    fileparts = arg.split("=")
+                    if len(fileparts) > 1:
+                        commandLineArgs['trips'] = int(fileparts[1].strip())
+                elif arg.find("crypto") > 0:
+                    fileparts = arg.split("=")
+                    if len(fileparts) > 1:
+                        commandLineArgs['crypto'] = fileparts[1].strip().tolower() == 'true'
                 elif arg.find("remote") > 0:
                     fileparts = arg.split("=")
                     if len(fileparts) > 1:
@@ -136,78 +152,160 @@ def KillProcessIDs(idList):
         os.system(commandStr)
 
 
-appName = "parcel"
+def WaitForProcessesToExit(totalWaits):
+    waitCount = 0
+    while len(GetProcessIDs(g_appName)) > 0 :
+        if waitCount > totalWaits:
+            print "parcel instances still running, we've waited long enough, killing"
+            commandStr = "killall %s" % g_appName
+            os.system(commandStr)
+        else:
+            print "parcel instances still running, waiting"
+            time.sleep(SLEEP_TIME)
+            waitCount = waitCount + 1
+
+def LocalToRemote(cmdArgs, parcelArgs, remoteStr):
+
+    # clear out the dest directory
+    DeleteDirectoryContents(remoteDir)
+
+    # /parcel -v -c /home/flynn/Projects/Parcel/parcel test/data flynn@localhost:out2
+    # call parcel local to remote
+    commandStr = "./%s %s %s %s" % ( g_appName, parcelArgs, cmdArgs['source'], remoteStr)
+    print "********"
+    print commandStr
+    print "********"
+    os.system(commandStr)
+    WaitForProcessesToExit(TOTAL_WAITS)
+
+    # verify the directories
+    return CompareDirectories(cmdArgs['source'], remoteDir)
+
+
+def RemoteToLocal(cmdArgs, parcelArgs, remoteStr, remoteDir):
+
+    # clear out the source directory
+    DeleteDirectoryContents(cmdArgs['source'])
+
+    # /parcel -v -c /home/flynn/Projects/Parcel/parcel flynn@localhost:out2 test/data
+    # call parcel remote to local
+    commandStr = "./parcel %s %s %s" % ( parcelArgs, remoteStr, cmdArgs['source'])
+    print "********"
+    print commandStr
+    print "********"
+    os.system(commandStr)
+    WaitForProcessesToExit(TOTAL_WAITS)
+
+    # verify the directories
+    return CompareDirectories(cmdArgs['source'], remoteDir)
+
+def PrintResults(results):
+    i = 0
+    print
+    print "Total Results"
+    print "============="
+    
+    while i < len(results):
+        if ( results[i] ):
+            lrStatus = "ok"
+        else:
+            lrStatus = "failed"
+
+        if ( results[i + 1] ):
+            rlStatus = "ok"
+        else:
+            rlStatus = "failed"
+        print "Pass %d:  to: %s, from: %s" % ((i / 2), lrStatus, rlStatus)
+        i = i + 2
+
 
 cmdArgs = ParseCommandLineArgs()
-TOTAL_WAITS = 3
-SLEEP_TIME = 1
 
-ids = GetProcessIDs(appName)
+
+passResults = []
+
+ids = GetProcessIDs(g_appName)
 if len(ids) > 0 :
     print "parcel instances still running, killing"
-    commandStr = "killall %s" % appName
+    commandStr = "killall %s" % g_appName
     os.system(commandStr)
 
 if ('source' in cmdArgs) & ('target' in cmdArgs):
     if (cmdArgs['source'] != cmdArgs['target']):
+        if cmdArgs['verbose']:
+            parcelArgs = "-v -c %s/%s" % (cmdArgs['parcelDir'], g_appName)
+        else:
+            parcelArgs = "-c %s/%s" % (cmdArgs['parcelDir'], g_appName)
+        remoteStr = "%s@%s:%s" % ( cmdArgs['user'], cmdArgs['remoteSys'], cmdArgs['target'] )
         remoteDir = os.path.join(os.path.expanduser("~"), cmdArgs['target'])
+        passes = cmdArgs['trips']
+        while passes > 0:
+            result = LocalToRemote(cmdArgs, parcelArgs, remoteStr)
+            passResults.append(result)
+            result = RemoteToLocal(cmdArgs, parcelArgs, remoteStr, remoteDir)
+            passResults.append(result)
+            passes = passes - 1
+
+        PrintResults(passResults)
+
+#        remoteDir = os.path.join(os.path.expanduser("~"), cmdArgs['target'])
 
         # clear out the dest directory
-        DeleteDirectoryContents(remoteDir)
+#        DeleteDirectoryContents(remoteDir)
 
         # /parcel -v -c /home/flynn/Projects/Parcel/parcel test/data flynn@localhost:out2
         # call parcel local to remote
-        parcelArgs = "-v -c %s/%s" % (cmdArgs['parcelDir'], appName)
-        remoteStr = "%s@%s:%s" % ( cmdArgs['user'], cmdArgs['remoteSys'], cmdArgs['target'] )
-        commandStr = "./%s %s %s %s" % ( appName, parcelArgs, cmdArgs['source'], remoteStr)
-        print "********"
-        print commandStr
-        print "********"
-        os.system(commandStr)
+#        parcelArgs = "-v -c %s/%s" % (cmdArgs['parcelDir'], g_appName)
+#        remoteStr = "%s@%s:%s" % ( cmdArgs['user'], cmdArgs['remoteSys'], cmdArgs['target'] )
+#        commandStr = "./%s %s %s %s" % ( g_appName, parcelArgs, cmdArgs['source'], remoteStr)
+#        print "********"
+#        print commandStr
+#        print "********"
+#        os.system(commandStr)
         #output = subprocess.check_output(commandStr, shell=True)
-        waitCount = 0
-        while len(GetProcessIDs(appName)) > 0 :
-            if waitCount > TOTAL_WAITS:
-                print "parcel instances still running, we've waited long enough, killing"
-                commandStr = "killall %s" % appName
-                os.system(commandStr)
-            else:
-                print "parcel instances still running, waiting"
-                time.sleep(SLEEP_TIME)
-                waitCount = waitCount + 1
+#        waitCount = 0
+#        while len(GetProcessIDs(g_appName)) > 0 :
+#            if waitCount > TOTAL_WAITS:
+#                print "parcel instances still running, we've waited long enough, killing"
+#                commandStr = "killall %s" % g_appName
+#                os.system(commandStr)
+#            else:
+#                print "parcel instances still running, waiting"
+#                time.sleep(SLEEP_TIME)
+#                waitCount = waitCount + 1
 
         # verify the directories
-        if CompareDirectories(cmdArgs['source'], remoteDir):
+#        if CompareDirectories(cmdArgs['source'], remoteDir):
 
             # clear out the source directory
-            DeleteDirectoryContents(cmdArgs['source'])
+#            DeleteDirectoryContents(cmdArgs['source'])
 
             # see if anything is still running
-            ids = GetProcessIDs(appName)
-            if len(ids) > 0 :
-                print "parcel instances still running, killing"
-                commandStr = "killall %s" % appName
-                os.system(commandStr)
+#            ids = GetProcessIDs(g_appName)
+#            if len(ids) > 0 :
+#                print "parcel instances still running, killing"
+#                commandStr = "killall %s" % g_appName
+#                os.system(commandStr)
 
             # /parcel -v -c /home/flynn/Projects/Parcel/parcel flynn@localhost:out2 test/data
             # call parcel remote to local
-            commandStr = "./parcel %s %s %s" % ( parcelArgs, remoteStr, cmdArgs['source'])
-            print "********"
-            print commandStr
-            print "********"
-            os.system(commandStr)
+#            commandStr = "./parcel %s %s %s" % ( parcelArgs, remoteStr, cmdArgs['source'])
+#            print "********"
+#            print commandStr
+#            print "********"
+#            os.system(commandStr)
 
             # verify the directories
-            CompareDirectories(cmdArgs['source'], remoteDir)
+#            CompareDirectories(cmdArgs['source'], remoteDir)
 
-            ids = GetProcessIDs(appName)
-            if len(ids) > 0 :
-                print "parcel instances still running, killing"
-                commandStr = "killall %s" % appName
-                os.system(commandStr)
+#            ids = GetProcessIDs(g_appName)
+#            if len(ids) > 0 :
+#                print "parcel instances still running, killing"
+#                commandStr = "killall %s" % g_appName
+#                os.system(commandStr)
 
-        else:
-            print "Compare error, quitting"
+#        else:
+#            print "Compare error, quitting"
 
     else:
         print "Source and target cannot be the same"

@@ -62,6 +62,8 @@ void verb(verb_t verbosity, char* fmt, ...);
 
 void print_backtrace();
 
+void print_bytes(char* data, int length, int output_line_len);
+
 //void error(char* fmt, ...);
 
 #endif // DEBUG_OUTPUT_H
