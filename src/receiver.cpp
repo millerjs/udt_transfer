@@ -30,19 +30,19 @@ postmaster_t*    receive_postmaster;
 global_data_t    global_receive_data;
 
 
-int read_header(header_t *header) 
+int read_header(header_t *header)
 {
     // return read(fileno(stdin), header, sizeof(header_t));
     return read(g_opts.recv_pipe[0], header, sizeof(header_t));
 }
 
 // wrapper for read
-off_t read_data(void* b, int len) 
+off_t read_data(void* b, int len)
 {
 
     off_t rs, total = 0;
     char* buffer = (char*)b;
-    
+
     while (total < len) {
         // rs = read(fileno(stdin), buffer+total, len - total);
         rs = read(g_opts.recv_pipe[0], buffer+total, len - total);
@@ -57,9 +57,9 @@ off_t read_data(void* b, int len)
 }
 
 // Notify the destination that the transfer is complete
-int acknowlege_complete_xfer() 
+int acknowlege_complete_xfer()
 {
-    
+
     verb(VERB_2, "[%s] Acknowledging end of transfer", __func__);
 
     // Send completition header
@@ -74,10 +74,10 @@ int acknowlege_complete_xfer()
 }
 
 
-int receive_files(char*base_path) 
+int receive_files(char*base_path)
 {
     header_t header;
-    
+
     while (!g_opts.socket_ready) {
         usleep(10000);
     }
@@ -88,7 +88,7 @@ int receive_files(char*base_path)
     // generate a base path for all destination files and get the
     // length
     global_receive_data.bl = generate_base_path(base_path, global_receive_data.data_path);
-    
+
     // Read in headers and data until signalled completion
     while ( !global_receive_data.complete ) {
         if (global_receive_data.read_new_header) {
@@ -96,14 +96,14 @@ int receive_files(char*base_path)
                 ERR("[%s] Bad header read, errno: %d", __func__, errno);
             }
         }
-        
+
         if (global_receive_data.rs) {
             verb(VERB_3, "[%s] Dispatching message: %d", __func__, header.type);
             dispatch_message(receive_postmaster, header, &global_receive_data);
         }
         usleep(100);
     }
-    
+
     // free up the memory on the way out
     free(global_receive_data.data);
 
@@ -123,14 +123,14 @@ int receive_files(char*base_path)
 
 int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 {
-    
+
     verb(VERB_4, "[%s] Received directory header", __func__);
-    
+
     // Read directory name from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
     verb(VERB_2, "[%s] Making directory: %s", __func__, global_data->data_path);
-    
+
     // make directory, if any parent in directory path
     // doesnt exist, make that as well
     mkdir_parent(global_data->data_path);
@@ -138,7 +138,7 @@ int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
     // safety reset, data block after this will fault, expect a header
     global_data->expecting_data = 0;
     global_data->read_new_header = 1;
-    
+
     return 0;
 }
 
@@ -149,9 +149,9 @@ int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 
 int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 {
-    
+
     verb(VERB_4, "[%s] Received file header", __func__);
-    
+
     // int f_mode = O_CREAT| O_WRONLY;
     int f_mode = O_CREAT| O_RDWR;
     int f_perm = 0666;
@@ -160,7 +160,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
     global_data->mtime_sec = header.mtime_sec;
     global_data->mtime_nsec = header.mtime_nsec;
     verb(VERB_3, "[%s] Header mtime: %d, mtime_nsec: %ld", __func__, global_data->mtime_sec, global_data->mtime_nsec);
-    
+
     // Read filename from stream
     read_data(global_data->data_path + global_data->bl, header.data_len);
 
@@ -173,13 +173,13 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 
         // If we can't open the file, try building a
         // directory tree to it
-        
+
         // Try and get a parent directory from file
         char parent_dir[MAX_PATH_LEN];
         get_parent_dir(parent_dir, global_data->data_path);
-        
+
         verb(VERB_3, "[%s] Using %s as parent directory.", __func__, parent_dir);
-        
+
         // Build parent directory recursively
         if (mkdir_parent(parent_dir) < 0) {
             perror("ERROR: recursive directory build failed");
@@ -242,12 +242,12 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 int pst_rec_callback_complete(header_t header, global_data_t* global_data)
 {
     verb(VERB_2, "[%s] Receive completed", __func__);
-    
+
     global_data->complete = 1;
-    
+
     // acknowledge the complete
     acknowlege_complete_xfer();
-    
+
     return 0;
 }
 
@@ -260,7 +260,7 @@ int pst_rec_callback_complete(header_t header, global_data_t* global_data)
 int pst_rec_callback_data(header_t header, global_data_t* global_data)
 {
     off_t rs, len;
-    
+
     if (!global_data->expecting_data) {
         fprintf(stderr, "ERROR: Out of order data block.\n");
         clean_exit(EXIT_FAILURE);
@@ -293,14 +293,14 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 
 //    read_header(&header);
 
-    // Update user on progress if g_opts.progress set to true		    
+    // Update user on progress if g_opts.progress set to true
     if (g_opts.progress) {
         print_progress(global_data->data_path, global_data->total, global_data->f_size);
     }
 
 
     return 0;
-    
+
 }
 
 //
@@ -311,10 +311,10 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
 {
     // On the next loop, use the header that was just read in
-   
+
     // Formatting
     if (g_opts.progress) {
-        fprintf(stderr, "\n");
+        verb(VERB_2, "");
     }
 
     // Check to see if we received full file
@@ -332,21 +332,21 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
     if (ftruncate64(global_data->fout, global_data->f_size)) {
         ERR("unable to truncate file to correct size");
     }
-    
+
 //    global_data->read_new_header = 0;
     global_data->expecting_data = 0;
     global_data->f_size = 0;
-    
+
     // Truncate the file in case it already exists and remove extra data
     if (g_opts.mmap) {
         unmap_fd(global_data->fout, global_data->f_size);
     }
 
     close(global_data->fout);
-    
+
     // fly - now is the time when we set the timestamps
     set_mod_time(global_data->data_path, global_data->mtime_nsec, global_data->mtime_sec);
-    
+
     return 0;
 }
 
@@ -357,9 +357,9 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
 //
 // fly - Ok, a few possible ways to handle this. One is dumb: walk the list and only
 // change the file timestamps if we have them. That makes for a double send and a longer
-// walk/compare on the other end.  Second is to create a new list that only has the 
-// files that are already present, but that presents an issue with needing a case for 
-// an empty list. For now, trying dumb, but if we have really long lists, the second  
+// walk/compare on the other end.  Second is to create a new list that only has the
+// files that are already present, but that presents an issue with needing a case for
+// an empty list. For now, trying dumb, but if we have really long lists, the second
 // case may be a necessity.
 
 int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
@@ -367,19 +367,19 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     file_LL*        fileList;
     struct stat     temp_stat_buffer;
     char*           cur_directory = NULL;
-    
+
     memset(&temp_stat_buffer, 0, sizeof(struct stat));
-    
+
     verb(VERB_3, "[%s] Received list data of size %d", __func__, header.data_len);
-    
+
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
-    
+
     read_data(tmp_file_list, header.data_len);
     fileList = unpack_filelist(tmp_file_list, header.data_len);
     free(tmp_file_list);
-    
+
     // repopulate the list with our timestamps, if any
-    
+
     verb(VERB_3, "[%s] %d elements, need to check %s for these", __func__, fileList->count, global_data->data_path);
 
     // if the directory exists, change to it
@@ -398,14 +398,14 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
         char destination[MAX_PATH_LEN];
         int root_len = strlen(cursor->curr->root);
         memset(destination, 0, MAX_PATH_LEN);
-        
+
         if (!root_len || strncmp(cursor->curr->path, cursor->curr->root, root_len)) {
             sprintf(destination, "%s", cursor->curr->path);
 
         } else {
             memcpy(destination, cursor->curr->path + root_len + 1, strlen(cursor->curr->path) - root_len);
         }
-        
+
         // check if file exists
         if ( !stat(destination, &temp_stat_buffer) ) {
             verb(VERB_3, "[%s] File %s present", __func__, destination);
@@ -422,7 +422,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
         cursor = cursor->next;
     }
     verb(VERB_3, "[%s] Done walking", __func__);
-    
+
     // return the list
     // get size of list and such
     int totalSize = get_filelist_size(fileList);
@@ -433,16 +433,16 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
     }
 
     verb(VERB_3, "[%s] Sending back", __func__);
-    send_filelist(fileList, totalSize);    
+    send_filelist(fileList, totalSize);
 
     // change directory back
     if ( cur_directory ) {
-        chdir(cur_directory);        
+        chdir(cur_directory);
     }
-    
+
     // free the file list
     free_file_list(fileList);
-    
+
     return 0;
 }
 
@@ -455,7 +455,7 @@ void init_receiver()
     global_receive_data.complete = 0;
     global_receive_data.expecting_data = 0;
     global_receive_data.read_new_header = 1;
-    
+
     // create the postmaster
     receive_postmaster = create_postmaster();
 
@@ -477,6 +477,6 @@ void cleanup_receiver()
     if ( receive_postmaster != NULL ) {
         free(receive_postmaster);
     }
-    
+
 }
 

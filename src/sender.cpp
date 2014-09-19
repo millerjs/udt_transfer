@@ -33,7 +33,7 @@ global_data_t    global_send_data;
 //   Format of buffer:
 //     [header --> sizeof(header_t)] [data --> BUFFER_LEN]
 // - returns: RET_SUCCESS on success, RET_FAILURE on failure
-int allocate_block(parcel_block *block) 
+int allocate_block(parcel_block *block)
 {
 
     // Calculate length of block based on optimal buffer size and
@@ -44,7 +44,7 @@ int allocate_block(parcel_block *block)
         block->buffer = (char*) malloc(alloc_len*sizeof(char));
         memset(block->buffer, 0, alloc_len*sizeof(char));
     }
-    
+
     if (!block->buffer) {
         ERR("unable to allocate data");
     }
@@ -66,20 +66,20 @@ void free_block(parcel_block *block)
         }
         block = NULL;
     }
-    
-    
+
+
 }
 
 // int fill_data
 // - copy a small amount of data into the buffer, this is not used
 //   for data blocks
-int fill_data(void* data, size_t len) 
+int fill_data(void* data, size_t len)
 {
     return (!!memcpy(sender_block.data, data, len));
 }
 
 // write header data to out fd
-int write_header(header_t* header) 
+int write_header(header_t* header)
 {
 
     // should you be using write block?
@@ -90,7 +90,7 @@ int write_header(header_t* header)
 }
 
 // write data block to out fd
-off_t write_block(header_t* header, int len) 
+off_t write_block(header_t* header, int len)
 {
 
     memcpy(sender_block.buffer, header, sizeof(header_t));
@@ -109,14 +109,14 @@ off_t write_block(header_t* header, int len)
 
     G_TOTAL_XFER += ret;
 
-    return ret; 
+    return ret;
 
 }
 
 // Notify the destination that the transfer is complete
-int complete_xfer() 
+int complete_xfer()
 {
-    
+
     verb(VERB_2, "[%s] Signalling end of transfer", __func__);
 
     // Send completition header
@@ -131,13 +131,13 @@ int complete_xfer()
 
 // sends a file to out fd by creating an appropriate header and
 // sending any data
-int send_file(file_object_t *file) 
+int send_file(file_object_t *file)
 {
 
     if (!file) {
         return -1;
     }
-    
+
     while (!g_opts.socket_ready) {
         usleep(10000);
     }
@@ -236,7 +236,7 @@ int send_file(file_object_t *file)
 
         // Carriage return for  progress printing
         if (g_opts.progress) {
-            fprintf(stderr, "\n");
+            verb(VERB_2, "");
         }
 
         // Done with fd
@@ -269,9 +269,9 @@ int send_filelist(file_LL* fileList, int totalSize)
         write_block(header, header->data_len);
         free(header);
     } else {
-        ERR("[%s] Unable to copy to sender_block.data, value NULL", __func__);        
+        ERR("[%s] Unable to copy to sender_block.data, value NULL", __func__);
     }
-    
+
     return RET_SUCCESS;
 }
 
@@ -288,7 +288,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
 
     verb(VERB_2, "[%s] Sending filelist, total data buffer size %d", __func__, alloc_len);
     send_filelist(fileList, total_size);
-    
+
     verb(VERB_2, "[%s] Filelist sent, waiting for response", __func__);
     // Read in headers and data until signalled completion
     while ( !global_send_data.complete ) {
@@ -306,7 +306,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
 //            verb(VERB_2, "[%s] Dispatching message to sender: %d", __func__, header.type);
             dispatch_message(send_postmaster, header, &global_send_data);
         }
-        
+
     }
 
     verb(VERB_2, "[%s] Response received", __func__);
@@ -319,7 +319,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
 void send_and_wait_for_ack_of_complete()
 {
     header_t header;
-    
+
     complete_xfer();
     global_send_data.complete = 0;
     while ( !global_send_data.complete ) {
@@ -328,14 +328,14 @@ void send_and_wait_for_ack_of_complete()
                 ERR("Bad header read");
             }
         }
-        
+
         if (global_send_data.rs) {
             verb(VERB_3, "[%s] Dispatching message to sender: %d", __func__, header.type);
             dispatch_message(send_postmaster, header, &global_send_data);
         }
 
-    }        
-    
+    }
+
 }
 
 
@@ -346,13 +346,13 @@ void send_and_wait_for_ack_of_complete()
 
 int send_files(file_LL* fileList, file_LL* remote_fileList)
 {
-    
+
     if ( ((fileList != NULL) && (remote_fileList != NULL)) && (fileList->count == remote_fileList->count) ) {
     //    allocate_block(&block);
         file_node_t* cursor = fileList->head;
         file_node_t* remote_cursor = remote_fileList->head;
-        
-        
+
+
         // Send each file or directory
         while (cursor) {
 
@@ -362,11 +362,11 @@ int send_files(file_LL* fileList, file_LL* remote_fileList)
             // While there is a directory, opts.recurse?
             if (file->mode == S_IFDIR) {
 
-                // Tell desination to create a directory 
+                // Tell desination to create a directory
                 if (g_opts.full_root) {
                     send_file(file);
                 }
-            } 
+            }
 
             // if it is a regular file, then send it
             else if (file->mode == S_IFREG) {
@@ -380,13 +380,13 @@ int send_files(file_LL* fileList, file_LL* remote_fileList)
                     }
                 }
 
-            } 
+            }
 
             // If the file is a character device or a named pipe, warn user
             else if (file->mode == S_IFCHR || file->mode == S_IFIFO) {
 
                 if (g_opts.regular_files) {
-                    warn("Skipping [%s] %s.\n%s.", file->filetype, file->path, 
+                    warn("Skipping [%s] %s.\n%s.", file->filetype, file->path,
                          "To enable sending character devices, use --all-files");
 
                 } else {
@@ -417,14 +417,14 @@ int send_files(file_LL* fileList, file_LL* remote_fileList)
 
         close_log_file();
     } else {
-        
+
         if ( (fileList == NULL) || (remote_fileList == NULL) ) {
             ERR("Bad file list pointers passed");
         } else {
             ERR("Unequal file list counts: local = %d, remote = %d", fileList->count, remote_fileList->count);
         }
     }
-    
+
     return RET_SUCCESS;
 }
 
@@ -439,14 +439,14 @@ int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
     verb(VERB_2, "[%s] creating file list size of %d", __func__, header.data_len);
     // all we need to do is unpack data and stuff into global_data
     char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
-    
+
     read_data(tmp_file_list, header.data_len);
     file_LL* fileList = unpack_filelist(tmp_file_list, header.data_len);
     free(tmp_file_list);
-    
+
     global_data->user_data = (void*)fileList;
     global_data->complete = 1;
-    
+
     return 0;
 }
 
@@ -465,7 +465,7 @@ int pst_snd_callback_control(header_t header, global_data_t* global_data)
     } else {
         verb(VERB_2, "[%s] unknown message received: %d", __func__, header.ctrl_msg);
     }
-    
+
     return 0;
 }
 
@@ -482,14 +482,14 @@ void init_sender()
     global_send_data.complete = 0;
     global_send_data.expecting_data = 0;
     global_send_data.read_new_header = 1;
-    
+
     // create the postmaster
     send_postmaster = create_postmaster();
 
     // register the callbacks
     register_callback(send_postmaster, XFER_FILELIST, pst_snd_callback_filelist);
     register_callback(send_postmaster, XFER_CONTROL, pst_snd_callback_control);
-    
+
 }
 
 

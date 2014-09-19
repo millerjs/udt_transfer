@@ -97,7 +97,7 @@ void recv_full(UDTSOCKET sock, char* buffer, int len)
     rs = UDT::recv(sock, buffer+recvd, len-recvd, 0);
         if (UDT::ERROR == rs) {
             if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
-                cerr << "recv:" << UDT::getlasterror().getErrorMessage() << 
+                cerr << "recv:" << UDT::getlasterror().getErrorMessage() <<
                     "send_full: Unable to send data." << endl;
                 exit(1);
             }
@@ -113,7 +113,6 @@ int signed_auth;
 
 void auth_peer(rs_args* args)
 {
-
     char key[KEY_LEN];
     char signed_key[KEY_LEN];
 
@@ -129,22 +128,20 @@ void auth_peer(rs_args* args)
 
     int crypt_len = KEY_LEN/args->n_crypto_threads;
     for (int i = 0; i < args->n_crypto_threads; i ++) {
-        pass_to_enc_thread(signed_key+i*crypt_len, signed_key+i*crypt_len, 
+        pass_to_enc_thread(signed_key+i*crypt_len, signed_key+i*crypt_len,
                 crypt_len, args->c);
     }
 
     join_all_encryption_threads(args->c);
 
-
     if (memcmp(key, signed_key, KEY_LEN)) {
-        fprintf(stderr, "Authorization failed\n");
-        fprintf(stderr, "key:\n");
+        verb(VERB_2, "Authorization failed (key = %lu long, signed_key = %lu long)\n", strlen(key), strlen(signed_key));
+        verb(VERB_2, "key:\n");
         print_bytes(key, KEY_LEN, 16);
-        fprintf(stderr, "signed_key:\n");
+        verb(VERB_2, "signed_key:\n");
         print_bytes(signed_key, KEY_LEN, 16);
         exit(1);
     }
-
 }
 
 
@@ -158,7 +155,7 @@ void sign_auth(rs_args* args)
     // pass the key to the encode thread
     int crypt_len = KEY_LEN/args->n_crypto_threads;
     for (int i = 0; i < args->n_crypto_threads; i ++) {
-        pass_to_enc_thread(key+i*crypt_len, key+i*crypt_len, 
+        pass_to_enc_thread(key+i*crypt_len, key+i*crypt_len,
                 crypt_len, args->c);
     }
 
@@ -277,7 +274,7 @@ void* recvdata(void * _args)
 
             // Decrypt any full encryption buffer sectors
             while (crypto_cursor + crypto_buff_len < buffer_cursor) {
-                pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor, 
+                pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor,
                            crypto_buff_len, args->c);
                 crypto_cursor += crypto_buff_len;
             }
@@ -289,7 +286,7 @@ void* recvdata(void * _args)
                     fprintf(stderr, "[%s %lu] crypto class is NULL before thread, exiting!\n", __func__, tid);
                     exit(0);
                 }
-                pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor, 
+                pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor,
                            size, args->c);
                 crypto_cursor += size;
 
@@ -345,7 +342,7 @@ void* recvdata(void * _args)
 void senddata_cleanup_handler(void *arg)
 {
     verb(VERB_2, "[senddata_cleanup_handler] Cleaning up on way out");
-    
+
 }
 
 
@@ -369,7 +366,7 @@ void* senddata(void* _args)
     char* outdata = (char*)malloc(BUFF_SIZE*sizeof(char));
 
     int crypto_buff_len = BUFF_SIZE / args->n_crypto_threads;
-    
+
     int offset = sizeof(int)/sizeof(char);
     int bytes_read;
 
@@ -377,7 +374,7 @@ void* senddata(void* _args)
     if (args->use_crypto) {
         verb(VERB_2, "[%s %lu] Sending encryption status...", __func__, tid);
         sign_auth(args);
-    } 
+    }
 
     // long local_openssl_version;
     // if (args->use_crypto)
@@ -426,7 +423,7 @@ void* senddata(void* _args)
 
                 while (crypto_cursor < bytes_read) {
                     int size = min(crypto_buff_len, bytes_read-crypto_cursor);
-                    verb(VERB_2, "[%s %lu] Passing %d data to encode thread", __func__, tid, size);
+//                    verb(VERB_2, "[%s %lu] Passing %d data to encode thread", __func__, tid, size);
                     pass_to_enc_thread(outdata+crypto_cursor+offset,
                                outdata+crypto_cursor+offset,
                                size, args->c);
@@ -434,7 +431,7 @@ void* senddata(void* _args)
                     crypto_cursor += size;
                 }
 
-                verb(VERB_2, "[%s %lu] Joining encryption threads", __func__, tid);
+//                verb(VERB_2, "[%s %lu] Joining encryption threads", __func__, tid);
                 join_all_encryption_threads(args->c);
                 bytes_read += offset;
 
@@ -442,7 +439,7 @@ void* senddata(void* _args)
 
             int ssize = 0;
             while(ssize < bytes_read) {
-                if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize, 
+                if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
                                   bytes_read - ssize, 0))) {
 
                     cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -461,7 +458,7 @@ void* senddata(void* _args)
                 verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
                 break;
             }
-            verb(VERB_2, "[%s %lu] Loop...", __func__, tid);
+//            verb(VERB_2, "[%s %lu] Loop...", __func__, tid);
         }
 
     } else {
@@ -482,7 +479,7 @@ void* senddata(void* _args)
             }
 
             while(ssize < bytes_read) {
-                if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize, 
+                if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
                                   bytes_read - ssize, 0))) {
                     cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
                     verb(VERB_2, "[%s %lu] Leaving on error", __func__, tid);
@@ -534,5 +531,5 @@ void* monitor(void* s)
     }
     ExitThread(GetMyThreadId());
     return NULL;
- 
+
 }

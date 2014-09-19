@@ -26,7 +26,7 @@
 
 #define MUTEX_TYPE          pthread_mutex_t
 #define MUTEX_SETUP(x)      pthread_mutex_init(&(x), NULL)
-#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x) 
+#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x)
 #define MUTEX_LOCK(x)       pthread_mutex_lock(&x)
 #define MUTEX_UNLOCK(x)     pthread_mutex_unlock(&x)
 #define THREAD_ID           pthread_self()
@@ -39,7 +39,7 @@ static void locking_function(int mode, int n, const char*file, int line);
 
 Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
 {
-    verb(VERB_2, "[%s] New crypto object, direc = %d, len = %d, keyLen = %lu, type = %s, threads = %d", 
+    verb(VERB_2, "[%s] New crypto object, direc = %d, len = %d, keyLen = %lu, type = %s, threads = %d",
         __func__, direc, len, strlen((const char*)password), encryption_type, n_threads);
 
     N_CRYPTO_THREADS = n_threads;
@@ -85,11 +85,11 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
         }
     }
 
-    verb(VERB_2, "[%s] id_lock before: %0x", __func__, &id_lock);
+//    verb(VERB_2, "[%s] id_lock before: %0x", __func__, &id_lock);
     if ( pthread_mutex_init(&id_lock, NULL) ) {
         verb(VERB_2, "[%s] unable to init mutex id_lock", __func__);
     }
-    verb(VERB_2, "[%s] id_lock after: %0x", __func__, &id_lock);
+//    verb(VERB_2, "[%s] id_lock after: %0x", __func__, &id_lock);
 
     for (int i = 0; i < N_CRYPTO_THREADS; i++) {
         pthread_mutex_init(&c_lock[i], NULL);
@@ -110,12 +110,12 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
         e_args[i].ctx = &ctx[i];
         e_args[i].c = this;
 
-        verb(VERB_2, "[%s] Creating thread, c = %0x id = %d", __func__, e_args[i].c, e_args[i].thread_id);
+//        verb(VERB_2, "[%s] Creating thread, c = %0x id = %d", __func__, e_args[i].c, e_args[i].thread_id);
         int ret = pthread_create(&threads[i],
-                 &attr, &crypto_update_thread, 
+                 &attr, &crypto_update_thread,
                  &e_args[i]);
         RegisterThread(threads[i], "crypto_update_thread", THREAD_TYPE_1);
-    
+
         if (ret) {
             verb(VERB_2, "Unable to create thread: %d", ret);
         }
@@ -126,20 +126,20 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
 Crypto::~Crypto()
 {
     // make sure the threads are gone
-    
+
     // free up our malloced mem
     if ( mutex_buf ) {
         free(mutex_buf);
         mutex_buf = NULL;
     }
-    
+
     for (int i = 0; i < N_CRYPTO_THREADS; i++) {
         EVP_CIPHER_CTX_cleanup(&ctx[i]);
     }
 
 }
 
-int Crypto::get_num_crypto_threads() 
+int Crypto::get_num_crypto_threads()
 {
     return N_CRYPTO_THREADS;
 }
@@ -227,7 +227,7 @@ static void locking_function(int mode, int n, const char*file, int line)
     pris("LOCKING FUNCTION CALLED");
     if (mode & CRYPTO_LOCK) {
         MUTEX_LOCK(mutex_buf[n]);
-    } else { 
+    } else {
         MUTEX_UNLOCK(mutex_buf[n]);
     }
 }
@@ -267,7 +267,7 @@ int THREAD_setup(void)
 int THREAD_cleanup(void)
 {
     pris("Cleaning up threads");
-    if ( mutex_buf ) { 
+    if ( mutex_buf ) {
 
         /* CRYPTO_set_id_callback(NULL); */
         CRYPTO_THREADID_set_callback(NULL);
@@ -277,7 +277,7 @@ int THREAD_cleanup(void)
         for (i = 0; i < CRYPTO_num_locks(); i ++)
         MUTEX_CLEANUP(mutex_buf[i]);
     }
-    
+
     return 0;
 
 }
@@ -309,7 +309,7 @@ int crypto_update(char* in, char* out, int len, Crypto *c)
 
         // DOUBLE CHECK
         if (evp_outlen-len){
-            verb(VERB_2, "Did not encrypt full length of data [%d-%d]", 
+            verb(VERB_2, "Did not encrypt full length of data [%d-%d]",
                 evp_outlen, len);
             exit(EXIT_FAILURE);
         }
@@ -351,8 +351,8 @@ void *crypto_update_thread(void* _args)
                 while (total < args->len) {
 
                     if ( args->thread_id < MAX_CRYPTO_THREADS ) {
-                        if(!EVP_CipherUpdate(&c->ctx[args->thread_id], 
-                                 args->in+total, &evp_outlen, 
+                        if(!EVP_CipherUpdate(&c->ctx[args->thread_id],
+                                 args->in+total, &evp_outlen,
                                  args->out+total, args->len-total)) {
                             verb(VERB_2, "encryption error");
                             error = 1;
@@ -380,20 +380,20 @@ void *crypto_update_thread(void* _args)
                 }
 
                 if (total != args->len){
-                    verb(VERB_2, "error: Did not encrypt full length of data %d [%d-%d]", 
+                    verb(VERB_2, "error: Did not encrypt full length of data %d [%d-%d]",
                         args->thread_id, total, args->len);
                     c->unlock_data(args->thread_id);
                     break;
                 }
                 c->unlock_data(args->thread_id);
             }
-            
+
         }
     }
     SetExit();
     ExitThread(GetMyThreadId());
     return NULL;
-    
+
 }
 
 int join_all_encryption_threads(Crypto *c)
@@ -403,12 +403,12 @@ int join_all_encryption_threads(Crypto *c)
         verb(VERB_2, "error: join_all_encryption_threads passed null pointer\n");
         return 0;
     }
-    
+
     for (int i = 0; i < c->get_num_crypto_threads(); i++) {
         c->lock_data(i);
         c->unlock_data(i);
     }
-    
+
     return 0;
 
 }
@@ -439,7 +439,7 @@ const EVP_CIPHER* figure_encryption_type(char* encrypt_str)
     const EVP_CIPHER *cipher = (EVP_CIPHER*)NULL;
 
 //    cipher = EVP_get_cipherbyname(encrypt_str);
-    
+
     if (strncmp("aes-128", encrypt_str, 8) == 0) {
 #ifdef OPENSSL_HAS_CTR
         if (CTR_MODE)
@@ -488,11 +488,11 @@ int cull_rsa_key(char* key)
 {
     // fly - ok, so assumption here...the basic base64 encoding
     // does NOT use the '-' character, so the assumption is if
-    // we run into one, we know we're looking at the beginning 
+    // we run into one, we know we're looking at the beginning
     // or ending line.  Looking into possibilities, there *are*
-    // base64 web encodings that will replace the '+' and '=' with 
+    // base64 web encodings that will replace the '+' and '=' with
     // '-' and '_', so if that ever changes, this routine will break
-    
+
     unsigned int i = 0, j = 0;
     int retVal = 0, skipLine = 0, delimiterCount = 0, key_len;
     char* tmp_key = NULL;
@@ -557,7 +557,7 @@ char* generate_random_string(int string_len)
         }
     }
     close(random_data_fd);
-    
+
     return rand_str;
 }
 
@@ -586,7 +586,7 @@ char* generate_session_key(void)
 //    key_len = PBKCS5_PBKDF2_HMAC_SHA1(NULL, 0, );
     pem_key = (char*)malloc(sizeof(char) * KEY_BUFFER_LEN);
     memset(pem_key, 0, (sizeof(char) * KEY_BUFFER_LEN));
-    
+
     key_len = PKCS5_PBKDF2_HMAC_SHA1(NULL, 0, NULL, 0, NUM_ITERATIONS, KEY_BUFFER_LEN, (unsigned char*)pem_key);
 
     verb(VERB_2, "[%s] created pem_key of size %d", __func__, key_len);
