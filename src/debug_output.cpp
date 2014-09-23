@@ -76,7 +76,7 @@ int init_debug_output_file(int is_master)
 	if ( g_debug_file_logging > 0 ) {
 		verb(VERB_2, "[%s] opening log file g_full_log_filename", __func__, g_full_log_filename);
 		fflush(stderr);
-		FILE* debug_file = fopen(g_full_log_filename, "w");
+		FILE* debug_file = fopen(g_full_log_filename, "a");
 		if ( !debug_file ) {
 			g_debug_file_logging = 0;
 			verb(VERB_2, "[%s] unable to open log file, error %d", __func__, g_full_log_filename, errno);
@@ -167,7 +167,7 @@ void print_bytes(char* data, int length, int output_line_len)
 		output_line_len = (TMP_STR_SIZE - 1);
 	}
 
-	verb(VERB_2, "[%s] printing buffer of len %d at %x", length, &data);
+	verb(VERB_2, "[%s] printing buffer of len %d at %x", __func__, length, &data);
 
 	while (length > 0 ) {
 		memset(asciiStr, '\0', TMP_STR_SIZE);

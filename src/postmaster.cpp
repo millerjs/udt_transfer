@@ -1,8 +1,9 @@
 /*****************************************************************************
 Copyright 2014 Laboratory for Advanced Computing at the University of Chicago
 
-    This file is part of parcel by Joshua Miller
-    Created by Joe Sislow (fly)
+	This file is part of parcel by Joshua Miller,
+	being a basic way of handling header messages
+	Created by Joe Sislow (fly)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,41 +28,40 @@ and limitations under the License.
 //
 // NOTES: for now, since there are so few header types, we're just creating
 // an array of callback pointers, giving us a fast lookup for message type.
-// however, if we ever got a bunch, probably better to have a lookup and 
+// however, if we ever got a bunch, probably better to have a lookup and
 // allocate them dynamically
-
 
 postmaster_t* create_postmaster()
 {
-    postmaster_t* tmpPostmasterPtr = (postmaster_t*)NULL;
-    int i;
-    
-    tmpPostmasterPtr = (postmaster_t*)malloc(sizeof(postmaster_t));
-    if ( tmpPostmasterPtr ) {
-        for ( i = 0; i < NUM_XFER_CMDS; i++ ) {
-            tmpPostmasterPtr->callback[i] = NULL;
-        }
-    }
-    
-    return tmpPostmasterPtr;
-    
+	postmaster_t* tmpPostmasterPtr = (postmaster_t*)NULL;
+	int i;
+
+	tmpPostmasterPtr = (postmaster_t*)malloc(sizeof(postmaster_t));
+	if ( tmpPostmasterPtr ) {
+		for ( i = 0; i < NUM_XFER_CMDS; i++ ) {
+			tmpPostmasterPtr->callback[i] = NULL;
+		}
+	}
+
+	return tmpPostmasterPtr;
+
 }
 
 //
 // destroy_postmaster
 //
 // frees the postmaster to go on to other careers, because without a pension,
-// really, who'd be a postmaster?  
+// really, who'd be a postmaster?
 // WARNING: nothing is done with the customData, so that's left up to the creator
 // to clean up
 
 void destroy_postmaster(postmaster_t* postmaster)
 {
-    
-    if ( postmaster != NULL ) {
-        free(postmaster);
-    }
-    
+
+	if ( postmaster != NULL ) {
+		free(postmaster);
+	}
+
 }
 
 //
@@ -72,22 +72,22 @@ void destroy_postmaster(postmaster_t* postmaster)
 
 int register_callback(postmaster_t* postmaster, xfer_t message_type, int (*callback)(header_t header, global_data_t* global_data))
 {
-    int ret_val = POSTMASTER_OK;
-    
-    if ( postmaster != NULL ) {
-        // verify message type
-        if ( message_type < NUM_XFER_CMDS ) {
-            // add it to array
-            postmaster->callback[message_type] = *callback;
-        } else {
-            ret_val = POSTMASTER_ERROR_BAD_XFER_CMD;
-        }
-    } else {
-        ret_val = POSTMASTER_ERROR_POSTMASTER_NULL;
-    }
-    
-    return ret_val;
-    
+	int ret_val = POSTMASTER_OK;
+
+	if ( postmaster != NULL ) {
+		// verify message type
+		if ( message_type < NUM_XFER_CMDS ) {
+			// add it to array
+			postmaster->callback[message_type] = *callback;
+		} else {
+			ret_val = POSTMASTER_ERROR_BAD_XFER_CMD;
+		}
+	} else {
+		ret_val = POSTMASTER_ERROR_POSTMASTER_NULL;
+	}
+
+	return ret_val;
+
 }
 
 //
@@ -97,39 +97,22 @@ int register_callback(postmaster_t* postmaster, xfer_t message_type, int (*callb
 
 int dispatch_message(postmaster_t* postmaster, header_t header, global_data_t* global_data)
 {
-    int ret_val = POSTMASTER_OK;
-    
-    if ( postmaster != NULL ) {
-        // verify message type
-        if ( header.type < NUM_XFER_CMDS ) {
-            if ( postmaster->callback[header.type] != NULL ) {
-                postmaster->callback[header.type](header, global_data);
-            } else {
-                ret_val = POSTMASTER_ERROR_CALLBACK_NULL;
-            }
-        } else {
-            ret_val = POSTMASTER_ERROR_BAD_XFER_CMD;
-        }
-    } else {
-        ret_val = POSTMASTER_ERROR_POSTMASTER_NULL;
-    }
+	int ret_val = POSTMASTER_OK;
 
-    return ret_val;
+	if ( postmaster != NULL ) {
+		// verify message type
+		if ( header.type < NUM_XFER_CMDS ) {
+			if ( postmaster->callback[header.type] != NULL ) {
+				postmaster->callback[header.type](header, global_data);
+			} else {
+				ret_val = POSTMASTER_ERROR_CALLBACK_NULL;
+			}
+		} else {
+			ret_val = POSTMASTER_ERROR_BAD_XFER_CMD;
+		}
+	} else {
+		ret_val = POSTMASTER_ERROR_POSTMASTER_NULL;
+	}
+
+	return ret_val;
 }
-
-
-
-int message_handle_data(header_t header)
-{
-    
-    
-    
-    return 0;    
-    
-    
-}
-
-
-
-
-

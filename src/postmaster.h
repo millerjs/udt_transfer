@@ -31,33 +31,33 @@ typedef enum : uint8_t {
 } postmaster_error_t;
 
 typedef struct global_data_t {
-    
+
     int         fout;                                       // file handle for output
     off_t       total, rs, ds, f_size;
     int         bl;
     char*       data;
     char*       f_map;
     char        data_path[MAX_PATH_LEN];
-    int         complete, expecting_data, read_new_header;
+    int         complete, expecting_data, read_new_header, ok_to_send;
     int         mtime_sec;
     long int    mtime_nsec;
     void*       user_data;                                   // whatever else might be needed, stuff in here
-    
+
 } global_data_t;
 
 /*
 typedef struct message_t {
-    
+
     xfer_t messageType;
     int (*callback) (header_t header, parcel_block package);
-    
+
 } message_t;
 */
 
 typedef struct postmaster_t {
-    
+
     int (*callback[NUM_XFER_CMDS]) (header_t header, global_data_t* global_data);
-    
+
 } postmaster_t;
 
 // creates a postmaster for later use

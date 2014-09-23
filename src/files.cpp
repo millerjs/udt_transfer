@@ -33,7 +33,7 @@ int flogfd = 0;
 char *f_map = NULL;
 char log_path[MAX_PATH_LEN];
 
-// Initialize 
+// Initialize
 
 file_LL *checkpoint = NULL;
 
@@ -101,11 +101,11 @@ int mwrite(char* buff, off_t pos, int len)
 file_object_t *get_file_LL_tail(file_LL *main_list)
 {
     file_node_t* list = main_list->head;
-    
+
     if (!list) {
         return NULL;
     }
-    
+
     while (list->next){
         list = list->next;
     }
@@ -116,17 +116,17 @@ file_object_t *find_last_instance(file_LL *list, file_object_t *file)
 {
     file_object_t *last = NULL;
     file_node_t *cursor = NULL;
-    
+
     if ( list != NULL ) {
         cursor = list->head;
     }
-    
+
     while (list) {
         if (!strcmp(cursor->curr->path, file->path)) {
             last = cursor->curr;
         }
         cursor = cursor->next;
-    }   
+    }
     return last;
 }
 
@@ -185,7 +185,7 @@ int read_checkpoint(char *path)
     }
 
     return RET_SUCCESS;
-}    
+}
 
 
 int open_log_file()
@@ -200,7 +200,7 @@ int open_log_file()
     if((flogfd = open(log_path, f_mode, f_perm)) < 0) {
         ERR("Unable to open log file [%s]", log_path);
     }
-    
+
     return RET_SUCCESS;
 }
 
@@ -209,7 +209,7 @@ int close_log_file()
     if (!g_opts.log) {
         return RET_SUCCESS;
     }
-    
+
     if(close(flogfd)) {
         verb(VERB_3, "[%s] Unable to close log file [%s].", __func__, log_path);
     }
@@ -259,13 +259,13 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN])
 int print_file_LL(file_LL *list)
 {
     file_node_t* cursor = NULL;
-    
+
     if ( list != NULL ) {
         cursor = list->head;
     }
-    
+
     while (cursor) {
-        fprintf(stderr, "%s, ", cursor->curr->path);
+        verb(VERB_2, "%s, ", cursor->curr->path);
         cursor = cursor->next;
     }
 
@@ -276,11 +276,11 @@ file_object_t* new_file_object(char*path, char*root)
 {
     file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
 
-    // fly - zeroing in case we ever check the wrong one, but not sure how 
+    // fly - zeroing in case we ever check the wrong one, but not sure how
     // best to handle with pointers...calloc isn't proper for that
     memset(file, 0, sizeof(file_object_t));
     file->filetype = (char*)NULL;
-    
+
     file->path = strdup(path);
     file->root = strdup(root);
 
@@ -323,7 +323,7 @@ file_object_t* new_file_object(char*path, char*root)
             file->filetype = strdup((char*) "socket");
             break;
         default:
-            fprintf(stderr, "Filetype uknown: %s", file->path);
+            verb(VERB_2, "Filetype uknown: %s", file->path);
             break;
     }
 
@@ -360,7 +360,7 @@ file_LL* add_file_to_list(file_LL *fileList, char*path, char*root)
 }
 
 // part the first: get all elements in the top level path
-// part the second: 
+// part the second:
 
 
 file_LL* build_full_filelist(int n, char *paths[])
@@ -388,7 +388,7 @@ file_LL* build_full_filelist(int n, char *paths[])
             } else {
                 char parent_dir[MAX_PATH_LEN];
                 get_parent_dir(parent_dir, paths[i]);
-                
+
                 fileList = add_file_to_list(fileList, paths[i], parent_dir);
             }
         }
@@ -421,7 +421,7 @@ file_LL* build_filelist(int n, char *paths[])
             } else {
                 char parent_dir[MAX_PATH_LEN];
                 get_parent_dir(parent_dir, paths[i]);
-                
+
                 fileList = add_file_to_list(fileList, paths[i], parent_dir);
             }
         }
@@ -450,13 +450,13 @@ void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
         // Iterate through each file in the directory
         while ((entry = readdir(dirp)) != NULL) {
 
-            // If given, ignore the current and parent directories 
+            // If given, ignore the current and parent directories
             if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
                 char path[MAX_PATH_LEN];
                 sprintf(path, "%s/%s", dir, entry->d_name);
 //                ls_fileList = add_file_to_list(ls_fileList, path, root);
                 add_file_to_list(ls_fileList, path, root);
-                
+
                 if (stat(path, &tmpStats) == -1) {
                     ERR("unable to stat file [%s]", path);
                 }
@@ -464,7 +464,7 @@ void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
                 // if it's a directory, recurse
                 if ( (tmpStats.st_mode & S_IFMT) == S_IFDIR ) {
                     lsdir_to_list(ls_fileList, path, root);
-                }                    
+                }
             }
         }
 
@@ -490,7 +490,7 @@ file_LL* lsdir(file_object_t *file)
     // Iterate through each file in the directory
     while ((entry = readdir(dirp)) != NULL) {
 
-        // If given, ignore the current and parent directories 
+        // If given, ignore the current and parent directories
         if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
             char path[MAX_PATH_LEN];
             sprintf(path, "%s/%s", file->path, entry->d_name);
@@ -516,7 +516,7 @@ int mkdir_parent(char* path)
     if ( ret ) {
         // Hold onto last error
         err = errno;
-        
+
         // If the parents in the path name do not exist, then make them
         if (err == ENOENT) {
             verb(VERB_2, "[%s] Again find parent directory and make it", __func__);
@@ -528,12 +528,12 @@ int mkdir_parent(char* path)
 
             mkdir_parent(parent_dir);
             ret = mkdir_parent(path);
-            
+
         // The directory already exists
         } else if (err == EEXIST) {
 
             // Continue
-            
+
         // Otherwise, mkdir failed
         } else {
             fprintf(stderr, "ERROR: Unable to create directory [%s]: %s", path, strerror(err));
@@ -548,7 +548,7 @@ int mkdir_parent(char* path)
 }
 
 // Get the size of a file, should handle large files as well
-off_t fsize(int fd) 
+off_t fsize(int fd)
 {
     off_t size;
     size = lseek64(fd, 0L, SEEK_END);
@@ -564,7 +564,7 @@ int generate_base_path(char* prelim, char *data_path)
     int bl = strlen(prelim);
     if (bl == 0) {
         sprintf(data_path, "%s/", prelim);
-    } else { 
+    } else {
         if (prelim[bl-1] != '/') {
             bl++;
         }
@@ -575,7 +575,7 @@ int generate_base_path(char* prelim, char *data_path)
 }
 
 //
-// set_mod_time 
+// set_mod_time
 //
 // sets the modification time given a file name
 // returns 0 on success, or non-zero error code in errno.h on fail
@@ -585,17 +585,17 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime)
 {
     timespec        times[2];
     int             retVal = 0;
-    
+
     // fly - Ok, a bit obtuse, but utimensat (and utimes, actually) expect that times[0]
-    // refers to atime and times[1] refers to mtime.  Also, in addition to UTIME_NOW, 
+    // refers to atime and times[1] refers to mtime.  Also, in addition to UTIME_NOW,
     // UTIME_OMIT can be used, so we could have it not set the atime.
     // Also, it could be problematic if the system doesn't use nanosecond resolution, and
     // we could fall back to second or microsecond, depending on the system.
-    
+
     // atime set to now
     times[0].tv_sec = UTIME_NOW;
     times[0].tv_nsec = UTIME_NOW;
-    
+
     // mtime set as file given
     times[1].tv_sec = mtime;
     times[1].tv_nsec = mtime_nsec;
@@ -606,13 +606,13 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime)
     } else {
         verb(VERB_3, "[%s] setting - mtime: %d, mtime_nsec: %ld", __func__, mtime, mtime_nsec);
     }
-    
+
     return retVal;
-  
+
 }
 
 //
-// get_mod_time 
+// get_mod_time
 //
 // gets the modification time given a file name
 // returns 0 on success, or non-zero error code in errno.h on fail
@@ -621,7 +621,7 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 {
     struct stat tmpStat;
     int         retVal = 0;
-    
+
     if ( stat(filename, &tmpStat) < 0 ) {
         retVal = errno;
         fprintf(stderr, "ERROR: Unable to stat %s, error code %d\n", filename, retVal);
@@ -641,7 +641,7 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 }
 
 //
-// get_filelist_size 
+// get_filelist_size
 //
 // Returns the size of a file list (total, in bytes)
 //
@@ -652,7 +652,7 @@ int get_filelist_size(file_LL *fileList)
     if ( fileList != NULL ) {
         file_node_t* cursor = fileList->head;
         int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
-        
+
         while ( cursor != NULL ) {
             total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root) + 3);  // 3 is for 3 null terminators of strings
             cursor = cursor->next;
@@ -663,7 +663,7 @@ int get_filelist_size(file_LL *fileList)
 
 
 //
-// debug_print 
+// debug_print
 //
 // prints a buffer of data, [length] bytes in a line
 //
@@ -697,7 +697,7 @@ void debug_print(char* data, int length)
 }
 
 //
-// pack_filelist 
+// pack_filelist
 //
 // packs a file list into a byte buffer for sending along
 //
@@ -749,7 +749,7 @@ char* pack_filelist(file_LL* fileList, int total_size)
 
 
 //
-// unpack_filelist 
+// unpack_filelist
 //
 // unpacks a file list into from byte buffer we got from another
 // machine
@@ -773,7 +773,7 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
 
         file_node->curr = file;
         file_node->next = NULL;
-        
+
         memset(file, 0, sizeof(file_object_t));
         file->filetype = (char*)NULL;
 
@@ -838,7 +838,7 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
 }
 
 //
-// free_file_object 
+// free_file_object
 //
 // frees a file object
 //
@@ -862,7 +862,7 @@ void free_file_object(file_object_t* file)
 
 
 //
-// free_file_list 
+// free_file_list
 //
 // frees a file list and all data along on it
 //
@@ -888,14 +888,14 @@ void free_file_list(file_LL* fileList)
 
 //
 // compare_timestamps
-// 
+//
 // compares the timestamps of two files, returning 0 if the same
 // or non-zero if not (working on how to know which is newer)
 int compare_timestamps(file_object_t* file1, file_object_t* file2)
 {
-//    verb(VERB_2, "compare_timestamps: file1 = %s, mtime_sec/nsec = %d/%lu", 
+//    verb(VERB_2, "compare_timestamps: file1 = %s, mtime_sec/nsec = %d/%lu",
 //        file1->path, file1->mtime_sec, file1->mtime_nsec);
-//    verb(VERB_2, "compare_timestamps: file2 = %s, mtime_sec/nsec = %d/%lu", 
+//    verb(VERB_2, "compare_timestamps: file2 = %s, mtime_sec/nsec = %d/%lu",
 //        file2->path, file2->mtime_sec, file2->mtime_nsec);
     return ( (file1->mtime_sec - file2->mtime_sec) + (file1->mtime_nsec - file2->mtime_nsec) );
 }

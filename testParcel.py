@@ -213,6 +213,8 @@ def CallParcel(parcelArgs, remoteStr, sourceStr):
 
 def PrintResults(results):
     i = 0
+    okCount = 0
+    failCount = 0
     print
     print "Total Results"
     print "============="
@@ -220,11 +222,18 @@ def PrintResults(results):
     while i < len(results):
         if ( results[i] ):
             lrStatus = "ok"
+            okCount = okCount + 1
         else:
             lrStatus = "failed"
+            failCount = failCount + 1
 
-        print "Pass %d:  %s" % ( i, lrStatus )
+        print "Pass %d:  %s" % ( i + 1, lrStatus )
         i = i + 1
+    percentTotal = ((float(okCount) / float(len(results))) * float(100))
+    print "\nRESULTS"
+    print "======="
+    print "%d trips, %d passed, %d failed, %.02f %% success\n" % (len(results), okCount, failCount, percentTotal)
+
 
 def GetIPAddress(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -321,6 +330,11 @@ if ('source' in cmdArgs) & ('target' in cmdArgs):
         remoteDir = os.path.join(os.path.expanduser("~"), remoteDir)
         passes = cmdArgs['trips']
         while passes > 0:
+            # kill any processes hanging around
+            WaitForProcessesToExit(0)
+
+            print "****** Trip %02d ******" % ((cmdArgs['trips'] - passes) + 1)
+
             # clear out the directories
             DeleteDirectoryContents(newLocalDir)
             DeleteDirectoryContents(remoteDir, "%s@%s" % (remoteUser, remoteSys))
@@ -328,9 +342,14 @@ if ('source' in cmdArgs) & ('target' in cmdArgs):
             # send from local to remote
             CallParcel(parcelArgs, remoteStr, localDir)
             # get from remote to local
+            print "Let's wait a few..."
+            time.sleep(1)
+
             CallParcel(parcelArgs, newLocalDir, remoteStr)
 #            LocalToRemote(cmdArgs, parcelArgs, remoteStr, localDir)
 #            RemoteToLocal(cmdArgs, parcelArgs, remoteStr, remoteDir, newLocalDir)
+            print "Let's wait a few..."
+            time.sleep(1)
 
             # compare the files after the trip
             result = CompareDirectories(localDir, newLocalDir)

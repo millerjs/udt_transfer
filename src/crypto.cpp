@@ -39,88 +39,88 @@ static void locking_function(int mode, int n, const char*file, int line);
 
 Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
 {
-    verb(VERB_2, "[%s] New crypto object, direc = %d, len = %d, keyLen = %lu, type = %s, threads = %d",
-        __func__, direc, len, strlen((const char*)password), encryption_type, n_threads);
+	verb(VERB_2, "[%s] New crypto object, direc = %d, key len = %d, type = %s, threads = %d",
+		__func__, direc, len, encryption_type, n_threads);
 
-    N_CRYPTO_THREADS = n_threads;
+	N_CRYPTO_THREADS = n_threads;
 
-    // malloc the public data
-/*    ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX) * N_CRYPTO_THREADS);
-    e_args = (e_thread_args*)malloc(sizeof(e_thread_args) * N_CRYPTO_THREADS);
-    threads = (pthread_t*)malloc(sizeof(pthread_t) * N_CRYPTO_THREADS); */
+	// malloc the public data
+/*	ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX) * N_CRYPTO_THREADS);
+	e_args = (e_thread_args*)malloc(sizeof(e_thread_args) * N_CRYPTO_THREADS);
+	threads = (pthread_t*)malloc(sizeof(pthread_t) * N_CRYPTO_THREADS); */
 
-    THREAD_setup();
-    //free_key( password ); can't free here because is reused by threads
-    const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
+	THREAD_setup();
+	//free_key( password ); can't free here because is reused by threads
+	const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
 
-    if ( !cipher ) {
-        verb(VERB_2, "[%s] Unable to identify encryption '%s', exiting", __func__, encryption_type);
-        exit(EXIT_FAILURE);
-    }
+	if ( !cipher ) {
+		verb(VERB_2, "[%s] Unable to identify encryption '%s', exiting", __func__, encryption_type);
+		exit(EXIT_FAILURE);
+	}
 
-    //aes-128|aes-256|bf|des-ede3
-    //log_set_maximum_verbosity(LOG_DEBUG);
-    //log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
+	//aes-128|aes-256|bf|des-ede3
+	//log_set_maximum_verbosity(LOG_DEBUG);
+	//log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
 
-    direction = direc;
+	direction = direc;
 
-    // EVP stuff
-    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+	// EVP stuff
+	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
 
-        memset(ivec, 0, 1024);
+		memset(ivec, 0, 1024);
 
-        EVP_CIPHER_CTX_init(&ctx[i]);
-        if ( (len > EVP_MAX_KEY_LENGTH) || (strlen((const char*)password) > EVP_MAX_KEY_LENGTH) ) {
-            verb(VERB_2, "[%s] Key too long, defaulting to crappy one", __func__);
-            if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, (const unsigned char*)"password", ivec, direc)) {
-                verb(VERB_2, "[%s] Error setting encryption scheme", __func__);
-                exit(EXIT_FAILURE);
-            }
+		EVP_CIPHER_CTX_init(&ctx[i]);
+		if ( (len > EVP_MAX_KEY_LENGTH) || (len > EVP_MAX_KEY_LENGTH) ) {
+			verb(VERB_2, "[%s] Key too long, defaulting to crappy one", __func__);
+			if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, (const unsigned char*)"password", ivec, direc)) {
+				verb(VERB_2, "[%s] Error setting encryption scheme", __func__);
+				exit(EXIT_FAILURE);
+			}
 
-        } else {
-            if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
-                verb(VERB_2, "[%s] Error setting encryption scheme", __func__);
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
+		} else {
+			if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
+				verb(VERB_2, "[%s] Error setting encryption scheme", __func__);
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
 
 //    verb(VERB_2, "[%s] id_lock before: %0x", __func__, &id_lock);
-    if ( pthread_mutex_init(&id_lock, NULL) ) {
-        verb(VERB_2, "[%s] unable to init mutex id_lock", __func__);
-    }
+	if ( pthread_mutex_init(&id_lock, NULL) ) {
+		verb(VERB_2, "[%s] unable to init mutex id_lock", __func__);
+	}
 //    verb(VERB_2, "[%s] id_lock after: %0x", __func__, &id_lock);
 
-    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
-        pthread_mutex_init(&c_lock[i], NULL);
-        pthread_mutex_init(&thread_ready[i], NULL);
-        pthread_mutex_lock(&thread_ready[i]);
-    }
+	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+		pthread_mutex_init(&c_lock[i], NULL);
+		pthread_mutex_init(&thread_ready[i], NULL);
+		pthread_mutex_lock(&thread_ready[i]);
+	}
 
-    // ----------- [ Initialize and set thread detached attribute
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	// ----------- [ Initialize and set thread detached attribute
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-    thread_id = 0;
+	thread_id = 0;
 
-    for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
 
-        e_args[i].thread_id = i;
-        e_args[i].ctx = &ctx[i];
-        e_args[i].c = this;
+		e_args[i].thread_id = i;
+		e_args[i].ctx = &ctx[i];
+		e_args[i].c = this;
 
 //        verb(VERB_2, "[%s] Creating thread, c = %0x id = %d", __func__, e_args[i].c, e_args[i].thread_id);
-        int ret = pthread_create(&threads[i],
-                 &attr, &crypto_update_thread,
-                 &e_args[i]);
-        RegisterThread(threads[i], "crypto_update_thread", THREAD_TYPE_1);
+/*        int ret = pthread_create(&threads[i],
+				 &attr, &crypto_update_thread,
+				 &e_args[i]);
+		RegisterThread(threads[i], "crypto_update_thread", THREAD_TYPE_1); */
 
-        if (ret) {
-            verb(VERB_2, "Unable to create thread: %d", ret);
-        }
-    }
-    usleep(1000);
+		if ( create_thread(&threads[i], &attr, &crypto_update_thread, &e_args[i], "crypto_update_thread", THREAD_TYPE_1) ) {
+			verb(VERB_2, "Unable to create crypto thread" );
+		}
+	}
+	usleep(1000);
 }
 
 Crypto::~Crypto()
@@ -336,7 +336,7 @@ void *crypto_update_thread(void* _args)
         Crypto *c = (Crypto*)args->c;
 
         while (1) {
-            if ( CheckForExit(THREAD_TYPE_1) ) {
+            if ( check_for_exit(THREAD_TYPE_1) ) {
                 break;
             }
             if ( args->thread_id > MAX_CRYPTO_THREADS ) {
@@ -390,8 +390,8 @@ void *crypto_update_thread(void* _args)
 
         }
     }
-    SetExit();
-    ExitThread(GetMyThreadId());
+    set_thread_exit();
+    unregister_thread(get_my_thread_id());
     return NULL;
 
 }
@@ -573,23 +573,28 @@ char* generate_random_string(int string_len)
 // docs say 1000 minimum
 #define NUM_ITERATIONS  1008
 
-#define KEY_BUFFER_LEN  42
+#define KEY_BUFFER_LEN  43
 
 char* generate_session_key(void)
 {
 
-    int key_len = 0;
-    char *pem_key = NULL;
+	int key_len = 0;
+	char *pem_key = NULL;
 
-//    char* salt = generate_random_string(SALT_LEN);
+//	char* salt = generate_random_string(SALT_LEN);
 
-//    key_len = PBKCS5_PBKDF2_HMAC_SHA1(NULL, 0, );
-    pem_key = (char*)malloc(sizeof(char) * KEY_BUFFER_LEN);
-    memset(pem_key, 0, (sizeof(char) * KEY_BUFFER_LEN));
+//	key_len = PBKCS5_PBKDF2_HMAC_SHA1(NULL, 0, );
+	pem_key = (char*)malloc(sizeof(char) * KEY_BUFFER_LEN);
+	memset(pem_key, 0, (sizeof(char) * KEY_BUFFER_LEN));
 
-    key_len = PKCS5_PBKDF2_HMAC_SHA1(NULL, 0, NULL, 0, NUM_ITERATIONS, KEY_BUFFER_LEN, (unsigned char*)pem_key);
+	key_len = PKCS5_PBKDF2_HMAC_SHA1(NULL, 0, NULL, 0, NUM_ITERATIONS, KEY_BUFFER_LEN - 1, (unsigned char*)pem_key);
 
-    verb(VERB_2, "[%s] created pem_key of size %d", __func__, key_len);
+	if ( key_len ) {
+		verb(VERB_2, "[%s] created pem_key", __func__, key_len);
+		print_bytes(pem_key, KEY_BUFFER_LEN, 16);
+	} else {
+		verb(VERB_2, "[%s] unable to create key!", __func__);
+	}
 
 /*    } else {
         key_len = strlen("password   ");

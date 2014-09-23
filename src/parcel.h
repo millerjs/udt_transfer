@@ -94,11 +94,13 @@ typedef enum : uint8_t {
 
 
 typedef enum : uint8_t {
-    CTRL_ACK,               // 0
-    NUM_CTRL_MSGS
+	CTRL_ACK,				// 0
+	CTRL_RECV_READY,		// 1
+	CTRL_RECEIVED,			// 2
+	NUM_CTRL_MSGS
 } ctrl_t;
 
-#define MODE_SEND               1<<0 
+#define MODE_SEND               1<<0
 #define MODE_RCV                1<<1
 #define MODE_CLIENT             1<<2
 #define MODE_SERVER             1<<3
@@ -109,11 +111,11 @@ typedef enum : uint8_t {
 #define HEADER_TYPE_MTIME_NSEC  4
 
 typedef struct header{
-    xfer_t      type;
     ctrl_t      ctrl_msg;
+    uint64_t    data_len;
     uint32_t    mtime_sec;
     uint64_t    mtime_nsec;
-    uint64_t    data_len;
+    xfer_t      type;
 } header_t;
 
 typedef struct parcel_block{
@@ -143,7 +145,7 @@ typedef struct parcel_opt_t{
     int *send_pipe;
     int *recv_pipe;
 
-    int remote_to_local; 
+    int remote_to_local;
     int encryption;
     int n_crypto_threads;
 
