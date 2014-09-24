@@ -212,7 +212,8 @@ void *run_client(void *_args_)
 //	pthread_create(&sndthread, NULL, senddata, &send_args);
 //	RegisterThread(sndthread, "senddata", THREAD_TYPE_2);
 
-	g_opts.socket_ready = 1;
+//	g_opts.socket_ready = 1;
+	set_socket_ready(1);
 
 
 	void * retval;

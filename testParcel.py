@@ -1,14 +1,26 @@
 #!/usr/bin/python
 
 import os, sys, shutil, getpass, difflib, subprocess, time
-import socket
-import fcntl
-import struct
+import socket, fcntl, struct, random
+import subprocess
 from distutils.spawn import find_executable
+import unittest
 
 g_appName = "parcel"
 TOTAL_WAITS = 3
 SLEEP_TIME = 1
+
+class ParcelTestFunctions(unittest.TestCase):
+    def setUp(self):
+        print "setUp: start"
+
+    def tearDown(self):
+        print "tearDown: start"
+
+
+
+
+
 
 def PrintHelp():
     cmdLineParts = sys.argv[0].split('/')
@@ -30,6 +42,8 @@ def PrintHelp():
     print "  --trips=[num] how many round trips to test (default 1)"
     print "  --crypto=[true/false] whether to use encryption (default false)"
     print "  --logging - use logging (logs files as debug_master.log and debug_minion.log)"
+    print "  --gendata - generate the data files (just once)"
+    print "  --genloop - generate the data files every trip"
     print "  --verbose - verbose output"
     print "  --help - this help"
 
@@ -47,6 +61,8 @@ def ParseCommandLineArgs():
     commandLineArgs['user'] = getpass.getuser()
     commandLineArgs['remotehost'] = "localhost"
     commandLineArgs['trips'] = 1
+    commandLineArgs['gendata'] = False
+    commandLineArgs['genloop'] = False
 
     if len(sys.argv) >= 2:
         for arg in sys.argv:
@@ -57,6 +73,10 @@ def ParseCommandLineArgs():
                     commandLineArgs['verbose'] = True
                 elif arg.find("logging") > 0:
                     commandLineArgs['logging'] = True
+                elif arg.find("gendata") > 0:
+                    commandLineArgs['gendata'] = True
+                elif arg.find("genloop") > 0:
+                    commandLineArgs['genloop'] = True
                 elif arg.find("source") > 0:
                     fileparts = arg.split("=")
                     if len(fileparts) > 1:
@@ -88,28 +108,29 @@ def ParseCommandLineArgs():
                 elif arg.find("Belgium") > 0:
                     print "** Watch your language! **"
 
-    print commandLineArgs
+#    print commandLineArgs
     return commandLineArgs
 
 
 def DeleteDirectoryContents(directory, target = ""):
 
     if len(target):
-        print "DeleteDirectoryContents: cleaning out %s %s" % ( directory, target )
+#        print "DeleteDirectoryContents: cleaning out %s %s" % ( directory, target )
         #ssh host 'rm -fr /your/file'
-        commandStr = "ssh -o 'IdentitiesOnly yes' %s 'rm -rf %s/*'" % ( target, directory )
+        commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'rm -rf %s/*'" % ( target, directory )
 #        print commandStr
         os.system(commandStr)
     else:
-        print "DeleteDirectoryContents: cleaning out %s" % directory
-        for file in os.listdir(directory):
-            filePath = os.path.join(directory, file)
-            if os.path.isdir(filePath):
-    #            print "dir: %s" % filePath
-                shutil.rmtree(filePath)
-            else:
-    #            print "file: %s" % filePath
-                os.unlink(filePath)
+#        print "DeleteDirectoryContents: cleaning out %s" % directory
+        if os.path.exists(directory):
+            for file in os.listdir(directory):
+                filePath = os.path.join(directory, file)
+                if os.path.isdir(filePath):
+        #            print "dir: %s" % filePath
+                    shutil.rmtree(filePath)
+                else:
+        #            print "file: %s" % filePath
+                    os.unlink(filePath)
 
 
 def CompareFiles(filename1, filename2):
@@ -161,6 +182,37 @@ def CompareDirectories(dir1, dir2, recurse = False):
 
     return ok
 
+def GenerateTestFile(location, filename, filesize):
+    fullfilename = "%s/%s" % (location, filename)
+#    print "Creating file %s in %s" % (fullfilename, os.getcwd())
+    outFile = open(fullfilename, "wb+")
+    newFileByteArray = bytearray(os.urandom(filesize))
+    outFile.write(newFileByteArray)
+    outFile.close()
+
+def GenerateTestData(location, numsubfolders, numfiles, minfilesize, maxfilesize):
+
+    targetdirs = [location]
+
+    # make sure the target location exists
+    if not os.path.exists(location):
+        os.mkdir(location)
+
+    if numsubfolders > 0:
+        for i in range(0, numsubfolders):
+            newsubfolder = "%s/parcel%03d" % (location, i)
+            if not os.path.exists(newsubfolder):
+#                print "Making subfolder: %s" % newsubfolder
+                os.mkdir(newsubfolder)
+            targetdirs.append(newsubfolder)
+
+    print targetdirs
+    for i in range(1, numfiles + 1):
+        newfilename = "parcelTest%03d.dat" % i
+        randomloc = targetdirs[int(random.uniform(0, len(targetdirs)))]
+        filesize = int(random.uniform(minfilesize, maxfilesize))
+#        print "Generating file %s in %s of size %d" % (newfilename, randomloc, filesize)
+        GenerateTestFile(randomloc, newfilename, filesize)
 
 def GetProcessIDs(targetProcess):
 
@@ -205,11 +257,19 @@ def WaitForProcessesToExit(totalWaits):
 
 def CallParcel(parcelArgs, remoteStr, sourceStr):
     commandStr = "./%s %s %s %s" % ( g_appName, parcelArgs, sourceStr, remoteStr)
-    print "********"
-    print commandStr
-    print "********"
+#    print commandStr
     os.system(commandStr)
     WaitForProcessesToExit(TOTAL_WAITS)
+
+def PrintResultsBrief(results):
+
+    sys.stdout.write("Results: ")
+    for item in results:
+        if ( item ):
+            sys.stdout.write("+")
+        else:
+            sys.stdout.write("-")
+    print
 
 def PrintResults(results):
     i = 0
@@ -250,17 +310,14 @@ def SetupParcelArgs(cmdArgs):
 
     parcelArgs = ""
     # use verbose output if requested
-#        if cmdArgs['verbose']:
     if 'verbose' in cmdArgs:
         parcelArgs += "-v "
 
     # use logging if requested
-#        if cmdArgs['verbose']:
     if 'logging' in cmdArgs:
         parcelArgs += "-b "
 
     # use encryption if requested
-#        if cmdArgs['crypto']:
     if 'crypto' in cmdArgs:
         parcelArgs += "-n "
 
@@ -296,73 +353,93 @@ def FindAnotherRemoteDir(localDir):
 # Main app
 #
 #
+def Main():
+    cmdArgs = ParseCommandLineArgs()
 
-cmdArgs = ParseCommandLineArgs()
+    passResults = []
 
-passResults = []
+    ids = GetProcessIDs(g_appName)
+#    WaitForProcessesToExit(0)
+#    if len(ids) > 0 :
+#        print "parcel instances still running, killing"
+#        commandStr = "killall %s" % g_appName
+#        os.system(commandStr)
 
-ids = GetProcessIDs(g_appName)
-if len(ids) > 0 :
-    print "parcel instances still running, killing"
-    commandStr = "killall %s" % g_appName
-    os.system(commandStr)
+    if ('source' in cmdArgs) & ('target' in cmdArgs):
+        if (cmdArgs['source'] != cmdArgs['target']):
 
-if ('source' in cmdArgs) & ('target' in cmdArgs):
-    if (cmdArgs['source'] != cmdArgs['target']):
+            parcelArgs = SetupParcelArgs(cmdArgs)
 
-        parcelArgs = SetupParcelArgs(cmdArgs)
+            remoteUser = cmdArgs['user']
+            gendata = cmdArgs['gendata']
+            genloop = cmdArgs['genloop']
+            localUser = getpass.getuser()
+            remoteSys = cmdArgs['remotehost']
+            if ( remoteSys != "localhost" ):
+                localSys = GetIPAddress('eth0')
+            else:
+                localSys = GetIPAddress('lo')
 
-        remoteUser = cmdArgs['user']
-        localUser = getpass.getuser()
-        remoteSys = cmdArgs['remotehost']
-        if ( remoteSys != "localhost" ):
-            localSys = GetIPAddress('eth0')
-        else:
-            localSys = GetIPAddress('lo')
+            localDir = cmdArgs['source']
+            remoteDir = cmdArgs['target']
 
-        localDir = cmdArgs['source']
-        remoteDir = cmdArgs['target']
+            newLocalDir = FindAnotherRemoteDir(localDir)
 
-        newLocalDir = FindAnotherRemoteDir(localDir)
+            remoteStr = "%s@%s:%s" % ( remoteUser, remoteSys, remoteDir )
+            backStr = "%s@%s:%s" % ( localUser, localSys, newLocalDir)
+            remoteDir = os.path.join(os.path.expanduser("~"), remoteDir)
+            passes = cmdArgs['trips']
+            while passes > 0:
+                # kill any processes hanging around
+                WaitForProcessesToExit(0)
 
-        remoteStr = "%s@%s:%s" % ( remoteUser, remoteSys, remoteDir )
-        backStr = "%s@%s:%s" % ( localUser, localSys, newLocalDir)
-        remoteDir = os.path.join(os.path.expanduser("~"), remoteDir)
-        passes = cmdArgs['trips']
-        while passes > 0:
-            # kill any processes hanging around
-            WaitForProcessesToExit(0)
+                print
+                print "****** Trip %02d ******" % ((cmdArgs['trips'] - passes) + 1)
 
-            print "****** Trip %02d ******" % ((cmdArgs['trips'] - passes) + 1)
+                if gendata || genloop:
+                    DeleteDirectoryContents(localDir)
+                    # create the data
+                    GenerateTestData(localDir, 3, 32, 1048576, 52428800)
+                    gendata = False
 
-            # clear out the directories
+                # clear out the other directories
+                DeleteDirectoryContents(newLocalDir)
+                DeleteDirectoryContents(remoteDir, "%s@%s" % (remoteUser, remoteSys))
+
+
+                # do a round trip
+                # send from local to remote
+                print "Local to remote..."
+                CallParcel(parcelArgs, remoteStr, localDir)
+                # get from remote to local
+#                print "Let's wait a few..."
+                time.sleep(1)
+
+                print "Remote to local..."
+                CallParcel(parcelArgs, newLocalDir, remoteStr)
+    #            LocalToRemote(cmdArgs, parcelArgs, remoteStr, localDir)
+    #            RemoteToLocal(cmdArgs, parcelArgs, remoteStr, remoteDir, newLocalDir)
+#                print "Let's wait a few..."
+                time.sleep(1)
+
+                # compare the files after the trip
+                result = CompareDirectories(localDir, newLocalDir)
+
+                passResults.append(result)
+                print
+                PrintResultsBrief(passResults)
+                print "****** Trip done ******"
+                print
+                passes = passes - 1
+
+            PrintResults(passResults)
+            # delete contents on way out
             DeleteDirectoryContents(newLocalDir)
             DeleteDirectoryContents(remoteDir, "%s@%s" % (remoteUser, remoteSys))
-            # do a round trip
-            # send from local to remote
-            CallParcel(parcelArgs, remoteStr, localDir)
-            # get from remote to local
-            print "Let's wait a few..."
-            time.sleep(1)
-
-            CallParcel(parcelArgs, newLocalDir, remoteStr)
-#            LocalToRemote(cmdArgs, parcelArgs, remoteStr, localDir)
-#            RemoteToLocal(cmdArgs, parcelArgs, remoteStr, remoteDir, newLocalDir)
-            print "Let's wait a few..."
-            time.sleep(1)
-
-            # compare the files after the trip
-            result = CompareDirectories(localDir, newLocalDir)
-
-            passResults.append(result)
-            passes = passes - 1
-
-        PrintResults(passResults)
-        # delete contents on way out
-        DeleteDirectoryContents(newLocalDir)
-        DeleteDirectoryContents(remoteDir, "%s@%s" % (remoteUser, remoteSys))
-        os.rmdir(newLocalDir)
+            os.rmdir(newLocalDir)
+        else:
+            print "Source and target cannot be the same"
     else:
-        print "Source and target cannot be the same"
-else:
-    PrintHelp()
+        PrintHelp()
+
+Main()

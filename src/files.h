@@ -67,6 +67,10 @@ extern char *f_map;
 extern int flogfd;
 extern char log_path[MAX_PATH_LEN];
 
+void set_socket_ready(int state);
+
+int get_socket_ready();
+
 int print_file_LL(file_LL *list);
 
 int is_in_checkpoint(file_object_t *file);
@@ -123,6 +127,12 @@ int map_fd(int fd, off_t size);
 int unmap_fd(int fd, off_t size);
 
 int mwrite(char* buff, off_t pos, int len);
+
+// wrapper around read to control & check
+ssize_t pipe_read(int fd, void *buf, size_t count);
+
+// wrapper around write to control & check
+ssize_t pipe_write(int fd, const void *buf, size_t count);
 
 // Set the mtime for a given file
 int set_mod_time(char* filename, long int mtime_nsec, int mtime);

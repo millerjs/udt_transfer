@@ -44,7 +44,8 @@ int validate_header(header_t header)
 int read_header(header_t *header)
 {
 	// return read(fileno(stdin), header, sizeof(header_t));
-	return read(g_opts.recv_pipe[0], header, sizeof(header_t));
+	verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, sizeof(header_t));
+	return pipe_read(g_opts.recv_pipe[0], header, sizeof(header_t));
 }
 
 // wrapper for read
@@ -56,7 +57,8 @@ off_t read_data(void* b, int len)
 
 	while (total < len) {
 		// rs = read(fileno(stdin), buffer+total, len - total);
-		rs = read(g_opts.recv_pipe[0], buffer+total, len - total);
+		verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, len - total);
+		rs = pipe_read(g_opts.recv_pipe[0], buffer+total, len - total);
 		total += rs;
 		G_TOTAL_XFER += rs;
 	}
@@ -104,7 +106,8 @@ int receive_files(char*base_path)
 {
 	header_t header;
 
-	while (!g_opts.socket_ready) {
+//	while (!g_opts.socket_ready) {
+	while ( !get_socket_ready() ) {
 		usleep(10000);
 	}
 
@@ -122,6 +125,7 @@ int receive_files(char*base_path)
 		if (global_receive_data.read_new_header) {
 			if ((global_receive_data.rs = read_header(&header)) <= 0) {
 				ERR("[%s] Bad header read, errno: %d", __func__, errno);
+				break;
 			}
 		}
 
@@ -130,6 +134,8 @@ int receive_files(char*base_path)
 			int postMasterStatus = dispatch_message(receive_postmaster, header, &global_receive_data);
 			if ( postMasterStatus != POSTMASTER_OK ) {
 				verb(VERB_1, "[%s] bad message dispatch call: %d", __func__, postMasterStatus);
+				set_thread_exit();
+				break;
 			}
 		}
 		usleep(100);
@@ -463,7 +469,8 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 	// get size of list and such
 	int totalSize = get_filelist_size(fileList);
 
-	while (!g_opts.socket_ready) {
+	while ( !get_socket_ready() ) {
+//	while (!g_opts.socket_ready) {
 		verb(VERB_3, "[%s] Socket not ready, waiting", __func__);
 		usleep(10000);
 	}

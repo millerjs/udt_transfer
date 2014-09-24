@@ -402,8 +402,8 @@ void* senddata(void* _args)
 			}
 
 			int ss;
-			verb(VERB_2, "[%s %lu] Reading from pipe", __func__, tid);
-			bytes_read = read(args->send_pipe[0], outdata+offset, (BUFF_SIZE - offset));
+			verb(VERB_2, "[%s %lu] Reading %lu from pipe", __func__, tid, (BUFF_SIZE - offset));
+			bytes_read = pipe_read(args->send_pipe[0], outdata+offset, (BUFF_SIZE - offset));
 
 			if(bytes_read < 0) {
 				cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -470,7 +470,7 @@ void* senddata(void* _args)
 				break;
 			}
 
-			bytes_read = read(args->send_pipe[0], outdata, BUFF_SIZE);
+			bytes_read = pipe_read(args->send_pipe[0], outdata, BUFF_SIZE);
 			int ssize = 0;
 			int ss;
 

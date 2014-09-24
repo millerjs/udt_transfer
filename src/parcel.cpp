@@ -461,24 +461,23 @@ int run_ssh_command()
 int get_remote_pid()
 {
 	// Try and get the pid of the remote process from the ssh pipe input
-	if (read(g_opts.recv_pipe[0], &g_remote_args.remote_pid, sizeof(pid_t)) < 0) {
+/*	if (pipe_read(g_opts.recv_pipe[0], &g_remote_args.remote_pid, sizeof(pid_t)) < 0) {
 		perror("WARNING: Unable to read pid from remote process");
 	}
 
 	// Read something from the pipe, proceed
 	else {
 		verb(VERB_2, "[%d %s] Remote process pid: %d", g_flags, __func__, g_remote_args.remote_pid);
-	}
+	} */
 	return 0;
 }
 
 
 int get_shared_key()
 {
-	char temp_key_buffer[4096];
-	if (read(g_opts.recv_pipe[0], &temp_key_buffer, sizeof(pid_t)) < 0) {
-
-	}
+//	char temp_key_buffer[4096];
+//	if (pipe_read(g_opts.recv_pipe[0], &temp_key_buffer, sizeof(pid_t)) < 0) {
+//	}
 
 	return 0;
 }
@@ -654,6 +653,8 @@ int set_defaults()
 	g_opts.recv_pipe              = NULL;
 	g_remote_args.local_ip        = NULL;
 	g_remote_args.remote_ip       = NULL;
+
+	set_socket_ready(0);
 
 	return RET_SUCCESS;
 }
@@ -996,7 +997,7 @@ int master_transfer_setup()
 			ERR("[%d %s] received key of improper length", g_flags, __func__);
 		}
 		verb(VERB_3, "[%d %s] Got key back of len %d:", g_flags, __func__, key_len);
-		debug_print(tmpBuf, PARCEL_CRYPTO_KEY_LENGTH, 16);
+		print_bytes(tmpBuf, PARCEL_CRYPTO_KEY_LENGTH, 16);
 //		verb(VERB_3, "%s", tmpBuf);
 
 		// copy it to our key
@@ -1018,6 +1019,7 @@ int master_transfer_setup()
 			strncpy(g_session_key, "password", sizeof(char) * strlen("password") + 1);
 			verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
 			verb(VERB_3, "%s", g_session_key);
+			key_len = strlen("password");
 		}
 		g_opts.enc = new Crypto(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
 		g_opts.dec = new Crypto(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
@@ -1039,6 +1041,7 @@ int minion_transfer_setup()
 	char    tmpBuf[PARCEL_MAX_TEMP_KEY_LENGTH];
 
 	if (g_opts.encryption) {
+		int key_len = PARCEL_CRYPTO_KEY_LENGTH;
 		char* cipher = (char*) "aes-128";
 		// fly - here is where we use the key instead of the password
 		if ( !g_session_key ) {
@@ -1048,12 +1051,10 @@ int minion_transfer_setup()
 			strncpy(g_session_key, "password", sizeof(char) * strlen("password") + 1);
 			verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
 			verb(VERB_3, "%s", g_session_key);
-		} else {
-			g_opts.enc = new Crypto(EVP_ENCRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-			g_opts.dec = new Crypto(EVP_DECRYPT, strlen(g_session_key), (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-//			verb(VERB_3, "[%d %s] enc thread_id = %d", g_flags, __func__, enc.get_thread_id());
-//			verb(VERB_3, "[%d %s] dec thread_id = %d", g_flags, __func__, enc.get_thread_id());
+			key_len = strlen("password");
 		}
+		g_opts.enc = new Crypto(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+		g_opts.dec = new Crypto(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
 	}
 	return RET_SUCCESS;
 }
@@ -1103,8 +1104,7 @@ int start_transfer(int argc, char*argv[], int optind)
 
 		// sending pid if other side needs to kill?
 /*        pid_t pid = getpid();
-        write(g_opts.send_pipe[1], &pid, sizeof(pid_t)); */
-		g_opts.socket_ready = 1;
+        pipe_write(g_opts.send_pipe[1], &pid, sizeof(pid_t)); */
 
 		verb(VERB_2, "[%d %s] Running with file destination mode",g_flags, __func__);
 		start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
@@ -1116,11 +1116,12 @@ int start_transfer(int argc, char*argv[], int optind)
 //        verb(VERB_3, "[%d %s RECV] enc thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
 //        verb(VERB_3, "[%d %s RECV] dec thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
 
+//		g_opts.socket_ready = 1;
 		// Listen to sender for files and data, see receiver.cpp
 		receive_files(g_base_path);
 
 //		header_t* h = nheader(XFER_COMPLETE, 0);
-//		write(g_opts.send_pipe[1], h, sizeof(header_t));
+//		pipe_write(g_opts.send_pipe[1], h, sizeof(header_t));
 //		free(h);
 
 	} else if (g_opts.mode & MODE_SEND) {

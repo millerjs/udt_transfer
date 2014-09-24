@@ -83,7 +83,7 @@ int write_header(header_t* header)
 {
 
 	// should you be using write block?
-	int ret = write(g_opts.send_pipe[1], header, sizeof(header_t));
+	int ret = pipe_write(g_opts.send_pipe[1], header, sizeof(header_t));
 
 	return ret;
 
@@ -101,7 +101,7 @@ off_t write_block(header_t* header, int len)
 	int send_len = len + sizeof(header_t);
 
 //	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
-	int ret = write(g_opts.send_pipe[1], sender_block.buffer, send_len);
+	int ret = pipe_write(g_opts.send_pipe[1], sender_block.buffer, send_len);
 
 	if (ret < 0) {
 		ERR("unable to write to send_pipe");
@@ -138,7 +138,8 @@ int send_file(file_object_t *file)
 		return -1;
 	}
 
-	while (!g_opts.socket_ready) {
+//	while (!g_opts.socket_ready) {
+	while ( !get_socket_ready() ) {
 		usleep(10000);
 	}
 
@@ -254,7 +255,8 @@ int send_file(file_object_t *file)
 
 int send_filelist(file_LL* fileList, int totalSize)
 {
-	while (!g_opts.socket_ready) {
+//	while (!g_opts.socket_ready) {
+	while ( !get_socket_ready() ) {
 		usleep(10000);
 	}
 

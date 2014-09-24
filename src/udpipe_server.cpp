@@ -227,6 +227,7 @@ void *run_server(void *_args_)
 //		pthread_create(&sndthread, NULL, senddata, &send_args);
 //		RegisterThread(sndthread, "senddata", THREAD_TYPE_2);
 
+		set_socket_ready(1);
 		verb(VERB_2, "[%s] Waiting for send thread to complete", __func__);
 		pthread_join(sndthread, NULL);
 

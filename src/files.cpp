@@ -33,9 +33,25 @@ int flogfd = 0;
 char *f_map = NULL;
 char log_path[MAX_PATH_LEN];
 
+int g_socket_ready = 0;
+
 // Initialize
 
 file_LL *checkpoint = NULL;
+
+void set_socket_ready(int state)
+{
+	if ( state != 0 ) {
+		g_socket_ready = 1;
+	} else {
+		g_socket_ready = 0;
+	}
+}
+
+int get_socket_ready()
+{
+	return g_socket_ready;
+}
 
 // map the file pointed to by a file descriptor to memory
 
@@ -556,8 +572,6 @@ off_t fsize(int fd)
     return size;
 }
 
-
-
 int generate_base_path(char* prelim, char *data_path)
 {
     // generate a base path for all destination files
@@ -572,6 +586,38 @@ int generate_base_path(char* prelim, char *data_path)
     }
 
     return bl;
+}
+
+//
+// pipe_write
+//
+// writes to a given file descriptor/pipe
+// is a dummy wrapper around write to better track how/when access is being done
+//
+ssize_t pipe_write(int fd, const void *buf, size_t count)
+{
+	ssize_t written_bytes;
+
+	written_bytes = write(fd, buf, count);
+	verb(VERB_2, "[%s] Written %lu bytes (%d requested) to fd %d", __func__, written_bytes, count, fd);
+
+	return written_bytes;
+}
+
+//
+// pipe_read
+//
+// reads from a given file descriptor/pipe
+// is a dummy wrapper around read to better track how/when access is being done
+//
+ssize_t pipe_read(int fd, void *buf, size_t count)
+{
+	ssize_t read_bytes;
+
+	read_bytes =  read(fd, buf, count);
+	verb(VERB_2, "[%s] Read %lu bytes (%d requested) from fd %d", __func__, read_bytes, count, fd);
+
+	return read_bytes;
 }
 
 //
