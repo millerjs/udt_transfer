@@ -245,7 +245,7 @@ void print_xfer_stats()
 
 		double scale = get_scale(G_TOTAL_XFER, label);
 
-		fprintf(stderr, "\t\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n",
+		fprintf(stderr, "\n\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n",
 				G_TOTAL_XFER/scale, label, elapsed,
 				G_TOTAL_XFER/(elapsed*SIZE_GB));
 	}
@@ -350,10 +350,12 @@ int print_progress(char* descrip, off_t read, off_t total)
         double percent = total ? read*100./total : 0.0;
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
         verb(VERB_2, fmt, descrip, read/scale, total/scale, label, percent);
+        fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
 
     } else {
         sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
         verb(VERB_2, fmt, descrip, read/scale, label);
+        fprintf(stderr, fmt, descrip, read/scale, label);
     }
 
     return RET_SUCCESS;
@@ -387,7 +389,7 @@ int run_ssh_command()
     // Redirect output from ssh process to ssh_fd
     char *args[] = {
         "ssh",
-        "-A",
+        "-A -q",
         g_remote_args.pipe_host,
         remote_pipe_cmd,
         NULL
@@ -1001,9 +1003,9 @@ int master_transfer_setup()
 //		verb(VERB_3, "%s", tmpBuf);
 
 		// copy it to our key
-		g_session_key = (char*)malloc(sizeof(char) * key_len + 1);
-		memset(g_session_key, 0, sizeof(char) * key_len + 1);
-		strncpy(g_session_key, tmpBuf, sizeof(char) * key_len + 1);
+		g_session_key = (char*)malloc(sizeof(char) * key_len);
+		memset(g_session_key, 0, sizeof(char) * key_len);
+		strncpy(g_session_key, tmpBuf, sizeof(char) * key_len);
 //		verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
 //		verb(VERB_3, "%s", g_session_key);
 	}
@@ -1237,6 +1239,12 @@ void init_parcel(int argc, char *argv[])
 	get_base_path(argc, argv, optind);
 
 	verb(VERB_2, "[%d %s] parcel started as id %d", g_flags, __func__, getpid());
+
+	if ( !g_opts.encryption ) {
+		// fly - set this as ready so it passes all checks on non-encrypted
+		// it's only used to say it's initialized
+		set_encrypt_ready(1);
+	}
 
 	initialize_pipes();
 	init_sender();

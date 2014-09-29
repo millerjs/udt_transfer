@@ -107,7 +107,7 @@ int receive_files(char*base_path)
 	header_t header;
 
 //	while (!g_opts.socket_ready) {
-	while ( !get_socket_ready() ) {
+	while ( !get_socket_ready() || !get_encrypt_ready()) {
 		usleep(10000);
 	}
 
@@ -134,6 +134,7 @@ int receive_files(char*base_path)
 			int postMasterStatus = dispatch_message(receive_postmaster, header, &global_receive_data);
 			if ( postMasterStatus != POSTMASTER_OK ) {
 				verb(VERB_1, "[%s] bad message dispatch call: %d", __func__, postMasterStatus);
+				print_bytes((char*)&header, sizeof(header_t), 16);
 				set_thread_exit();
 				break;
 			}
@@ -469,7 +470,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 	// get size of list and such
 	int totalSize = get_filelist_size(fileList);
 
-	while ( !get_socket_ready() ) {
+	while ( !get_socket_ready() || !get_encrypt_ready()) {
 //	while (!g_opts.socket_ready) {
 		verb(VERB_3, "[%s] Socket not ready, waiting", __func__);
 		usleep(10000);

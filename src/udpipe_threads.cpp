@@ -107,23 +107,28 @@ void recv_full(UDTSOCKET sock, char* buffer, int len)
 	}
 }
 
-const int KEY_LEN = 1026;
-int signed_auth;
+//const int KEY_LEN = 1026;
+const int KEY_LEN = 64;
+int g_signed_auth;
 
 
 void auth_peer(rs_args* args)
 {
-	char key[KEY_LEN];
+	char auth_peer_key[KEY_LEN];
 	char signed_key[KEY_LEN];
 
-	RAND_bytes((unsigned char*)key, KEY_LEN);
+	RAND_bytes((unsigned char*)auth_peer_key, KEY_LEN);
+	verb(VERB_2, "[%s] Generated key:", __func__);
+	print_bytes(auth_peer_key, KEY_LEN, 16);
 
-	signed_auth = 0;
+	g_signed_auth = 0;
 
-	send_full(*args->usocket, key, KEY_LEN);
+	verb(VERB_2, "[%s] Sending data", __func__);
+	send_full(*args->usocket, auth_peer_key, KEY_LEN);
 
-	while (!signed_auth);
+	while (!g_signed_auth);
 
+	verb(VERB_2, "[%s] Receiving data", __func__);
 	recv_full(*args->usocket, signed_key, KEY_LEN);
 
 	int crypt_len = KEY_LEN/args->n_crypto_threads;
@@ -134,38 +139,49 @@ void auth_peer(rs_args* args)
 
 	join_all_encryption_threads(args->c);
 
-	if (memcmp(key, signed_key, KEY_LEN)) {
-		verb(VERB_2, "Authorization failed\n");
-		verb(VERB_2, "key:\n");
-		print_bytes(key, KEY_LEN, 16);
-		verb(VERB_2, "signed_key:\n");
+	if (memcmp(auth_peer_key, signed_key, KEY_LEN)) {
+		verb(VERB_2, "[%s] Authorization failed", __func__);
+		verb(VERB_2, "key:");
+		print_bytes(auth_peer_key, KEY_LEN, 16);
+		verb(VERB_2, "signed_key:");
 		print_bytes(signed_key, KEY_LEN, 16);
 		exit(1);
+	} else {
+		verb(VERB_2, "[%s] Key signed OK", __func__);
+		set_encrypt_ready(1);
 	}
 }
 
 
 void sign_auth(rs_args* args)
 {
-	char key[KEY_LEN];
+	char sign_auth_key[KEY_LEN];
 
+	verb(VERB_2, "[%s] Receiving data", __func__);
 	// appears to try and receive a key
-	recv_full(*args->usocket, key, KEY_LEN);
+	recv_full(*args->usocket, sign_auth_key, KEY_LEN);
+
+	verb(VERB_2, "[%s] received key:", __func__);
+	print_bytes(sign_auth_key, KEY_LEN, 16);
 
 	// pass the key to the encode thread
 	int crypt_len = KEY_LEN/args->n_crypto_threads;
 	for (int i = 0; i < args->n_crypto_threads; i ++) {
-		pass_to_enc_thread(key+i*crypt_len, key+i*crypt_len,
+		pass_to_enc_thread(sign_auth_key+i*crypt_len, sign_auth_key+i*crypt_len,
 				crypt_len, args->c);
 	}
 
 	join_all_encryption_threads(args->c);
 
-	// send the key back
-	send_full(*args->usocket, key, KEY_LEN);
+	verb(VERB_2, "[%s] signed key:", __func__);
+	print_bytes(sign_auth_key, KEY_LEN, 16);
 
-	// set the signed_auth to true
-	signed_auth = 1;
+	verb(VERB_2, "[%s] Sending data back", __func__);
+	// send the key back
+	send_full(*args->usocket, sign_auth_key, KEY_LEN);
+
+	// set the g_signed_auth to true
+	g_signed_auth = 1;
 
 }
 
@@ -198,10 +214,10 @@ void* recvdata(void * _args)
 		exit(EXIT_FAILURE);
 	}
 
-//    // fly - we have keys, so this should be unnecessary
-/*    if (args->use_crypto) {
-        auth_peer(args);
-    } */
+	if (args->use_crypto) {
+		verb(VERB_2, "[%s %lu] Authorizing peer with key", __func__, tid);
+		auth_peer(args);
+	}
 
 	timeout_sem = 2;
 
@@ -292,7 +308,7 @@ void* recvdata(void * _args)
 
 				join_all_encryption_threads(args->c);
 
-				write(args->recv_pipe[1], indata, block_size);
+				pipe_write(args->recv_pipe[1], indata, block_size);
 
 				buffer_cursor = 0;
 				crypto_cursor = 0;
@@ -327,7 +343,7 @@ void* recvdata(void * _args)
 			}
 
 			timeout_sem = 1;
-			write(args->recv_pipe[1], indata, rs);
+			pipe_write(args->recv_pipe[1], indata, rs);
 		}
 	}
 
@@ -371,10 +387,10 @@ void* senddata(void* _args)
 	int bytes_read;
 
     // verifies that we can encrypt/decrypt
-/*    if (args->use_crypto) {
+    if (args->use_crypto) {
         verb(VERB_2, "[%s %lu] Sending encryption status...", __func__, tid);
         sign_auth(args);
-    } */
+    }
 
     // long local_openssl_version;
     // if (args->use_crypto)
@@ -406,7 +422,9 @@ void* senddata(void* _args)
 			bytes_read = pipe_read(args->send_pipe[0], outdata+offset, (BUFF_SIZE - offset));
 
 			if(bytes_read < 0) {
-				cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
+//				cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
+//				verb(VERB_1, "[%s %lu] Error on read: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
+				verb(VERB_1, "[%s %lu] Error on read: (%d) %s", errno, strerror(errno));
 				break;
 			}
 
@@ -443,7 +461,9 @@ void* senddata(void* _args)
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
 
-					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
+//					verb(VERB_1, "[%s %lu] Error on send: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
+					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
+//					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
 					error = 1;
 					break;
 				}
@@ -482,8 +502,10 @@ void* senddata(void* _args)
 			while(ssize < bytes_read) {
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
-					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-					verb(VERB_2, "[%s %lu] Leaving on error", __func__, tid);
+//					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
+//					verb(VERB_1, "[%s %lu] Error on send: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
+					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
+//					verb(VERB_2, "[%s %lu] Leaving on error", __func__, tid);
 					error = 1;
 					break;
 				}

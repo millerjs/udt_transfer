@@ -34,6 +34,7 @@ char *f_map = NULL;
 char log_path[MAX_PATH_LEN];
 
 int g_socket_ready = 0;
+int g_encrypt_verified = 0;
 
 // Initialize
 
@@ -52,6 +53,22 @@ int get_socket_ready()
 {
 	return g_socket_ready;
 }
+
+
+void set_encrypt_ready(int state)
+{
+	if ( state != 0 ) {
+		g_encrypt_verified = 1;
+	} else {
+		g_encrypt_verified = 0;
+	}
+}
+
+int get_encrypt_ready()
+{
+	return g_encrypt_verified;
+}
+
 
 // map the file pointed to by a file descriptor to memory
 

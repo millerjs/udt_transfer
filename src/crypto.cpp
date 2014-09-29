@@ -179,12 +179,14 @@ int Crypto::wait_thread_ready(int thread_id)
 
 int Crypto::lock_data(int thread_id)
 {
-    return pthread_mutex_lock(&c_lock[thread_id]);
+	verb(VERB_2, "[%s] thread %d", __func__, thread_id);
+	return pthread_mutex_lock(&c_lock[thread_id]);
 }
 
 int Crypto::unlock_data(int thread_id)
 {
-    return pthread_mutex_unlock(&c_lock[thread_id]);
+	verb(VERB_2, "[%s] thread %d", __func__, thread_id);
+	return pthread_mutex_unlock(&c_lock[thread_id]);
 }
 
 
@@ -200,22 +202,23 @@ int Crypto::unlock_data(int thread_id)
 // given len of 0
 int Crypto::encrypt(char *in, char *out, int len)
 {
-    int evp_outlen;
+	int evp_outlen;
 
-    if (len == 0) {
-        if (!EVP_CipherFinal_ex(&ctx[0], (unsigned char *)out, &evp_outlen)) {
-            verb(VERB_2, "encryption error");
-            exit(EXIT_FAILURE);
-        }
-        return evp_outlen;
-    }
+	if (len == 0) {
+		if (!EVP_CipherFinal_ex(&ctx[0], (unsigned char *)out, &evp_outlen)) {
+			verb(VERB_2, "encryption error");
+			exit(EXIT_FAILURE);
+		}
+		return evp_outlen;
+	}
 
-    if(!EVP_CipherUpdate(&ctx[0], (unsigned char *)out, &evp_outlen, (unsigned char *)in, len))
-    {
-        verb(VERB_2, "encryption error");
-        exit(EXIT_FAILURE);
-    }
-    return evp_outlen;
+	verb(VERB_2, "[%s] encrypting on data %X to %X", __func__, in, out);
+	if(!EVP_CipherUpdate(&ctx[0], (unsigned char *)out, &evp_outlen, (unsigned char *)in, len))
+	{
+		verb(VERB_2, "encryption error");
+		exit(EXIT_FAILURE);
+	}
+	return evp_outlen;
 }
 
 
@@ -302,6 +305,7 @@ int crypto_update(char* in, char* out, int len, Crypto *c)
     } else {
 
         // [EN][DE]CRYPT
+        verb(VERB_2, "[%s] calling update for thread %d on data %X", __func__, i, in);
         if(!EVP_CipherUpdate(&c->ctx[i], (uchar*)in, &evp_outlen, (uchar*)in, len)){
             verb(VERB_2, "encryption error");
             exit(EXIT_FAILURE);
@@ -334,6 +338,7 @@ void *crypto_update_thread(void* _args)
 
         e_thread_args* args = (e_thread_args*)_args;
         Crypto *c = (Crypto*)args->c;
+        verb(VERB_2,  "[%s %lu] Heading into main loop", __func__, pthread_self());
 
         while (1) {
             if ( check_for_exit(THREAD_TYPE_1) ) {
@@ -418,6 +423,7 @@ int pass_to_enc_thread(char* in, char*out, int len, Crypto*c)
     if (len > 0) {
 
         int thread_id = c->get_thread_id();
+        verb(VERB_2, "[%s] sending data of len %d to thread %d", __func__, len, thread_id);
         c->lock_data(thread_id);
 
         c->increment_thread_id();
@@ -573,7 +579,7 @@ char* generate_random_string(int string_len)
 // docs say 1000 minimum
 #define NUM_ITERATIONS  1008
 
-#define KEY_BUFFER_LEN  43
+#define KEY_BUFFER_LEN  42
 
 char* generate_session_key(void)
 {
@@ -590,7 +596,7 @@ char* generate_session_key(void)
 	key_len = PKCS5_PBKDF2_HMAC_SHA1(NULL, 0, NULL, 0, NUM_ITERATIONS, KEY_BUFFER_LEN - 1, (unsigned char*)pem_key);
 
 	if ( key_len ) {
-		verb(VERB_2, "[%s] created pem_key", __func__, key_len);
+		verb(VERB_2, "[%s] created pem_key of length %d", __func__, key_len);
 		print_bytes(pem_key, KEY_BUFFER_LEN, 16);
 	} else {
 		verb(VERB_2, "[%s] unable to create key!", __func__);

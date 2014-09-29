@@ -152,7 +152,7 @@ void print_backtrace()
 
 
 //
-// debug_print
+// print_bytes
 //
 // prints a buffer of data, [output_line_len] bytes in a line
 // 32 bytes max

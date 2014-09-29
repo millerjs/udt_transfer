@@ -71,6 +71,10 @@ void set_socket_ready(int state);
 
 int get_socket_ready();
 
+void set_encrypt_ready(int state);
+
+int get_encrypt_ready();
+
 int print_file_LL(file_LL *list);
 
 int is_in_checkpoint(file_object_t *file);

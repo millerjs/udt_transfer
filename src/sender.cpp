@@ -100,7 +100,7 @@ off_t write_block(header_t* header, int len)
 
 	int send_len = len + sizeof(header_t);
 
-//	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
+	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
 	int ret = pipe_write(g_opts.send_pipe[1], sender_block.buffer, send_len);
 
 	if (ret < 0) {
@@ -139,7 +139,7 @@ int send_file(file_object_t *file)
 	}
 
 //	while (!g_opts.socket_ready) {
-	while ( !get_socket_ready() ) {
+	while ( !get_socket_ready() || !get_encrypt_ready()) {
 		usleep(10000);
 	}
 
@@ -256,7 +256,7 @@ int send_file(file_object_t *file)
 int send_filelist(file_LL* fileList, int totalSize)
 {
 //	while (!g_opts.socket_ready) {
-	while ( !get_socket_ready() ) {
+	while ( !get_socket_ready() || !get_encrypt_ready()) {
 		usleep(10000);
 	}
 
@@ -324,7 +324,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
 		}
 
 		if (global_send_data.rs) {
-//			verb(VERB_2, "[%s] Dispatching message to sender: %d", __func__, header.type);
+			verb(VERB_2, "[%s] Dispatching message to sender: %d", __func__, header.type);
 			dispatch_message(send_postmaster, header, &global_send_data);
 		}
 
