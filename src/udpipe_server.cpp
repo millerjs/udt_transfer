@@ -173,6 +173,7 @@ void *run_server(void *_args_)
 	recv_args.use_crypto = args->use_crypto;
 	recv_args.verbose = args->verbose;
 	recv_args.n_crypto_threads = args->n_crypto_threads;
+	recv_args.master = args->master;
 	if ( (args->dec == NULL) && (args->use_crypto) ) {
 		fprintf(stderr, "[%s] crypto class 'dec' uninitialized\n", __func__ );
 		exit(1);
@@ -206,6 +207,8 @@ void *run_server(void *_args_)
 	send_args.n_crypto_threads = args->n_crypto_threads;
 	send_args.c = args->enc;
 	send_args.timeout = args->timeout;
+	send_args.master = args->master;
+
 	if ( (args->enc == NULL) && (args->use_crypto) ) {
 		fprintf(stderr, "[%s] crypto class 'enc' uninitialized\n", __func__ );
 		exit(1);

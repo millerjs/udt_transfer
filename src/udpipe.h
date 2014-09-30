@@ -34,34 +34,36 @@ and limitations under the License.
 #define BUFF_SIZE 67108864
 
 typedef struct rs_args{
-    UDTSOCKET*usocket;
-    Crypto *c;
-    int use_crypto;
-    int verbose;
-    int n_crypto_threads; 
-    int timeout;
-    int *send_pipe;
-    int *recv_pipe;
+	UDTSOCKET*usocket;
+	Crypto *c;
+	int use_crypto;
+	int verbose;
+	int n_crypto_threads;
+	int timeout;
+	int *send_pipe;
+	int *recv_pipe;
+	int master;
 } rs_args;
 
 typedef struct thread_args{
-    Crypto *enc;
-    Crypto *dec;
-    char *listen_ip;
-    char *ip;
-    char *port;
-    int blast;
-    int blast_rate;
-    size_t udt_buff;
-    size_t udp_buff;
-    int mss;
-    int use_crypto;
-    int verbose;
-    int n_crypto_threads;
-    int print_speed; 
-    int timeout;
-    int *send_pipe;
-    int *recv_pipe;
+	Crypto *enc;
+	Crypto *dec;
+	char *listen_ip;
+	char *ip;
+	char *port;
+	int blast;
+	int blast_rate;
+	size_t udt_buff;
+	size_t udp_buff;
+	int mss;
+	int use_crypto;
+	int verbose;
+	int n_crypto_threads;
+	int print_speed;
+	int timeout;
+	int *send_pipe;
+	int *recv_pipe;
+	int master;
 } thread_args;
 
 void* send_buf_threaded(void*_args);

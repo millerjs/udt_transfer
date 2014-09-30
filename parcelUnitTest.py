@@ -11,11 +11,12 @@ TOTAL_WAITS = 3
 SLEEP_TIME = 1
 
 NUM_TEST_SUBFOLDERS = 2
-NUM_TEST_FILES = 8
+MIN_NUM_TEST_FILES = 8
+MAX_NUM_TEST_FILES = 16
 TEST_MINFILESIZE = 512000
-TEST_MAXFILESIZE = 1048576
+TEST_MAXFILESIZE = 104857600
 
-class ParcelTestFunctions(unittest.TestCase):
+class ParcelTest(unittest.TestCase):
 
     passData = {}
     parcelArgs = {}
@@ -82,7 +83,7 @@ class ParcelTestFunctions(unittest.TestCase):
         if (self.passData['gendata'] == True):
             self.deleteDirectoryContents(self.passData['localDir'])
             # create the data
-            self.generateTestData(self.passData['localDir'], NUM_TEST_SUBFOLDERS, NUM_TEST_FILES, TEST_MINFILESIZE, TEST_MAXFILESIZE)
+            self.generateTestData(self.passData['localDir'], NUM_TEST_SUBFOLDERS, MIN_NUM_TEST_FILES, MAX_NUM_TEST_FILES, TEST_MINFILESIZE, TEST_MAXFILESIZE)
 
 
     def tearDown(self):
@@ -156,8 +157,8 @@ class ParcelTestFunctions(unittest.TestCase):
     def compareDirectories(self, dir1, dir2, recurse = False):
         count = 0
         ok = True
-#        if recurse == False:
-#            print "\nCompareDirectories: comparing %s and %s" % (dir1, dir2)
+        if recurse == False:
+            print "\nCompareDirectories: comparing %s and %s" % (dir1, dir2)
         dirList1 = os.listdir(dir1)
         dirList1.sort()
 
@@ -194,7 +195,7 @@ class ParcelTestFunctions(unittest.TestCase):
         outFile.write(newFileByteArray)
         outFile.close()
 
-    def generateTestData(self, location, numsubfolders, numfiles, minfilesize, maxfilesize):
+    def generateTestData(self, location, numsubfolders, minnumfiles, maxnumfiles, minfilesize, maxfilesize):
         targetdirs = [location]
         sys.stderr.write("Generating new test data")
         # make sure the target location exists
@@ -207,6 +208,8 @@ class ParcelTestFunctions(unittest.TestCase):
                 if not os.path.exists(newsubfolder):
                     os.mkdir(newsubfolder)
                 targetdirs.append(newsubfolder)
+
+        numfiles = int(random.uniform(minnumfiles, maxnumfiles))
 
         for i in range(1, numfiles + 1):
             newfilename = "parcelTest%03d.dat" % i
@@ -344,4 +347,8 @@ class ParcelTestFunctions(unittest.TestCase):
         return result
 
 if __name__ == '__main__':
+#    parcelSuite = unittest.TestLoader().loadTestsFromTestCase(ParcelTest)
+#    parcelRunner = unittest.TextTestRunner()
+#    parcelRunner.run(parcelSuite)
     unittest.main()
+#    fooRunner = unittest.TextTestRunner(description=False)

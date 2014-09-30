@@ -101,13 +101,12 @@ int acknowlege_complete_xfer()
 
 }
 
-
 int receive_files(char*base_path)
 {
 	header_t header;
 
 //	while (!g_opts.socket_ready) {
-	while ( !get_socket_ready() || !get_encrypt_ready()) {
+	while ( !get_socket_ready() || !get_encrypt_ready() ) {
 		usleep(10000);
 	}
 
@@ -413,7 +412,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 
 	memset(&temp_stat_buffer, 0, sizeof(struct stat));
 
-	verb(VERB_3, "[%s] Received list data of size %d", __func__, header.data_len);
+//	verb(VERB_3, "[%s] Received list data of size %d", __func__, header.data_len);
 
 	char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
 
@@ -423,12 +422,12 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 
 	// repopulate the list with our timestamps, if any
 
-	verb(VERB_3, "[%s] %d elements, need to check %s for these", __func__, fileList->count, global_data->data_path);
+//	verb(VERB_3, "[%s] %d elements, need to check %s for these", __func__, fileList->count, global_data->data_path);
 
 	// if the directory exists, change to it
 	// if it doesn't, the stat checks below will fail, and we'll get all zeroes
 	if ( !stat(global_data->data_path, &temp_stat_buffer) ) {
-		verb(VERB_3, "[%s] chdir to %s", __func__, global_data->data_path);
+//		verb(VERB_3, "[%s] chdir to %s", __func__, global_data->data_path);
 		cur_directory = get_current_dir_name();
 		chdir(global_data->data_path);
 	}
@@ -451,20 +450,20 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 
 		// check if file exists
 		if ( !stat(destination, &temp_stat_buffer) ) {
-			verb(VERB_3, "[%s] File %s present", __func__, destination);
+//			verb(VERB_3, "[%s] File %s present", __func__, destination);
 			// if it's there, change the timestamp
-			verb(VERB_3, "[%s] mtime = %d, mtime_nsec = %lu", __func__, temp_stat_buffer.st_mtime, temp_stat_buffer.st_mtim.tv_nsec);
+//			verb(VERB_3, "[%s] mtime = %d, mtime_nsec = %lu", __func__, temp_stat_buffer.st_mtime, temp_stat_buffer.st_mtim.tv_nsec);
 			cursor->curr->mtime_sec = temp_stat_buffer.st_mtime;
 			cursor->curr->mtime_nsec = temp_stat_buffer.st_mtim.tv_nsec;
 		} else {
-			verb(VERB_3, "[%s] File %s not found", __func__, cursor->curr->path);
+//			verb(VERB_3, "[%s] File %s not found", __func__, cursor->curr->path);
 			// if not, zero it out
 			cursor->curr->mtime_sec = 0;
 			cursor->curr->mtime_nsec = 0;
 		}
 		cursor = cursor->next;
 	}
-	verb(VERB_3, "[%s] Done walking", __func__);
+//	verb(VERB_3, "[%s] Done walking", __func__);
 
 	// return the list
 	// get size of list and such

@@ -80,16 +80,16 @@ extern off_t G_TOTAL_XFER;
 extern int g_opt_verbosity;
 
 typedef enum : uint8_t {
-    XFER_DATA,              // 0
-    XFER_FILENAME,          // 1
-    XFER_DIRNAME,           // 2
-    XFER_F_SIZE,            // 3
-    XFER_COMPLETE,          // 4
-    XFER_WAIT,              // 5
-    XFER_DATA_COMPLETE,     // 6
-    XFER_FILELIST,          // 7
-    XFER_CONTROL,           // 8
-    NUM_XFER_CMDS
+	XFER_DATA,				// 0
+	XFER_FILENAME,			// 1
+	XFER_DIRNAME,			// 2
+	XFER_F_SIZE,			// 3
+	XFER_COMPLETE,			// 4
+	XFER_WAIT,				// 5
+	XFER_DATA_COMPLETE,		// 6
+	XFER_FILELIST,			// 7
+	XFER_CONTROL,			// 8
+	NUM_XFER_CMDS
 } xfer_t;
 
 

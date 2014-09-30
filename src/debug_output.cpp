@@ -167,7 +167,7 @@ void print_bytes(char* data, int length, int output_line_len)
 		output_line_len = (TMP_STR_SIZE - 1);
 	}
 
-	verb(VERB_2, "[%s] printing buffer of len %d at %x", __func__, length, &data);
+	verb(VERB_2, "[%s] printing buffer of len %d at %x", __func__, length, data);
 
 	while (length > 0 ) {
 		memset(asciiStr, '\0', TMP_STR_SIZE);

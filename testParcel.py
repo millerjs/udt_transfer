@@ -10,6 +10,12 @@ g_appName = "parcel"
 TOTAL_WAITS = 3
 SLEEP_TIME = 1
 
+NUM_TEST_SUBFOLDERS = 2
+NUM_TEST_FILES = 8
+TEST_MINFILESIZE = 512000
+TEST_MAXFILESIZE = 1048576
+
+
 class ParcelTestFunctions(unittest.TestCase):
     def setUp(self):
         print "setUp: start"
@@ -17,7 +23,11 @@ class ParcelTestFunctions(unittest.TestCase):
     def tearDown(self):
         print "tearDown: start"
 
+    def testEncryptedRoundTrip(self):
+        """encryptedRoundTrip"""
 
+    def testUnencryptedRoundTrip(self):
+        """unencryptedRoundTrip"""
 
 
 
@@ -158,8 +168,7 @@ def CompareDirectories(dir1, dir2, recurse = False):
     dirList2.sort()
 
     if recurse == False:
-        sys.stdout.write("Checking: ")
-#        sys.stdout.write("%s (%d) vs %s (%d) " % (dir1, len(dirList1), dir2, len(dirList2)))
+        sys.stderr.write("Checking: ")
         if ((len(dirList1) == 0) | (len(dirList2) == 0)):
             ok = False
     for file1, file2 in zip(dirList1, dirList2):
@@ -169,13 +178,12 @@ def CompareDirectories(dir1, dir2, recurse = False):
         if ( os.path.isdir(fullFile1) & os.path.isdir(fullFile2) ):
             count = count + CompareDirectories(fullFile1, fullFile2, True)
         else:
-#            sys.stdout.write("Checking %15s vs %15s: " % (file1, file2))
             same = CompareFiles(fullFile1, fullFile2)
             if same:
-                sys.stdout.write("+ ")
+                sys.stderr.write("+ ")
             else:
                 ok = False
-                sys.stdout.write("! ")
+                sys.stderr.write("! ")
 
     if recurse == False:
         print
@@ -194,6 +202,8 @@ def GenerateTestData(location, numsubfolders, numfiles, minfilesize, maxfilesize
 
     targetdirs = [location]
 
+    sys.stderr.write("Generating new test data")
+
     # make sure the target location exists
     if not os.path.exists(location):
         os.mkdir(location)
@@ -206,13 +216,16 @@ def GenerateTestData(location, numsubfolders, numfiles, minfilesize, maxfilesize
                 os.mkdir(newsubfolder)
             targetdirs.append(newsubfolder)
 
-    print targetdirs
+#    print targetdirs
     for i in range(1, numfiles + 1):
         newfilename = "parcelTest%03d.dat" % i
         randomloc = targetdirs[int(random.uniform(0, len(targetdirs)))]
         filesize = int(random.uniform(minfilesize, maxfilesize))
 #        print "Generating file %s in %s of size %d" % (newfilename, randomloc, filesize)
+        sys.stderr.write(".")
         GenerateTestFile(randomloc, newfilename, filesize)
+    print "complete"
+
 
 def GetProcessIDs(targetProcess):
 
@@ -263,12 +276,12 @@ def CallParcel(parcelArgs, remoteStr, sourceStr):
 
 def PrintResultsBrief(results):
 
-    sys.stdout.write("Results: ")
+    sys.stderr.write("Results: ")
     for item in results:
         if ( item ):
-            sys.stdout.write("+")
+            sys.stderr.write("+")
         else:
-            sys.stdout.write("-")
+            sys.stderr.write("-")
     print
 
 def PrintResults(results):
@@ -348,6 +361,64 @@ def FindAnotherRemoteDir(localDir):
 
     return newLocalDir
 
+def RoundTrip(passData, parcelArgs):
+
+        if (passData['gendata'] == True) | (passData['genloop'] == True):
+            DeleteDirectoryContents(passData['localDir'])
+            # create the data
+            GenerateTestData(passData['localDir'], NUM_TEST_SUBFOLDERS, NUM_TEST_FILES, TEST_MINFILESIZE, TEST_MAXFILESIZE)
+            passData['gendata'] = False
+
+        # clear out the other directories
+        DeleteDirectoryContents(passData['newLocalDir'])
+        DeleteDirectoryContents(passData['remoteDir'], "%s@%s" % (passData['remoteUser'], passData['remoteSys']))
+
+        # do a round trip
+        # send from local to remote
+        print "Local to remote..."
+        CallParcel(parcelArgs, passData['remoteStr'], passData['localDir'])
+        # get from remote to local
+#        time.sleep(1)
+
+        print "Remote to local..."
+        CallParcel(parcelArgs, passData['newLocalDir'], passData['remoteStr'])
+#        time.sleep(1)
+
+        # compare the files after the trip
+        result = CompareDirectories(passData['localDir'], passData['newLocalDir'])
+
+#        passResults.append(result)
+#        print
+#        PrintResultsBrief(passResults)
+#        print "****** Trip done ******"
+#        print
+        return result
+
+def SetUpTest(cmdArgs):
+    passData = {}
+    parcelArgs = SetupParcelArgs(cmdArgs)
+    passData['remoteUser'] = cmdArgs['user']
+    passData['gendata'] = cmdArgs['gendata']
+    passData['genloop'] = cmdArgs['genloop']
+    passData['localUser'] = getpass.getuser()
+    passData['remoteSys'] = cmdArgs['remotehost']
+    if ( passData['remoteSys'] != "localhost" ):
+        passData['localSys'] = GetIPAddress('eth0')
+    else:
+        passData['localSys'] = GetIPAddress('lo')
+
+    passData['localDir'] = cmdArgs['source']
+    passData['remoteDir'] = cmdArgs['target']
+
+    passData['newLocalDir'] = FindAnotherRemoteDir(passData['localDir'])
+
+    passData['remoteStr'] = "%s@%s:%s" % ( passData['remoteUser'], passData['remoteSys'], passData['remoteDir'] )
+    passData['backStr'] = "%s@%s:%s" % ( passData['localUser'], passData['localSys'], passData['newLocalDir'])
+    passData['remoteDir'] = os.path.join(os.path.expanduser("~"), passData['remoteDir'])
+
+    return passData, parcelArgs
+
+
 #
 #
 # Main app
@@ -357,8 +428,9 @@ def Main():
     cmdArgs = ParseCommandLineArgs()
 
     passResults = []
+    passData = {}
 
-    ids = GetProcessIDs(g_appName)
+#    ids = GetProcessIDs(g_appName)
 #    WaitForProcessesToExit(0)
 #    if len(ids) > 0 :
 #        print "parcel instances still running, killing"
@@ -366,28 +438,29 @@ def Main():
 #        os.system(commandStr)
 
     if ('source' in cmdArgs) & ('target' in cmdArgs):
-        if (cmdArgs['source'] != cmdArgs['target']):
+        if (cmdArgs['remotehost'] == "localhost") & (cmdArgs['source'] == cmdArgs['target']):
+            print "Source and target cannot be the same"
+        else:
+            passData, parcelArgs = SetUpTest(cmdArgs)
+#            parcelArgs = SetupParcelArgs(cmdArgs)
+#            passData['remoteUser'] = cmdArgs['user']
+#            passData['gendata'] = cmdArgs['gendata']
+#            passData['genloop'] = cmdArgs['genloop']
+#            passData['localUser'] = getpass.getuser()
+#            passData['remoteSys'] = cmdArgs['remotehost']
+#            if ( passData['remoteSys'] != "localhost" ):
+#                passData['localSys'] = GetIPAddress('eth0')
+#            else:
+#                passData['localSys'] = GetIPAddress('lo')
 
-            parcelArgs = SetupParcelArgs(cmdArgs)
+#            passData['localDir'] = cmdArgs['source']
+#            passData['remoteDir'] = cmdArgs['target']
 
-            remoteUser = cmdArgs['user']
-            gendata = cmdArgs['gendata']
-            genloop = cmdArgs['genloop']
-            localUser = getpass.getuser()
-            remoteSys = cmdArgs['remotehost']
-            if ( remoteSys != "localhost" ):
-                localSys = GetIPAddress('eth0')
-            else:
-                localSys = GetIPAddress('lo')
+#            passData['newLocalDir'] = FindAnotherRemoteDir(passData['localDir'])
 
-            localDir = cmdArgs['source']
-            remoteDir = cmdArgs['target']
-
-            newLocalDir = FindAnotherRemoteDir(localDir)
-
-            remoteStr = "%s@%s:%s" % ( remoteUser, remoteSys, remoteDir )
-            backStr = "%s@%s:%s" % ( localUser, localSys, newLocalDir)
-            remoteDir = os.path.join(os.path.expanduser("~"), remoteDir)
+#            passData['remoteStr'] = "%s@%s:%s" % ( passData['remoteUser'], passData['remoteSys'], passData['remoteDir'] )
+#            passData['backStr'] = "%s@%s:%s" % ( passData['localUser'], passData['localSys'], passData['newLocalDir'])
+#            passData['remoteDir'] = os.path.join(os.path.expanduser("~"), passData['remoteDir'])
             passes = cmdArgs['trips']
             while passes > 0:
                 # kill any processes hanging around
@@ -395,38 +468,8 @@ def Main():
 
                 print
                 print "****** Trip %02d ******" % ((cmdArgs['trips'] - passes) + 1)
-
-                if gendata || genloop:
-                    DeleteDirectoryContents(localDir)
-                    # create the data
-                    GenerateTestData(localDir, 3, 32, 1048576, 52428800)
-                    gendata = False
-
-                # clear out the other directories
-                DeleteDirectoryContents(newLocalDir)
-                DeleteDirectoryContents(remoteDir, "%s@%s" % (remoteUser, remoteSys))
-
-
-                # do a round trip
-                # send from local to remote
-                print "Local to remote..."
-                CallParcel(parcelArgs, remoteStr, localDir)
-                # get from remote to local
-#                print "Let's wait a few..."
-                time.sleep(1)
-
-                print "Remote to local..."
-                CallParcel(parcelArgs, newLocalDir, remoteStr)
-    #            LocalToRemote(cmdArgs, parcelArgs, remoteStr, localDir)
-    #            RemoteToLocal(cmdArgs, parcelArgs, remoteStr, remoteDir, newLocalDir)
-#                print "Let's wait a few..."
-                time.sleep(1)
-
-                # compare the files after the trip
-                result = CompareDirectories(localDir, newLocalDir)
-
+                result = RoundTrip(passData, parcelArgs)
                 passResults.append(result)
-                print
                 PrintResultsBrief(passResults)
                 print "****** Trip done ******"
                 print
@@ -434,11 +477,9 @@ def Main():
 
             PrintResults(passResults)
             # delete contents on way out
-            DeleteDirectoryContents(newLocalDir)
-            DeleteDirectoryContents(remoteDir, "%s@%s" % (remoteUser, remoteSys))
-            os.rmdir(newLocalDir)
-        else:
-            print "Source and target cannot be the same"
+            DeleteDirectoryContents(passData['newLocalDir'])
+            DeleteDirectoryContents(passData['remoteDir'], "%s@%s" % (passData['remoteUser'], passData['remoteSys']))
+            os.rmdir(passData['newLocalDir'])
     else:
         PrintHelp()
 

@@ -75,6 +75,14 @@ void set_encrypt_ready(int state);
 
 int get_encrypt_ready();
 
+void set_auth_signed();
+
+void set_peer_authed();
+
+int get_auth_signed();
+
+int get_peer_authed();
+
 int print_file_LL(file_LL *list);
 
 int is_in_checkpoint(file_object_t *file);

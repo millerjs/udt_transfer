@@ -150,6 +150,7 @@ void *run_client(void *_args_)
 	recv_args.n_crypto_threads = args->n_crypto_threads;
 	recv_args.c = args->dec;
 	recv_args.timeout = args->timeout;
+	recv_args.master = args->master;
 
 	if (args->send_pipe && args->recv_pipe){
 		recv_args.recv_pipe = args->recv_pipe;
@@ -181,6 +182,7 @@ void *run_client(void *_args_)
 	send_args.n_crypto_threads = args->n_crypto_threads;
 	send_args.c = args->enc;
 	send_args.timeout = args->timeout;
+	send_args.master = args->master;
 
 	if (args->send_pipe && args->recv_pipe){
 		send_args.send_pipe = args->send_pipe;

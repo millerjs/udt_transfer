@@ -37,7 +37,7 @@ and limitations under the License.
 #define PARCEL_FLAG_MINION      0x02
 
 #define PARCEL_MAX_TEMP_KEY_LENGTH	4096
-#define PARCEL_CRYPTO_KEY_LENGTH	42
+#define PARCEL_CRYPTO_KEY_LENGTH	16
 
 //#define DONT_CHECK_FILELIST         0
 
@@ -492,24 +492,25 @@ int get_shared_key()
  */
 void initialize_udpipe_args(thread_args *args)
 {
-	args->ip               = NULL;
-	args->listen_ip        = NULL;
-	args->port             = NULL;
+	args->ip				= NULL;
+	args->listen_ip			= NULL;
+	args->port				= NULL;
 
-	args->enc              = NULL;
-	args->dec              = NULL;
+	args->enc				= NULL;
+	args->dec				= NULL;
 
-	args->udt_buff         = BUFF_SIZE;
-	args->udp_buff         = BUFF_SIZE;
+	args->udt_buff			= BUFF_SIZE;
+	args->udp_buff			= BUFF_SIZE;
 
-	args->blast            = 0;
-	args->blast_rate       = 1000;
-	args->mss              = 8400;
-	args->n_crypto_threads = 1;
-	args->print_speed      = 0;
-	args->timeout          = 0;
-	args->use_crypto       = 0;
-	args->verbose          = 0;
+	args->blast				= 0;
+	args->blast_rate		= 1000;
+	args->mss				= 8400;
+	args->n_crypto_threads	= 1;
+	args->print_speed		= 0;
+	args->timeout			= 0;
+	args->use_crypto		= 0;
+	args->verbose			= 0;
+	args->master			= 0;
 }
 
 
@@ -580,29 +581,29 @@ int get_remote_host(int argc, char** argv)
 
 int get_base_path(int argc, char** argv, int optind)
 {
-	verb(VERB_2, "[%d %s] enter", g_flags, __func__);
-	int i;
-	for ( i = 0; i < argc; i++ ) {
-		verb(VERB_2, "[%d %s] %d - %s", g_flags, __func__, i, argv[i]);
-	}
+//	verb(VERB_2, "[%d %s] enter", g_flags, __func__);
+//	int i;
+//	for ( i = 0; i < argc; i++ ) {
+//		verb(VERB_2, "[%d %s] %d - %s", g_flags, __func__, i, argv[i]);
+//	}
 
 	if (g_opts.mode & MODE_RCV) {
-		verb(VERB_2, "[%d %s] MODE_RCV detected (%0x)", g_flags, __func__, g_opts.mode);
+//		verb(VERB_2, "[%d %s] MODE_RCV detected (%0x)", g_flags, __func__, g_opts.mode);
 		// Destination directory was passed
 		if (optind < argc) {
 			// Generate a base path for file locations
-			verb(VERB_2, "[%d %s] argv[optind] = %s", g_flags, __func__, argv[optind]);
+//			verb(VERB_2, "[%d %s] argv[optind] = %s", g_flags, __func__, argv[optind]);
 			sprintf(g_base_path, "%s", argv[optind++]);
 
 			// Are there any remaining command line args? Warn user
-			verb(VERB_2, "[%d %s] Unused command line args:", g_flags, __func__);
+//			verb(VERB_2, "[%d %s] Unused command line args:", g_flags, __func__);
 			for (; optind < argc-1; optind++) {
 				verb(VERB_2, "Unused %s", argv[optind]);
 			}
 		}
-		verb(VERB_2, "[%d %s] g_base_path = %s", g_flags, __func__, g_base_path);
-	} else {
-		verb(VERB_2, "[%d %s] MODE_SND, g_base_path left empty", g_flags, __func__);
+//		verb(VERB_2, "[%d %s] g_base_path = %s", g_flags, __func__, g_base_path);
+//	} else {
+//		verb(VERB_2, "[%d %s] MODE_SND, g_base_path left empty", g_flags, __func__);
 	}
 
 	return RET_SUCCESS;
@@ -947,20 +948,17 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 	args->enc              = g_opts.enc;
 	args->dec              = g_opts.dec;
 
+	if ( g_flags & PARCEL_FLAG_MASTER ) {
+		args->master	= 1;
+	}
 	verb(VERB_2, "[%d %s] g_opts->enc = %0x", g_flags, __func__, g_opts.enc);
 	verb(VERB_2, "[%d %s] g_opts->dec = %0x", g_flags, __func__, g_opts.dec);
 
-//	verb(VERB_3, "[%d %s] enc thread_id = %d", g_flags, __func__, args->enc->get_thread_id());
-//	verb(VERB_3, "[%d %s] dec thread_id = %d", g_flags, __func__, args->enc->get_thread_id());
 	pthread_t udpipe_thread;
 	if ( udpipe_server_type == UDPIPE_SERVER ) {
 		create_thread(&udpipe_thread, NULL, &run_server, args, "crypto_update_thread", THREAD_TYPE_1);
-//		pthread_create(&udpipe_thread, NULL, &run_server, args);
-//		register_thread(udpipe_thread, "run_server", THREAD_TYPE_2);
     } else {
 		create_thread(&udpipe_thread, NULL, &run_client, args, "crypto_update_thread", THREAD_TYPE_1);
-//		pthread_create(&udpipe_thread, NULL, &run_client, args);
-//		register_thread(udpipe_thread, "run_client", THREAD_TYPE_2);
     }
 
     return udpipe_thread;
@@ -1119,6 +1117,8 @@ int start_transfer(int argc, char*argv[], int optind)
 //        verb(VERB_3, "[%d %s RECV] dec thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
 
 //		g_opts.socket_ready = 1;
+		while ( !get_encrypt_ready() );
+
 		// Listen to sender for files and data, see receiver.cpp
 		receive_files(g_base_path);
 
@@ -1151,6 +1151,9 @@ int start_transfer(int argc, char*argv[], int optind)
 		// Generate a linked list of file objects from path list
 		ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
 
+		verb(VERB_2, "[%d %s] Waiting for encryption to be ready", g_flags, __func__);
+		while ( !get_encrypt_ready() );
+		verb(VERB_2, "[%d %s] Encryption verified, proceeding", g_flags, __func__);
 
 #ifdef DONT_CHECK_FILELIST
 		send_files(fileList, fileList);

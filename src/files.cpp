@@ -35,6 +35,8 @@ char log_path[MAX_PATH_LEN];
 
 int g_socket_ready = 0;
 int g_encrypt_verified = 0;
+int g_signed_auth = 0;
+int g_authed_peer = 0;
 
 // Initialize
 
@@ -54,6 +56,25 @@ int get_socket_ready()
 	return g_socket_ready;
 }
 
+void set_auth_signed()
+{
+	g_signed_auth = 1;
+}
+
+void set_peer_authed()
+{
+	g_authed_peer = 1;
+}
+
+int get_auth_signed()
+{
+	return g_signed_auth;
+}
+
+int get_peer_authed()
+{
+	return g_authed_peer;
+}
 
 void set_encrypt_ready(int state)
 {
@@ -66,7 +87,14 @@ void set_encrypt_ready(int state)
 
 int get_encrypt_ready()
 {
-	return g_encrypt_verified;
+	int ready = 0;
+
+	if (g_opts.encryption) {
+		ready = (g_signed_auth & g_authed_peer);
+	} else {
+		ready = 1;
+	}
+	return ready;
 }
 
 
@@ -821,82 +849,82 @@ char* pack_filelist(file_LL* fileList, int total_size)
 //
 file_LL* unpack_filelist(char* fileList_data, int data_length)
 {
-    verb(VERB_3, "[%s] walking, data length = %d", __func__, data_length);
+//	verb(VERB_3, "[%s] walking, data length = %d", __func__, data_length);
 
-    file_LL* file_list = (file_LL*)malloc(sizeof(file_LL));
-    file_list->head = NULL;
-    file_list->tail = NULL;
-    file_list->count = 0;
-    int tmp_len;
+	file_LL* file_list = (file_LL*)malloc(sizeof(file_LL));
+	file_list->head = NULL;
+	file_list->tail = NULL;
+	file_list->count = 0;
+	int tmp_len;
 
-    // unpack each entry
-    while ( data_length > 0 ) {
-        file_node_t *file_node = (file_node_t*)malloc(sizeof(file_node_t));
-        file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
+	// unpack each entry
+	while ( data_length > 0 ) {
+		file_node_t *file_node = (file_node_t*)malloc(sizeof(file_node_t));
+		file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
 
-        file_node->curr = file;
-        file_node->next = NULL;
+		file_node->curr = file;
+		file_node->next = NULL;
 
-        memset(file, 0, sizeof(file_object_t));
-        file->filetype = (char*)NULL;
+		memset(file, 0, sizeof(file_object_t));
+		file->filetype = (char*)NULL;
 
-        // copy the stat struct
-        memcpy(&(file->stats), fileList_data, sizeof(struct stat));
-        fileList_data += sizeof(struct stat);
-        data_length -= sizeof(struct stat);
+		// copy the stat struct
+		memcpy(&(file->stats), fileList_data, sizeof(struct stat));
+		fileList_data += sizeof(struct stat);
+		data_length -= sizeof(struct stat);
 
-        // copy the mode
-        memcpy(&(file->mode), fileList_data, sizeof(int));
-        fileList_data += sizeof(int);
-        data_length -= sizeof(int);
+		// copy the mode
+		memcpy(&(file->mode), fileList_data, sizeof(int));
+		fileList_data += sizeof(int);
+		data_length -= sizeof(int);
 
-        // copy the length
-        memcpy(&(file->length), fileList_data, sizeof(int));
-        fileList_data += sizeof(int);
-        data_length -= sizeof(int);
+		// copy the length
+		memcpy(&(file->length), fileList_data, sizeof(int));
+		fileList_data += sizeof(int);
+		data_length -= sizeof(int);
 
-        // copy the mtime in seconds
-        memcpy(&(file->mtime_sec), fileList_data, sizeof(int));
-        fileList_data += sizeof(int);
-        data_length -= sizeof(int);
+		// copy the mtime in seconds
+		memcpy(&(file->mtime_sec), fileList_data, sizeof(int));
+		fileList_data += sizeof(int);
+		data_length -= sizeof(int);
 
-        // copy the mtime in seconds
-        memcpy(&(file->mtime_nsec), fileList_data, sizeof(long int));
-        fileList_data += sizeof(long int);
-        data_length -= sizeof(long int);
+		// copy the mtime in seconds
+		memcpy(&(file->mtime_nsec), fileList_data, sizeof(long int));
+		fileList_data += sizeof(long int);
+		data_length -= sizeof(long int);
 
-        // copy the strings (strdup mallocs, so these will need to be freed someday)
-        file->filetype = strdup(fileList_data);
-        tmp_len = strlen(file->filetype) + 1;
-        fileList_data += tmp_len;
-        data_length -= tmp_len;
+		// copy the strings (strdup mallocs, so these will need to be freed someday)
+		file->filetype = strdup(fileList_data);
+		tmp_len = strlen(file->filetype) + 1;
+		fileList_data += tmp_len;
+		data_length -= tmp_len;
 
-        file->path = strdup(fileList_data);
-        tmp_len = strlen(file->path) + 1;
-        fileList_data += tmp_len;
-        data_length -= tmp_len;
+		file->path = strdup(fileList_data);
+		tmp_len = strlen(file->path) + 1;
+		fileList_data += tmp_len;
+		data_length -= tmp_len;
 
-        file->root = strdup(fileList_data);
-        tmp_len = strlen(file->root) + 1;
-        fileList_data += tmp_len;
-        data_length -= tmp_len;
+		file->root = strdup(fileList_data);
+		tmp_len = strlen(file->root) + 1;
+		fileList_data += tmp_len;
+		data_length -= tmp_len;
 
-        // add data to list
-        verb(VERB_2, "[%s] file = %s, mtime_sec = %d", __func__, file->path, file->mtime_sec);
+		// add data to list
+//		verb(VERB_2, "[%s] file = %s, mtime_sec = %d", __func__, file->path, file->mtime_sec);
 
-        // if we're first, just make it head & tail
-        if ( file_list->head == NULL ) {
-            file_list->head = file_node;
-            file_list->tail = file_node;
-        // otherwise, tack us on the end
-        } else {
-            file_list->tail->next = file_node;
-            file_list->tail = file_node;
-        }
-        file_list->count++;
-    }
+		// if we're first, just make it head & tail
+		if ( file_list->head == NULL ) {
+			file_list->head = file_node;
+			file_list->tail = file_node;
+		// otherwise, tack us on the end
+		} else {
+			file_list->tail->next = file_node;
+			file_list->tail = file_node;
+		}
+		file_list->count++;
+	}
 
-    return file_list;
+	return file_list;
 
 }
 
