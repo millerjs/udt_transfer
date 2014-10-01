@@ -33,6 +33,12 @@ and limitations under the License.
 #include <stdio.h>
 #include <stddef.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <unistd.h>
+
 #define PARCEL_FLAG_MASTER      0x01
 #define PARCEL_FLAG_MINION      0x02
 
@@ -362,6 +368,21 @@ int print_progress(char* descrip, off_t read, off_t total)
 }
 
 
+char* get_local_ip_address()
+{
+	int fd;
+	struct ifreq ifr;
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	ifr.ifr_addr.sa_family = AF_INET;
+	strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
+	ioctl(fd, SIOCGIFADDR, &ifr);
+	close(fd);
+
+	return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+}
+
 /*
  * int run_ssh_command
  * - run the ssh command that will create a remote parcel process
@@ -369,88 +390,89 @@ int print_progress(char* descrip, off_t read, off_t total)
  */
 int run_ssh_command()
 {
-    parse_destination(g_remote_args.xfer_cmd);
+	parse_destination(g_remote_args.xfer_cmd);
 
-    if ( !strlen(g_remote_args.remote_path) ) {
-        warn("remote destination was not set");
-        return RET_FAILURE;
-    }
+	if ( !strlen(g_remote_args.remote_path) ) {
+		warn("remote destination was not set");
+		return RET_FAILURE;
+	}
 
-    verb(VERB_2, "[%d %s %d] Attempting to run remote command to %s:%s", g_flags, __func__, getpid(),
-         g_remote_args.pipe_host, g_remote_args.pipe_port);
+	verb(VERB_2, "[%d %s %d] Attempting to run remote command to %s:%s", g_flags, __func__, getpid(),
+		 g_remote_args.pipe_host, g_remote_args.pipe_port);
 
 
-    char remote_pipe_cmd[MAX_PATH_LEN];
-    char cmd_options[MAX_PATH_LEN];
+	char remote_pipe_cmd[MAX_PATH_LEN];
+	char cmd_options[MAX_PATH_LEN];
 
-    memset(remote_pipe_cmd, 0, sizeof(char) * MAX_PATH_LEN);
-    memset(cmd_options, 0, sizeof(char) * MAX_PATH_LEN);
+	memset(remote_pipe_cmd, 0, sizeof(char) * MAX_PATH_LEN);
+	memset(cmd_options, 0, sizeof(char) * MAX_PATH_LEN);
 
-    // Redirect output from ssh process to ssh_fd
-    char *args[] = {
-        "ssh",
-        "-A -q",
-        g_remote_args.pipe_host,
-        remote_pipe_cmd,
-        NULL
-    };
+	// Redirect output from ssh process to ssh_fd
+	char *args[] = {
+		"ssh",
+		"-A -q",
+		g_remote_args.pipe_host,
+		remote_pipe_cmd,
+		NULL
+	};
 
-    sprintf(remote_pipe_cmd, "%s ", g_remote_args.udpipe_location);
+	sprintf(remote_pipe_cmd, "%s ", g_remote_args.udpipe_location);
 
-    if (g_opts.encryption) {
-        strcat(remote_pipe_cmd, " -n ");
-        char n_crypto_threads[MAX_PATH_LEN];
-        sprintf(n_crypto_threads, "--crypto-threads %d ", g_opts.n_crypto_threads);
-        strcat(remote_pipe_cmd, n_crypto_threads);
-    }
+	if (g_opts.encryption) {
+		strcat(remote_pipe_cmd, " -n ");
+		char n_crypto_threads[MAX_PATH_LEN];
+		sprintf(n_crypto_threads, "--crypto-threads %d ", g_opts.n_crypto_threads);
+		strcat(remote_pipe_cmd, n_crypto_threads);
+	}
 
-    if ( get_file_logging() ) {
-        strcat(remote_pipe_cmd, " -b ");
-    }
+	if ( get_file_logging() ) {
+		strcat(remote_pipe_cmd, " -b ");
+	}
 
-    if (g_opts.mode == MODE_SEND) {
+	if (g_opts.mode == MODE_SEND) {
 
-        ERR_IF(g_opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
+		ERR_IF(g_opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
-        if (g_remote_args.remote_ip){
-            sprintf(cmd_options, "--interface %s -xt -p %s %s ",
-                    g_remote_args.remote_ip,
-                    g_remote_args.pipe_port,
-                    g_remote_args.remote_path);
-        } else {
-            sprintf(cmd_options, "-xt -p %s %s ",
-                    g_remote_args.pipe_port,
-                    g_remote_args.remote_path);
-        }
+		if (g_remote_args.remote_ip){
+			sprintf(cmd_options, "--interface %s -xt -p %s %s ",
+					g_remote_args.remote_ip,
+					g_remote_args.pipe_port,
+					g_remote_args.remote_path);
+		} else {
+			sprintf(cmd_options, "-xt -p %s %s ",
+					g_remote_args.pipe_port,
+					g_remote_args.remote_path);
+		}
 
-    } else if (g_opts.mode == MODE_RCV) {
+	} else if (g_opts.mode == MODE_RCV) {
 
-        ERR_IF(!g_opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
+		ERR_IF(!g_opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
 
-        sprintf(cmd_options, "-x -q %s -p %s %s ",
-                g_remote_args.pipe_host,
-                g_remote_args.pipe_port,
-                g_remote_args.remote_path);
-    }
+		sprintf(cmd_options, "-x -q %s@%s -p %s %s ",
+//                g_remote_args.pipe_host,
+				getlogin(), get_local_ip_address(),
+				g_remote_args.pipe_port,
+				g_remote_args.remote_path);
+	}
 
-    strcat(remote_pipe_cmd, cmd_options);
+	strcat(remote_pipe_cmd, cmd_options);
 
-    verb(VERB_2, "[%d %s] ssh command: ", g_flags, __func__);
-    for (int i = 0; args[i]; i++) {
-        verb(VERB_2, "args[%d]: %s", i, args[i]);
-    }
+	verb(VERB_2, "[%d %s] ssh command: ", g_flags, __func__);
+	for (int i = 0; args[i]; i++) {
+		verb(VERB_2, "args[%d]: %s", i, args[i]);
+	}
 
-    char temp_command[MAX_PATH_LEN];
-    memset(temp_command, 0, sizeof(char) * MAX_PATH_LEN);
-    snprintf(temp_command, MAX_PATH_LEN, "%s %s %s %s", args[0], args[1], args[2], args[3]);
-    verb(VERB_2, "[%d %s] Calling popen with %s", g_flags, __func__, temp_command);
-    g_ssh_file_handle = popen(temp_command, "r");
-    if ( g_ssh_file_handle == NULL ) {
-        ERR("unable to execute ssh process");
-    }
+	char temp_command[MAX_PATH_LEN];
+	memset(temp_command, 0, sizeof(char) * MAX_PATH_LEN);
+	snprintf(temp_command, MAX_PATH_LEN, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+	verb(VERB_2, "[%d %s] Calling popen with %s", g_flags, __func__, temp_command);
+	g_ssh_file_handle = popen(temp_command, "r");
+	if ( g_ssh_file_handle == NULL ) {
+		ERR("unable to execute ssh process");
+	}
 
-    verb(VERB_2, "[%d %s] exit", g_flags, __func__);
-    return RET_SUCCESS;
+	verb(VERB_2, "[%d %s] exit", g_flags, __func__);
+	return RET_SUCCESS;
 }
 
 
@@ -535,9 +557,7 @@ int parse_destination(char *xfer_cmd)
 	ERR_IF(!hostlen, "Please specify host [host:destination_file]: %s", xfer_cmd);
 
 	// the string appears to contain a remote destination
-//	strcpy(g_remote_args.pipe_host, "flynn@localhost");
 	snprintf(g_remote_args.pipe_host, hostlen, "%s", xfer_cmd);
-//	strcpy(g_remote_args.remote_path, "out2");
 	snprintf(g_remote_args.remote_path, cmd_len-hostlen+1, "%s", xfer_cmd+hostlen);
 	verb(VERB_2, "[%d %s] exit ok", g_flags, __func__);
 
@@ -671,155 +691,159 @@ int set_defaults()
 int get_options(int argc, char *argv[])
 {
 
-	int opt;
+	if ( argc > 1 ) {
+		int opt;
 
-	// Read in options
+		// Read in options
 
-	static struct option long_options[] =
-	{
-		{"verbosity"            , no_argument           , &g_opts.verbosity           , VERB_2},
-		{"quiet"                , no_argument           , &g_opts.verbosity           , VERB_0},
-		{"debug"                , no_argument           , NULL                      , 'b'},
-		{"no-mmap"              , no_argument           , &g_opts.mmap                , 1},
-		{"full-root"            , no_argument           , &g_opts.full_root           , 1},
-		{"ignore-modification"  , no_argument           , &g_opts.ignore_modification , 1},
-		{"all-files"            , no_argument           , &g_opts.regular_files       , 0},
-		{"remote-to-local"      , no_argument           , &g_opts.remote_to_local     , 1},
-		{"sender"               , no_argument           , NULL                      , 'q'},
-		{"help"                 , no_argument           , NULL                      , 'h'},
-		{"log"                  , required_argument     , NULL                      , 'l'},
-		{"timeout"              , required_argument     , NULL                      , '5'},
-		{"verbosity"            , required_argument     , NULL                      , '6'},
-		{"interface"            , required_argument     , NULL                      , '7'},
-		{"remote-interface"     , required_argument     , NULL                      , '8'},
-		{"crypto-threads"       , required_argument     , NULL                      , '2'},
-		{"restart"              , required_argument     , NULL                      , 'r'},
-		{"checkpoint"           , required_argument     , NULL                      , 'k'},
-		{0, 0, 0, 0}
-	};
+		static struct option long_options[] =
+		{
+			{"verbosity"            , no_argument           , &g_opts.verbosity           , VERB_2},
+			{"quiet"                , no_argument           , &g_opts.verbosity           , VERB_0},
+			{"debug"                , no_argument           , NULL                      , 'b'},
+			{"no-mmap"              , no_argument           , &g_opts.mmap                , 1},
+			{"full-root"            , no_argument           , &g_opts.full_root           , 1},
+			{"ignore-modification"  , no_argument           , &g_opts.ignore_modification , 1},
+			{"all-files"            , no_argument           , &g_opts.regular_files       , 0},
+			{"remote-to-local"      , no_argument           , &g_opts.remote_to_local     , 1},
+			{"sender"               , no_argument           , NULL                      , 'q'},
+			{"help"                 , no_argument           , NULL                      , 'h'},
+			{"log"                  , required_argument     , NULL                      , 'l'},
+			{"timeout"              , required_argument     , NULL                      , '5'},
+			{"verbosity"            , required_argument     , NULL                      , '6'},
+			{"interface"            , required_argument     , NULL                      , '7'},
+			{"remote-interface"     , required_argument     , NULL                      , '8'},
+			{"crypto-threads"       , required_argument     , NULL                      , '2'},
+			{"restart"              , required_argument     , NULL                      , 'r'},
+			{"checkpoint"           , required_argument     , NULL                      , 'k'},
+			{0, 0, 0, 0}
+		};
 
-	int option_index = 0;
+		int option_index = 0;
 
-/*    for ( int i = 0; i < argc; i++ ) {
-        fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
-    } */
+	/*    for ( int i = 0; i < argc; i++ ) {
+			fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
+		} */
 
-	while ((opt = getopt_long(argc, argv, "i:xl:thvc:k:r:nd:5:p:q:b7:8:2:6:",
-							  long_options, &option_index)) != -1) {
-//		fprintf(stderr, "opt = %c\n", opt);
-		switch (opt) {
-			case 'k':
-				// restart from and log to file argument
-				g_opts.restart = 1;
-				g_opts.log = 1;
-				sprintf(log_path, "%s", optarg);
-				sprintf(g_opts.restart_path, "%s", optarg);
-				break;
+		while ((opt = getopt_long(argc, argv, "i:xl:thvc:k:r:nd:5:p:q:b7:8:2:6:",
+								  long_options, &option_index)) != -1) {
+	//		fprintf(stderr, "opt = %c\n", opt);
+			switch (opt) {
+				case 'k':
+					// restart from and log to file argument
+					g_opts.restart = 1;
+					g_opts.log = 1;
+					sprintf(log_path, "%s", optarg);
+					sprintf(g_opts.restart_path, "%s", optarg);
+					break;
 
-			case 'n':
-				g_opts.encryption = 1;
-				break;
+				case 'n':
+					g_opts.encryption = 1;
+					break;
 
-			case '2':
-				ERR_IF(sscanf(optarg, "%d", &g_opts.n_crypto_threads) != 1, "unable to parse encryption threads from -n flag");
-//				fprintf(stderr, "n_crypto_threads: %d\n", g_opts.n_crypto_threads);
-				break;
+				case '2':
+					ERR_IF(sscanf(optarg, "%d", &g_opts.n_crypto_threads) != 1, "unable to parse encryption threads from -n flag");
+	//				fprintf(stderr, "n_crypto_threads: %d\n", g_opts.n_crypto_threads);
+					break;
 
-			case 'q':
-				sprintf(g_remote_args.pipe_host, "%s", optarg);
-				NOTE(g_opts.remote_to_local = 1);
-				g_opts.mode |= MODE_SEND;
-				break;
+				case 'q':
+					sprintf(g_remote_args.pipe_host, "%s", optarg);
+					NOTE(g_opts.remote_to_local = 1);
+					g_opts.mode |= MODE_SEND;
+					break;
 
-			case '5':
-				ERR_IF(sscanf(optarg, "%d", &g_opts.timeout) != 1, "unable to parse timeout --timeout flag");
-				break;
+				case '5':
+					ERR_IF(sscanf(optarg, "%d", &g_opts.timeout) != 1, "unable to parse timeout --timeout flag");
+					break;
 
-			case 'r':
-				// restart but do not log to file
-				g_opts.restart = 1;
-				sprintf(g_opts.restart_path, "%s", optarg);
-				break;
+				case 'r':
+					// restart but do not log to file
+					g_opts.restart = 1;
+					sprintf(g_opts.restart_path, "%s", optarg);
+					break;
 
-			case 'l':
-				// log to file but do not restart from file
-				g_opts.log = 1;
-				sprintf(log_path, "%s", optarg);
-				break;
+				case 'l':
+					// log to file but do not restart from file
+					g_opts.log = 1;
+					sprintf(log_path, "%s", optarg);
+					break;
 
-			case 'c':
-				// specify location of remote binary
-				sprintf(g_remote_args.udpipe_location, "%s", optarg);
-				break;
+				case 'c':
+					// specify location of remote binary
+					sprintf(g_remote_args.udpipe_location, "%s", optarg);
+					break;
 
-			case 'p':
-				// specify port
-				sprintf(g_remote_args.pipe_port, "%s", optarg);
-				break;
+				case 'p':
+					// specify port
+					sprintf(g_remote_args.pipe_port, "%s", optarg);
+					break;
 
-			case 'x':
-				// disable printing progress
-				g_opts.progress = 0;
-				break;
+				case 'x':
+					// disable printing progress
+					g_opts.progress = 0;
+					break;
 
-			case 't':
-				// specify receive mode
-				g_opts.mode |= MODE_RCV;
-				g_opts.mode ^= MODE_SEND;
-				break;
+				case 't':
+					// specify receive mode
+					g_opts.mode |= MODE_RCV;
+					g_opts.mode ^= MODE_SEND;
+					break;
 
-			case 'i':
-				// specify the host, [i]p address
-				sprintf(g_remote_args.pipe_host, "%s", optarg);
-				break;
+				case 'i':
+					// specify the host, [i]p address
+					sprintf(g_remote_args.pipe_host, "%s", optarg);
+					break;
 
-			case 'd':
-				// in the case of slow ssh initiation, delay binding to
-				// remote by optarg seconds
-				g_opts.delay = atoi(optarg);
-				break;
+				case 'd':
+					// in the case of slow ssh initiation, delay binding to
+					// remote by optarg seconds
+					g_opts.delay = atoi(optarg);
+					break;
 
-			case 'v':
-				// default verbose
-				set_verbosity_level(VERB_2);
-				break;
+				case 'v':
+					// default verbose
+					set_verbosity_level(VERB_2);
+					break;
 
-			case '6':
-				// verbosity
-				ERR_IF(sscanf(optarg, "%d", &g_opts.verbosity) != 1, "unable to parse verbosity level");
-				break;
+				case '6':
+					// verbosity
+					ERR_IF(sscanf(optarg, "%d", &g_opts.verbosity) != 1, "unable to parse verbosity level");
+					break;
 
-			case '7':
-				ERR_IF(!(g_remote_args.local_ip = strdup(optarg)), "unable to parse local ip");
-				break;
+				case '7':
+					ERR_IF(!(g_remote_args.local_ip = strdup(optarg)), "unable to parse local ip");
+					break;
 
-			case '8':
-				ERR_IF(!(g_remote_args.remote_ip = strdup(optarg)), "unable to parse remote ip");
-				break;
+				case '8':
+					ERR_IF(!(g_remote_args.remote_ip = strdup(optarg)), "unable to parse remote ip");
+					break;
 
-			case 'h':
-				// help
-				usage(0);
-				break;
+				case 'h':
+					// help
+					usage(0);
+					break;
 
-			case '\0':
-				break;
+				case '\0':
+					break;
 
-			case 'b':
-				set_file_logging(1);
-//				g_opts.verbosity = 2;
-				break;
+				case 'b':
+					set_file_logging(1);
+	//				g_opts.verbosity = 2;
+					break;
 
-			default:
-				fprintf(stderr, "Unknown command line option: [%c].\n", opt);
-				usage(EXIT_FAILURE);
-				break;
+				default:
+					fprintf(stderr, "Unknown command line option: [%c].\n", opt);
+					usage(EXIT_FAILURE);
+					break;
+			}
 		}
-	}
 
-//	g_opt_verbosity = g_opts.verbosity;
-	if (get_verbosity_level() < VERB_1) {
-		g_opts.progress = 0;
+	//	g_opt_verbosity = g_opts.verbosity;
+		if (get_verbosity_level() < VERB_1) {
+			g_opts.progress = 0;
+		}
+	} else {
+		usage(0);
 	}
 
 	return optind;
@@ -997,7 +1021,7 @@ int master_transfer_setup()
 			ERR("[%d %s] received key of improper length", g_flags, __func__);
 		}
 		verb(VERB_3, "[%d %s] Got key back of len %d:", g_flags, __func__, key_len);
-		print_bytes(tmpBuf, PARCEL_CRYPTO_KEY_LENGTH, 16);
+//		print_bytes(tmpBuf, PARCEL_CRYPTO_KEY_LENGTH, 16);
 //		verb(VERB_3, "%s", tmpBuf);
 
 		// copy it to our key

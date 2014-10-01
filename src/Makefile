@@ -11,6 +11,7 @@ ifndef arch
    arch = IA32
 endif
 
+#CCFLAGS = -Wall -D$(os) -I../udt/src -fstack-protector-strong -finline-functions -g -lcrypto -D_LARGE_FILE_SOURCE=1 -Wno-write-strings -std=c++0x
 CCFLAGS = -Wall -D$(os) -I../udt/src -finline-functions -g -lcrypto -D_LARGE_FILE_SOURCE=1 -Wno-write-strings -std=c++0x
 
 ifeq ($(arch), IA32)
@@ -39,16 +40,16 @@ ifeq ($(os), SUNOS)
    LDFLAGS += -lrt -lsocket
 endif
 
-all: $(APP) 
+all: $(APP)
 
-%.o: %.cpp 
+%.o: %.cpp
 	$(C++) $(CCFLAGS) $< -c
 
 parcel: parcel.o sender.o receiver.o timer.o files.o udpipe_threads.o udpipe_server.o udpipe_client.o crypto.o postmaster.o thread_manager.o util.h debug_output.o
 	$(C++) $^ -o $(APPOUT) $(LDFLAGS)
 
 clean:
-	rm -f *.o $(APPOUT) 
+	rm -f *.o $(APPOUT)
 
 install:
-	install $(APPOUT) $(INSTALL_PREFIX)/bin	
+	install $(APPOUT) $(INSTALL_PREFIX)/bin

@@ -157,14 +157,14 @@ void print_backtrace()
 // prints a buffer of data, [output_line_len] bytes in a line
 // 32 bytes max
 //
-#define TMP_STR_SIZE 33
+#define TMP_STR_SIZE 64
 void print_bytes(char* data, int length, int output_line_len)
 {
 	char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
 	int i;
 
-	if ( output_line_len > (TMP_STR_SIZE - 1) ) {
-		output_line_len = (TMP_STR_SIZE - 1);
+	if ( output_line_len > (TMP_STR_SIZE - 1) / 2 ) {
+		output_line_len = (TMP_STR_SIZE - 1) / 2;
 	}
 
 	verb(VERB_2, "[%s] printing buffer of len %d at %x", __func__, length, data);

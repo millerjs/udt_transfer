@@ -606,7 +606,7 @@ char* generate_session_key(void)
 
 	if ( key_len ) {
 		verb(VERB_2, "[%s] created pem_key of length %d", __func__, key_len);
-		print_bytes(pem_key, KEY_BUFFER_LEN, 16);
+//		print_bytes(pem_key, KEY_BUFFER_LEN, 16);
 	} else {
 		verb(VERB_2, "[%s] unable to create key!", __func__);
 	}

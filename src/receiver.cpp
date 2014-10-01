@@ -133,7 +133,7 @@ int receive_files(char*base_path)
 			int postMasterStatus = dispatch_message(receive_postmaster, header, &global_receive_data);
 			if ( postMasterStatus != POSTMASTER_OK ) {
 				verb(VERB_1, "[%s] bad message dispatch call: %d", __func__, postMasterStatus);
-				print_bytes((char*)&header, sizeof(header_t), 16);
+//				print_bytes((char*)&header, sizeof(header_t), 16);
 				set_thread_exit();
 				break;
 			}

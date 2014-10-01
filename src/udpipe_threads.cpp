@@ -126,8 +126,8 @@ void auth_peer(rs_args* args)
 //	char decoded_signed_key[KEY_LEN];
 
 	RAND_bytes((unsigned char*)auth_peer_key, KEY_LEN);
-	verb(VERB_2, "[%s] Generated key:", __func__);
-	print_bytes(auth_peer_key, KEY_LEN, 16);
+//	verb(VERB_2, "[%s] Generated key:", __func__);
+//	print_bytes(auth_peer_key, KEY_LEN, 16);
 
 //	g_authed_peer = 0;
 
@@ -175,8 +175,8 @@ void sign_auth(rs_args* args)
 	// appears to try and receive a key
 	recv_full(*args->usocket, sign_auth_key, KEY_LEN);
 
-	verb(VERB_2, "[%s] received key:", __func__);
-	print_bytes(sign_auth_key, KEY_LEN, 16);
+//	verb(VERB_2, "[%s] received key:", __func__);
+//	print_bytes(sign_auth_key, KEY_LEN, 16);
 
 	// pass the key to the encode thread
 	int crypt_len = KEY_LEN/args->n_crypto_threads;
@@ -187,8 +187,8 @@ void sign_auth(rs_args* args)
 
 	join_all_encryption_threads(args->c);
 
-	verb(VERB_2, "[%s] signed key:", __func__);
-	print_bytes(sign_auth_key, KEY_LEN, 16);
+//	verb(VERB_2, "[%s] signed key:", __func__);
+//	print_bytes(sign_auth_key, KEY_LEN, 16);
 
 	verb(VERB_2, "[%s] Sending data back", __func__);
 	// send the key back
