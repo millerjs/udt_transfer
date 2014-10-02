@@ -32,7 +32,7 @@ class ParcelTest(unittest.TestCase):
         if testName == "encryptedLocalRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = True
-            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
+#            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "localhost"
             self.passData['localDir'] = "test/data_test"
@@ -41,7 +41,7 @@ class ParcelTest(unittest.TestCase):
         elif testName == "unencryptedLocalRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = False
-            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
+#            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "localhost"
             self.passData['localDir'] = "test/data_test"
@@ -50,7 +50,7 @@ class ParcelTest(unittest.TestCase):
         elif testName == "encryptedRemoteRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = True
-            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
+#            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "ritchie"
             self.passData['localDir'] = "test/data_test"
@@ -59,7 +59,7 @@ class ParcelTest(unittest.TestCase):
         elif testName == "unencryptedRemoteRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = False
-            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
+#            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "ritchie"
             self.passData['localDir'] = "test/data_test"
@@ -129,6 +129,13 @@ class ParcelTest(unittest.TestCase):
             parcelArgs += "-c %s/%s" % (cmdArgs['parceldir'], g_appName)
 
         return parcelArgs.strip()
+
+#    def createTargetDirectory(self, directory, target = ""):
+#        if len(target):
+#            commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'rm -rf %s/*'" % ( target, directory )
+#            os.system(commandStr)
+#        else:
+
 
     def deleteDirectoryContents(self, directory, target = ""):
         if len(target):

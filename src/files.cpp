@@ -660,7 +660,7 @@ ssize_t pipe_read(int fd, void *buf, size_t count)
 	ssize_t read_bytes;
 
 	read_bytes =  read(fd, buf, count);
-	verb(VERB_2, "[%s] Read %lu bytes (%d requested) from fd %d", __func__, read_bytes, count, fd);
+//	verb(VERB_2, "[%s] Read %lu bytes (%d requested) from fd %d", __func__, read_bytes, count, fd);
 
 	return read_bytes;
 }

@@ -179,13 +179,13 @@ int Crypto::wait_thread_ready(int thread_id)
 
 int Crypto::lock_data(int thread_id)
 {
-	verb(VERB_2, "[%s] thread %d", __func__, thread_id);
+//	verb(VERB_2, "[%s] thread %d", __func__, thread_id);
 	return pthread_mutex_lock(&c_lock[thread_id]);
 }
 
 int Crypto::unlock_data(int thread_id)
 {
-	verb(VERB_2, "[%s] thread %d", __func__, thread_id);
+//	verb(VERB_2, "[%s] thread %d", __func__, thread_id);
 	return pthread_mutex_unlock(&c_lock[thread_id]);
 }
 

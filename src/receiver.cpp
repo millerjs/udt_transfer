@@ -44,7 +44,7 @@ int validate_header(header_t header)
 int read_header(header_t *header)
 {
 	// return read(fileno(stdin), header, sizeof(header_t));
-	verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, sizeof(header_t));
+//	verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, sizeof(header_t));
 	return pipe_read(g_opts.recv_pipe[0], header, sizeof(header_t));
 }
 
@@ -57,13 +57,13 @@ off_t read_data(void* b, int len)
 
 	while (total < len) {
 		// rs = read(fileno(stdin), buffer+total, len - total);
-		verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, len - total);
+//		verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, len - total);
 		rs = pipe_read(g_opts.recv_pipe[0], buffer+total, len - total);
 		total += rs;
 		G_TOTAL_XFER += rs;
 	}
 
-	verb(VERB_4, "[%s] Read %d bytes from stream", __func__, total);
+//	verb(VERB_4, "[%s] Read %d bytes from stream", __func__, total);
 
 	return total;
 
@@ -129,7 +129,7 @@ int receive_files(char*base_path)
 		}
 
 		if (global_receive_data.rs) {
-			verb(VERB_2, "[%s] Dispatching message: %d", __func__, header.type);
+//			verb(VERB_2, "[%s] Dispatching message: %d", __func__, header.type);
 			int postMasterStatus = dispatch_message(receive_postmaster, header, &global_receive_data);
 			if ( postMasterStatus != POSTMASTER_OK ) {
 				verb(VERB_1, "[%s] bad message dispatch call: %d", __func__, postMasterStatus);
