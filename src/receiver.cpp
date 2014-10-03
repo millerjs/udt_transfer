@@ -161,7 +161,7 @@ int receive_files(char*base_path)
 int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 {
 
-	verb(VERB_2, "[%s] Received directory header", __func__);
+//	verb(VERB_2, "[%s] Received directory header", __func__);
 
 	// Read directory name from stream
 	read_data(global_data->data_path + global_data->bl, header.data_len);
@@ -187,7 +187,7 @@ int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 {
 
-	verb(VERB_2, "[%s] Received file header", __func__);
+//	verb(VERB_2, "[%s] Received file header", __func__);
 
 	// int f_mode = O_CREAT| O_WRONLY;
 	int f_mode = O_CREAT| O_RDWR;
@@ -258,7 +258,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 {
 
-	verb(VERB_2, "[%s] Received file header", __func__);
+//	verb(VERB_2, "[%s] Received file header", __func__);
 
 	// read in the size of the file
 	read_data(&(global_data->f_size), header.data_len);
@@ -280,7 +280,7 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 
 int pst_rec_callback_complete(header_t header, global_data_t* global_data)
 {
-	verb(VERB_2, "[%s] Receive completed", __func__);
+//	verb(VERB_2, "[%s] Receive completed", __func__);
 
 	global_data->complete = 1;
 
@@ -300,7 +300,7 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 {
 	off_t rs, len;
 
-	verb(VERB_2, "[%s] Received file header", __func__);
+//	verb(VERB_2, "[%s] Received file header", __func__);
 
 	if (!global_data->expecting_data) {
 		fprintf(stderr, "[%s] ERROR: Out of order data block, of size %lu\n", __func__, header.data_len);
@@ -351,7 +351,7 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 
 int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
 {
-	verb(VERB_2, "[%s] Received file header", __func__);
+//	verb(VERB_2, "[%s] Received file header", __func__);
 	// On the next loop, use the header that was just read in
 
 	// Formatting

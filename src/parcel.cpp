@@ -231,7 +231,7 @@ double get_scale(off_t size, char*label)
 		tmpSize = SIZE_PB;
 	}
 
-	sprintf(label, tmpLabel);
+	sprintf(label, "%s", tmpLabel);
 //	fprintf(stderr, "get_scale: size = %ld, label = %s, newSize = %f\n", size, label, tmpSize);
 //	label = "[?]";
 	return tmpSize;
@@ -368,15 +368,18 @@ int print_progress(char* descrip, off_t read, off_t total)
 }
 
 
-char* get_local_ip_address()
+char* get_local_ip_address(char* host)
 {
 	int fd;
 	struct ifreq ifr;
 
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
-
 	ifr.ifr_addr.sa_family = AF_INET;
-	strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
+	if ( strstr(host, "localhost") ) {
+		strncpy(ifr.ifr_name, "lo", IFNAMSIZ-1);
+	} else {
+		strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
+	}
 	ioctl(fd, SIOCGIFADDR, &ifr);
 	close(fd);
 
@@ -448,9 +451,10 @@ int run_ssh_command()
 
 		ERR_IF(!g_opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
 
+//		sprintf(cmd_options, "-x -q %s -p %s %s ",
 		sprintf(cmd_options, "-x -q %s@%s -p %s %s ",
 //                g_remote_args.pipe_host,
-				getlogin(), get_local_ip_address(),
+				getlogin(), get_local_ip_address(g_remote_args.pipe_host),
 				g_remote_args.pipe_port,
 				g_remote_args.remote_path);
 	}
@@ -651,7 +655,8 @@ int set_defaults()
 
 	g_opts.mode                   = MODE_SEND;
 	g_opts.verbosity              = VERB_1;
-	g_opts.timeout                = 0;
+	// NOTE: this is number of seconds to wait before timing out, not merely a flag
+	g_opts.timeout                = 25;
 	g_opts.recurse                = 1;
 	g_opts.regular_files          = 1;
 	g_opts.progress               = 1;
@@ -1133,15 +1138,15 @@ int start_transfer(int argc, char*argv[], int optind)
 		verb(VERB_2, "[%d %s] Running with file destination mode",g_flags, __func__);
 		start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
 
-		if ( g_opts.remote_to_local ) {
-			g_timer = start_timer("receive_timer");
-		}
-
 //        verb(VERB_3, "[%d %s RECV] enc thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
 //        verb(VERB_3, "[%d %s RECV] dec thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
 
 //		g_opts.socket_ready = 1;
 		while ( !get_encrypt_ready() );
+
+		if ( g_opts.remote_to_local ) {
+			g_timer = start_timer("receive_timer");
+		}
 
 		// Listen to sender for files and data, see receiver.cpp
 		receive_files(g_base_path);
@@ -1185,6 +1190,7 @@ int start_transfer(int argc, char*argv[], int optind)
 		// send the file list, requesting version from dest
 		file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
 
+		g_timer = start_timer("send_timer");
 		// Visit all directories and send all files
 		// This is where we pass the remainder of the work to the
 		// file handler in sender.cpp
@@ -1311,7 +1317,6 @@ int main(int argc, char *argv[])
 
 	init_parcel(argc, argv);
 
-	g_timer = start_timer("send_timer");
 	start_transfer(argc, argv, optind);
 
 	cleanup_parcel();

@@ -100,7 +100,7 @@ off_t write_block(header_t* header, int len)
 
 	int send_len = len + sizeof(header_t);
 
-	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
+//	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
 	int ret = pipe_write(g_opts.send_pipe[1], sender_block.buffer, send_len);
 
 	if (ret < 0) {

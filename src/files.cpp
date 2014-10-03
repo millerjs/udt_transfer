@@ -644,7 +644,7 @@ ssize_t pipe_write(int fd, const void *buf, size_t count)
 	ssize_t written_bytes;
 
 	written_bytes = write(fd, buf, count);
-	verb(VERB_2, "[%s] Written %lu bytes (%d requested) to fd %d", __func__, written_bytes, count, fd);
+//	verb(VERB_2, "[%s] Written %lu bytes (%d requested) to fd %d", __func__, written_bytes, count, fd);
 
 	return written_bytes;
 }

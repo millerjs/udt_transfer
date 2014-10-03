@@ -54,10 +54,12 @@ void *monitor_timeout(void* arg) {
 
 		sleep(timeout);
 		if (timeout_sem == 0){
-			fprintf(stderr, "Exiting on timeout.\n");
+			verb(VERB_2, "[%s] Timeout triggered, causing exit", __func__);
+//			fprintf(stderr, "Exiting on timeout.\n");
 			unregister_thread(get_my_thread_id());
-			exit(0);
-	//            break;
+			set_thread_exit();
+//			exit(0);
+			break;
 
 		} else {
 			// continue on as normal
@@ -67,7 +69,13 @@ void *monitor_timeout(void* arg) {
 		if (timeout_sem != 2)
 			timeout_sem = 0;
 
+		if ( check_for_exit(THREAD_TYPE_2) ) {
+			verb(VERB_2, "[%s] Got exit signal, exiting", __func__);
+			unregister_thread(get_my_thread_id());
+			break;
+		}
 	}
+	return 0;
 }
 
 
@@ -375,7 +383,9 @@ void* recvdata(void * _args)
 				break;
 			}
 
-			timeout_sem = 1;
+			if (args->timeout) {
+				timeout_sem = 1;
+			}
 			pipe_write(args->recv_pipe[1], indata, rs);
 		}
 	}
@@ -385,6 +395,7 @@ void* recvdata(void * _args)
 
 	free(indata);
 	unregister_thread(get_my_thread_id());
+	set_thread_exit();
 	return NULL;
 }
 
@@ -461,13 +472,15 @@ void* senddata(void* _args)
 			}
 
 			int ss;
-			verb(VERB_2, "[%s %lu] Reading %lu from pipe", __func__, tid, (BUFF_SIZE - offset));
+//			verb(VERB_2, "[%s %lu] Reading %lu from pipe", __func__, tid, (BUFF_SIZE - offset));
 			bytes_read = pipe_read(args->send_pipe[0], outdata+offset, (BUFF_SIZE - offset));
 
 			if(bytes_read < 0) {
 //				cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
 //				verb(VERB_1, "[%s %lu] Error on read: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
-				verb(VERB_1, "[%s %lu] Error on read: %d (%d)", UDT::getlasterror().getErrorCode(), errno);
+				if ( errno != EBADF ) {
+					verb(VERB_1, "[%s %lu] Error on read: %d",  __func__, tid, errno);
+				}
 				break;
 			}
 
@@ -485,7 +498,7 @@ void* senddata(void* _args)
 
 				while (crypto_cursor < bytes_read) {
 					int size = min(crypto_buff_len, bytes_read-crypto_cursor);
-					verb(VERB_2, "[%s %lu] Passing %d data to encode thread", __func__, tid, size);
+//					verb(VERB_2, "[%s %lu] Passing %d data to encode thread", __func__, tid, size);
 					pass_to_enc_thread(outdata+crypto_cursor+offset,
 							   outdata+crypto_cursor+offset,
 							   size, args->c);
@@ -493,7 +506,7 @@ void* senddata(void* _args)
 					crypto_cursor += size;
 				}
 
-				verb(VERB_2, "[%s %lu] Joining encryption threads", __func__, tid);
+//				verb(VERB_2, "[%s %lu] Joining encryption threads", __func__, tid);
 				join_all_encryption_threads(args->c);
 				bytes_read += offset;
 
@@ -518,6 +531,10 @@ void* senddata(void* _args)
 				ssize += ss;
 			}
 
+			if (args->timeout) {
+				timeout_sem = 1;
+			}
+
 			if ( check_for_exit(THREAD_TYPE_2) ) {
 				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
 				break;
@@ -531,6 +548,10 @@ void* senddata(void* _args)
 			if ( check_for_exit(THREAD_TYPE_2) ) {
 				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
 				break;
+			}
+
+			if (args->timeout) {
+				timeout_sem = 1;
 			}
 
 			bytes_read = pipe_read(args->send_pipe[0], outdata, BUFF_SIZE);

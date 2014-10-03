@@ -1,25 +1,48 @@
 #!/usr/bin/python
 
-import os, sys, shutil, getpass, difflib, subprocess, time
+import os, sys, stat, shutil, getpass, difflib, subprocess, time, datetime
 import socket, fcntl, struct, random
 import subprocess, filecmp
 from distutils.spawn import find_executable
 import unittest
 
 g_appName = "parcel"
+g_remote_logName = "debug-minion.log"
+g_local_logName = "debug-master.log"
 TOTAL_WAITS = 3
 SLEEP_TIME = 1
 
-NUM_TEST_SUBFOLDERS = 2
-MIN_NUM_TEST_FILES = 8
-MAX_NUM_TEST_FILES = 16
-TEST_MINFILESIZE = 512000
-TEST_MAXFILESIZE = 104857600
+smallTestParams = {
+    'NUM_TEST_SUBFOLDERS' : 2,
+    'MIN_NUM_TEST_FILES' : 8,
+    'MAX_NUM_TEST_FILES' : 16,
+    'TEST_MINFILESIZE' : 512000,
+    'TEST_MAXFILESIZE' : 104857600,
+}
+
+
+medTestParams = {
+    'NUM_TEST_SUBFOLDERS' : 2,
+    'MIN_NUM_TEST_FILES' : 8,
+    'MAX_NUM_TEST_FILES' : 16,
+    'TEST_MINFILESIZE' : 512000,
+    'TEST_MAXFILESIZE' : 104857600,
+}
+
+LargeTestParams = {
+    'NUM_TEST_SUBFOLDERS' : 2,
+    'MIN_NUM_TEST_FILES' : 4,
+    'MAX_NUM_TEST_FILES' : 10,
+    'TEST_MINFILESIZE' : 10737418240,
+    'TEST_MAXFILESIZE' : 53687091200,
+}
+
 
 class ParcelTest(unittest.TestCase):
 
     passData = {}
     parcelArgs = {}
+    errors = 0
 
 #
 # unittest needed routines
@@ -32,6 +55,7 @@ class ParcelTest(unittest.TestCase):
         if testName == "encryptedLocalRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = True
+#            cmdArgs['logging'] = True
 #            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "localhost"
@@ -41,6 +65,7 @@ class ParcelTest(unittest.TestCase):
         elif testName == "unencryptedLocalRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = False
+#            cmdArgs['logging'] = True
 #            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "localhost"
@@ -50,25 +75,30 @@ class ParcelTest(unittest.TestCase):
         elif testName == "encryptedRemoteRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = True
+            cmdArgs['logging'] = True
 #            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "ritchie"
             self.passData['localDir'] = "test/data_test"
             self.passData['remoteDir'] = "test/out1"
+            self.kill_remote_processes(self.passData['remoteSys'])
 
         elif testName == "unencryptedRemoteRoundTrip":
             print "*** setUp: start %s" % testName
             cmdArgs['crypto'] = False
+            cmdArgs['logging'] = True
 #            cmdArgs['parceldir'] = "/home/flynn/Projects/Parcel"
             self.parcelArgs = self.setupParcelArgs(cmdArgs)
             self.passData['remoteSys'] = "ritchie"
             self.passData['localDir'] = "test/data_test"
             self.passData['remoteDir'] = "test/out1"
+            self.kill_remote_processes(self.passData['remoteSys'])
 
         self.passData['remoteUser'] = "ubuntu"
         self.passData['gendata'] = True
         self.passData['genloop'] = False
-        self.passData['localUser'] = getpass.getuser()
+#        self.passData['localUser'] = getpass.getuser()
+        self.passData['localUser'] = "ubuntu"
         if ( self.passData['remoteSys'] != "localhost" ):
             self.passData['localSys'] = self.getIPAddress('eth0')
         else:
@@ -81,29 +111,37 @@ class ParcelTest(unittest.TestCase):
         self.passData['remoteDir'] = os.path.join(os.path.expanduser("~"), self.passData['remoteDir'])
 
         if (self.passData['gendata'] == True):
+#            self.cleanup_transfer_data(self.passData['localDir'])
             self.deleteDirectoryContents(self.passData['localDir'])
             # create the data
-            self.generateTestData(self.passData['localDir'], NUM_TEST_SUBFOLDERS, MIN_NUM_TEST_FILES, MAX_NUM_TEST_FILES, TEST_MINFILESIZE, TEST_MAXFILESIZE)
+            self.generateTestData(self.passData['localDir'], LargeTestParams['NUM_TEST_SUBFOLDERS'], LargeTestParams['MIN_NUM_TEST_FILES'], LargeTestParams['MAX_NUM_TEST_FILES'], LargeTestParams['TEST_MINFILESIZE'], LargeTestParams['TEST_MAXFILESIZE'])
 
+        self.errors = 0
 
     def tearDown(self):
-        print "tearDown: start"
+        testName = self.shortDescription()
+        if "Remote" in testName:
+            if self.errors > 0 :
+                self.backup_log_files(self.passData['remoteSys'])
+        else:
+            if self.errors > 0:
+                self.backup_log_files()
 
-    def testEncryptedLocalRoundTrip(self):
-        """encryptedLocalRoundTrip"""
-        self.roundTrip()
-
-    def testUnencryptedLocalRoundTrip(self):
-        """unencryptedLocalRoundTrip"""
-        self.roundTrip()
-
-#    def testEncryptedRemoteRoundTrip(self):
-#        """encryptedRemoteRoundTrip"""
+#    def testEncryptedLocalRoundTrip(self):
+#        """encryptedLocalRoundTrip"""
 #        self.roundTrip()
 
-#    def testUnencryptedRemoteRoundTrip(self):
-#        """unencryptedRemoteRoundTrip"""
+#    def testUnencryptedLocalRoundTrip(self):
+#        """unencryptedLocalRoundTrip"""
 #        self.roundTrip()
+
+    def testEncryptedRemoteRoundTrip(self):
+        """encryptedRemoteRoundTrip"""
+        self.roundTrip()
+
+    def testUnencryptedRemoteRoundTrip(self):
+        """unencryptedRemoteRoundTrip"""
+        self.roundTrip()
 
 
 #
@@ -136,10 +174,59 @@ class ParcelTest(unittest.TestCase):
 #            os.system(commandStr)
 #        else:
 
+    def cleanup_transfer_data(self, directory):
+        lastIndex = directory.rfind("/")
+        dirName = directory[lastIndex + 1:]
+#        print dirName
+        upDir = directory[:lastIndex]
+        for file in os.listdir(upDir):
+            if dirName in file:
+                fullPath = os.path.join(upDir, file)
+                try:
+                    shutil.rmtree(fullPath)
+                except:
+                    print "Unable to remove file %s" % fullPath
+
+    def kill_remote_processes(self, target):
+        commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'killall -q %s'" % ( target, g_appName )
+#        print commandStr
+        os.system(commandStr)
+
+    def backup_log_files(self, target = ""):
+        print "Backing up log files..."
+        timestamp = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
+        if len(target):
+            commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'mv %s %s-%s'" % ( target, g_remote_logName, timestamp, g_remote_logName )
+            print commandStr
+            os.system(commandStr)
+        else:
+            fileLoc = os.path.expanduser("~") + "/" + g_remote_logName
+            if os.path.isfile(fileLoc):
+                os.rename(fileLoc, os.path.expanduser("~") + "/" + timestamp + "-" + g_remote_logName)
+
+        if os.path.isfile(g_local_logName):
+            os.rename(g_local_logName, timestamp + "-" + g_local_logName)
+
+
+    def deleteLogFiles(self, target = ""):
+        print "Deleting log files..."
+        if len(target):
+            commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'rm %s 2> /dev/null'" % ( target, g_remote_logName )
+#            print commandStr
+            os.system(commandStr)
+        else:
+            fileLoc = os.path.expanduser("~") + "/" + g_remote_logName
+            if os.path.isfile(fileLoc):
+                os.unlink(fileLoc)
+
+        if os.path.isfile(g_local_logName):
+            os.unlink(g_local_logName)
 
     def deleteDirectoryContents(self, directory, target = ""):
         if len(target):
-            commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'rm -rf %s/*'" % ( target, directory )
+            commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'rm -rf %s/* 2> /dev/null'" % ( target, directory )
+#            commandStr = "ssh -A -o 'IdentitiesOnly yes' %s 'rm -rf %s/*'" % ( target, directory )
+#            print commandStr
             os.system(commandStr)
         else:
             if os.path.exists(directory):
@@ -201,19 +288,22 @@ class ParcelTest(unittest.TestCase):
         newFileByteArray = bytearray(os.urandom(filesize))
         outFile.write(newFileByteArray)
         outFile.close()
+        os.chmod(fullfilename, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH)
 
     def generateTestData(self, location, numsubfolders, minnumfiles, maxnumfiles, minfilesize, maxfilesize):
         targetdirs = [location]
-        sys.stderr.write("Generating new test data")
+        sys.stderr.write("Generating new test data: ")
         # make sure the target location exists
         if not os.path.exists(location):
             os.mkdir(location)
+            os.chmod(location, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO | stat.S_IWOTH)
 
         if numsubfolders > 0:
             for i in range(0, numsubfolders):
                 newsubfolder = "%s/parcel%03d" % (location, i)
                 if not os.path.exists(newsubfolder):
                     os.mkdir(newsubfolder)
+                    os.chmod(newsubfolder, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO | stat.S_IWOTH)
                 targetdirs.append(newsubfolder)
 
         numfiles = int(random.uniform(minnumfiles, maxnumfiles))
@@ -222,8 +312,9 @@ class ParcelTest(unittest.TestCase):
             newfilename = "parcelTest%03d.dat" % i
             randomloc = targetdirs[int(random.uniform(0, len(targetdirs)))]
             filesize = int(random.uniform(minfilesize, maxfilesize))
-            sys.stderr.write(".")
+            sys.stderr.write("%d " % ((numfiles + 1) - i))
             self.generateTestFile(randomloc, newfilename, filesize)
+        sys.stderr.flush()
         print "complete"
 
     def getProcessIDs(self, targetProcess):
@@ -250,7 +341,7 @@ class ParcelTest(unittest.TestCase):
                 break
             if waitCount > totalWaits:
                 print "parcel instances still running, we've waited long enough, killing"
-                commandStr = "killall %s" % g_appName
+                commandStr = "killall -q %s" % g_appName
                 os.system(commandStr)
                 waitCount = 0
             else:
@@ -320,15 +411,23 @@ class ParcelTest(unittest.TestCase):
         return newLocalDir
 
     def callParcel(self, parcelArgs, remoteStr, sourceStr):
-        commandStr = "./%s %s %s %s" % ( g_appName, parcelArgs, sourceStr, remoteStr)
+        commandStr = "%s %s %s %s" % ( g_appName, parcelArgs, sourceStr, remoteStr)
         os.system(commandStr)
         self.waitForProcessesToExit(TOTAL_WAITS)
 
     def roundTrip(self):
+        self.waitForProcessesToExit(0)
+
+        if self.passData['remoteSys'] != "localhost":
+            self.deleteLogFiles(self.passData['remoteSys'])
+        else:
+            self.deleteLogFiles()
+
         if self.passData['genloop'] == True:
-            self.deleteDirectoryContents(self.passData['localDir'])
+            self.deleteDirectoryContents(self.passData['localDir'] + "*")
             # create the data
-            self.generateTestData(self.passData['localDir'], NUM_TEST_SUBFOLDERS, NUM_TEST_FILES, TEST_MINFILESIZE, TEST_MAXFILESIZE)
+            self.generateTestData(self.passData['localDir'], LargeTestParams['NUM_TEST_SUBFOLDERS'], LargeTestParams['MIN_NUM_TEST_FILES'], LargeTestParams['MAX_NUM_TEST_FILES'], LargeTestParams['TEST_MINFILESIZE'], LargeTestParams['TEST_MAXFILESIZE'])
+#            self.generateTestData(self.passData['localDir'], NUM_TEST_SUBFOLDERS, NUM_TEST_FILES, TEST_MINFILESIZE, TEST_MAXFILESIZE)
 
         # clear out the other directories
         self.deleteDirectoryContents(self.passData['newLocalDir'])
@@ -339,23 +438,29 @@ class ParcelTest(unittest.TestCase):
         print "Local to remote..."
         self.callParcel(self.parcelArgs, self.passData['remoteStr'], self.passData['localDir'])
         # get from remote to local
-        time.sleep(1)
+#        time.sleep(1)
 
         print "Remote to local..."
         self.callParcel(self.parcelArgs, self.passData['newLocalDir'], self.passData['remoteStr'])
-        time.sleep(1)
+#        time.sleep(1)
 
         # compare the files after the trip
         result = self.compareDirectories(self.passData['localDir'], self.passData['newLocalDir'])
-        print "Test result = %u" % result
+        if ( result ):
+            print "Test result = ok"
+        else:
+            print "Test result = failed"
+            self.errors = 1
+
+        self.cleanup_transfer_data(self.passData['localDir'])
+        self.deleteDirectoryContents(self.passData['newLocalDir'])
+        self.deleteDirectoryContents(self.passData['remoteDir'], "%s@%s" % (self.passData['remoteUser'], self.passData['remoteSys']))
 
         self.assertTrue(result, "ERROR: directories not equal.")
 
         return result
 
 if __name__ == '__main__':
-#    parcelSuite = unittest.TestLoader().loadTestsFromTestCase(ParcelTest)
-#    parcelRunner = unittest.TextTestRunner()
-#    parcelRunner.run(parcelSuite)
-    unittest.main()
-#    fooRunner = unittest.TextTestRunner(description=False)
+    parcelSuite = unittest.TestLoader().loadTestsFromTestCase(ParcelTest)
+    parcelRunner = unittest.TextTestRunner(verbosity=1).run(parcelSuite)
+#    unittest.main()
