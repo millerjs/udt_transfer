@@ -296,7 +296,7 @@ int crypto_update(char* in, char* out, int len, Crypto *c)
 	c->increment_thread_id();
 	c->lock_data(i);
 
-	verb(VERB_2, "[%s] calling update for thread %d on data %X", __func__, i, in);
+//	verb(VERB_2, "[%s] calling update for thread %d on data %X", __func__, i, in);
 	if (len == 0) {
 
 		// FINALIZE CIPHER
@@ -340,7 +340,7 @@ void *crypto_update_thread(void* _args)
 
 		e_thread_args* args = (e_thread_args*)_args;
 		Crypto *c = (Crypto*)args->c;
-		verb(VERB_2,  "[%s %lu] Heading into main loop", __func__, pthread_self());
+//		verb(VERB_2,  "[%s %lu] Heading into main loop", __func__, pthread_self());
 
 		while (1) {
 			if ( check_for_exit(THREAD_TYPE_1) ) {

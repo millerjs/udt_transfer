@@ -45,15 +45,27 @@ using std::endl;
 
 int READ_IN = 0;
 
-int timeout_sem;
+int g_timeout_sem;
+int g_timeout_len;
+
+void kick_monitor(void)
+{
+	g_timeout_sem = time(NULL) + g_timeout_len;
+}
+
+int check_monitor_timeout(void)
+{
+	return (g_timeout_sem - time(NULL));
+}
+
 void *monitor_timeout(void* arg) {
 
-	int timeout = *(int*) arg;
+//	int timeout = *(int*) arg;
 
 	while (1) {
-
-		sleep(timeout);
-		if (timeout_sem == 0){
+//		sleep(timeout);
+		sleep(1);
+		if (check_monitor_timeout() <= 0){
 			verb(VERB_2, "[%s] Timeout triggered, causing exit", __func__);
 //			fprintf(stderr, "Exiting on timeout.\n");
 			unregister_thread(get_my_thread_id());
@@ -65,9 +77,10 @@ void *monitor_timeout(void* arg) {
 			// continue on as normal
 		}
 
-		// If timeout_sem == 2, the connection has not been made -> no timeout next round
-		if (timeout_sem != 2)
-			timeout_sem = 0;
+		// If g_timeout_sem == 2, the connection has not been made -> no timeout next round
+/*		if (g_timeout_sem != 2) {
+			g_timeout_sem = 0;
+		} */
 
 		if ( check_for_exit(THREAD_TYPE_2) ) {
 			verb(VERB_2, "[%s] Got exit signal, exiting", __func__);
@@ -76,6 +89,13 @@ void *monitor_timeout(void* arg) {
 		}
 	}
 	return 0;
+}
+
+void init_monitor(time_t timeout_len)
+{
+	g_timeout_len = timeout_len;
+	kick_monitor();
+
 }
 
 
@@ -116,7 +136,8 @@ void recv_full(UDTSOCKET sock, char* buffer, int len)
 				exit(1);
 			}
 		}
-		timeout_sem = 1;
+		kick_monitor();
+//		g_timeout_sem = 1;
 		recvd += rs;
 	}
 }
@@ -134,7 +155,7 @@ void auth_peer(rs_args* args)
 //	char decoded_signed_key[KEY_LEN];
 
 	RAND_bytes((unsigned char*)auth_peer_key, KEY_LEN);
-//	verb(VERB_2, "[%s] Generated key:", __func__);
+	verb(VERB_2, "[%s] Generated key:", __func__);
 //	print_bytes(auth_peer_key, KEY_LEN, 16);
 
 //	g_authed_peer = 0;
@@ -147,6 +168,9 @@ void auth_peer(rs_args* args)
 	verb(VERB_2, "[%s] Receiving data", __func__);
 	recv_full(*args->usocket, signed_key, KEY_LEN);
 
+	verb(VERB_2, "[%s] Received signed key:", __func__);
+//	print_bytes(signed_key, KEY_LEN, 16);
+
 	int crypt_len = KEY_LEN/args->n_crypto_threads;
 	for (int i = 0; i < args->n_crypto_threads; i ++) {
 		verb(VERB_2, "[%s] Passing data to encode/decode thread: %x in, %x out, i = %d, crypt_len = %d", __func__,
@@ -158,11 +182,12 @@ void auth_peer(rs_args* args)
 	join_all_encryption_threads(args->c);
 
 	if (memcmp(auth_peer_key, signed_key, KEY_LEN)) {
-		verb(VERB_2, "[%s] Authorization failed", __func__);
-//		verb(VERB_2, "key (%x):", auth_peer_key);
-//		print_bytes(auth_peer_key, KEY_LEN, 16);
-//		verb(VERB_2, "signed_key (%x):", signed_key);
-//		print_bytes(signed_key, KEY_LEN, 16);
+		verb(VERB_1, "[%s] Authorization failed", __func__);
+/*		verb(VERB_2, "key (%x):", auth_peer_key);
+		print_bytes(auth_peer_key, KEY_LEN, 16);
+		verb(VERB_2, "signed_key (%x):", signed_key);
+		print_bytes(signed_key, KEY_LEN, 16); */
+//		set_thread_exit();
 		exit(1);
 	} else {
 		verb(VERB_2, "[%s] Key signed OK", __func__);
@@ -183,7 +208,7 @@ void sign_auth(rs_args* args)
 	// appears to try and receive a key
 	recv_full(*args->usocket, sign_auth_key, KEY_LEN);
 
-//	verb(VERB_2, "[%s] received key:", __func__);
+	verb(VERB_2, "[%s] received key:", __func__);
 //	print_bytes(sign_auth_key, KEY_LEN, 16);
 
 	// pass the key to the encode thread
@@ -195,7 +220,7 @@ void sign_auth(rs_args* args)
 
 	join_all_encryption_threads(args->c);
 
-//	verb(VERB_2, "[%s] signed key:", __func__);
+	verb(VERB_2, "[%s] signed key:", __func__);
 //	print_bytes(sign_auth_key, KEY_LEN, 16);
 
 	verb(VERB_2, "[%s] Sending data back", __func__);
@@ -253,13 +278,13 @@ void* recvdata(void * _args)
 	// wait until we're actually done signing
 	while ( !get_encrypt_ready() );
 
-
-	timeout_sem = 2;
+//	g_timeout_sem = 2;
 
 	// Create a monitor thread to watch for timeouts
 	if (args->timeout > 0) {
 		pthread_t monitor_thread;
 //		pthread_create(&monitor_thread, NULL, &monitor_timeout, &args->timeout);
+		init_monitor(args->timeout);
 		create_thread(&monitor_thread, NULL, &monitor_timeout, &args->timeout, "monitor_timeout", THREAD_TYPE_2);
 	}
 
@@ -273,9 +298,10 @@ void* recvdata(void * _args)
 	verb(VERB_2, "[%s %lu] Listening on receive thread, args->c = %0x", __func__, tid, args->c);
 
 	// Set monitor thread to expect a timeout
-	if (args->timeout) {
-		timeout_sem = 1;
-	}
+	kick_monitor();
+/*	if (args->timeout) {
+//		g_timeout_sem = 1;
+	} */
 
 	if(args->use_crypto) {
 		verb(VERB_2, "[%s %lu] Entering crypto loop...", __func__, tid);
@@ -321,9 +347,10 @@ void* recvdata(void * _args)
 			}
 
 			// Cancel timeout for another args->timeout seconds
-			if (args->timeout) {
-				timeout_sem = 1;
-			}
+			kick_monitor();
+/*			if (args->timeout) {
+				g_timeout_sem = 1;
+			} */
 
 			buffer_cursor += rs;
 
@@ -383,9 +410,10 @@ void* recvdata(void * _args)
 				break;
 			}
 
-			if (args->timeout) {
-				timeout_sem = 1;
-			}
+			kick_monitor();
+/*			if (args->timeout) {
+				g_timeout_sem = 1;
+			} */
 			pipe_write(args->recv_pipe[1], indata, rs);
 		}
 	}
@@ -531,9 +559,10 @@ void* senddata(void* _args)
 				ssize += ss;
 			}
 
-			if (args->timeout) {
-				timeout_sem = 1;
-			}
+			kick_monitor();
+/*			if (args->timeout) {
+				g_timeout_sem = 1;
+			} */
 
 			if ( check_for_exit(THREAD_TYPE_2) ) {
 				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
@@ -550,9 +579,10 @@ void* senddata(void* _args)
 				break;
 			}
 
-			if (args->timeout) {
-				timeout_sem = 1;
-			}
+			kick_monitor();
+/*			if (args->timeout) {
+				g_timeout_sem = 1;
+			} */
 
 			bytes_read = pipe_read(args->send_pipe[0], outdata, BUFF_SIZE);
 			int ssize = 0;

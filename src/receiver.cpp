@@ -280,7 +280,7 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 
 int pst_rec_callback_complete(header_t header, global_data_t* global_data)
 {
-//	verb(VERB_2, "[%s] Receive completed", __func__);
+	verb(VERB_2, "[%s] XFER_COMPLETE message", __func__);
 
 	global_data->complete = 1;
 

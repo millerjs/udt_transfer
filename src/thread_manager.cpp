@@ -24,8 +24,9 @@ and limitations under the License.
 #include "debug_output.h"
 
 struct thread_info_t    activeThreads[THREAD_POOL_SIZE];
-int thread_count;
-int time_to_exit;
+int g_thread_count;
+int g_time_to_exit;
+pthread_mutex_t g_thread_mutex;
 
 //
 // init_thread_manager
@@ -36,8 +37,10 @@ int time_to_exit;
 void init_thread_manager(void)
 {
 	int i;
-	time_to_exit = 0;
-	thread_count = 0;
+	g_time_to_exit = 0;
+	g_thread_count = 0;
+	pthread_mutex_init(&g_thread_mutex, NULL);
+
 	for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
 		activeThreads[i].threadType = THREAD_TYPE_NONE;
 		activeThreads[i].threadId = 0;
@@ -74,6 +77,7 @@ int register_thread(pthread_t threadId, char* threadName, thread_type_t threadTy
 		}
 	}
 	if ( i < THREAD_POOL_SIZE ) {
+		pthread_mutex_lock (&g_thread_mutex);
 		strncpy(activeThreads[i].threadName, threadName, MAX_THREAD_NAME - 1);
 		activeThreads[i].threadId = threadId;
 		activeThreads[i].threadUsed = 1;
@@ -82,11 +86,12 @@ int register_thread(pthread_t threadId, char* threadName, thread_type_t threadTy
 		} else {
 			activeThreads[i].threadType = THREAD_TYPE_1;
 		}
-		thread_count++;
+		g_thread_count++;
+		pthread_mutex_unlock (&g_thread_mutex);
 	}
-	verb(VERB_2, "[%s] Thread count now %d", __func__, thread_count);
+	verb(VERB_2, "[%s] Thread count now %d", __func__, g_thread_count);
 
-	return(thread_count);
+	return(g_thread_count);
 }
 
 
@@ -102,20 +107,22 @@ int unregister_thread(pthread_t threadId)
 	verb(VERB_2, "[%s] Thread ID %lu requested", __func__, threadId);
 
 	for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
-	//        if ( activeThreads[i].threadId == threadId ) {
+	//	if ( activeThreads[i].threadId == threadId ) {
 		if ( pthread_equal(activeThreads[i].threadId, threadId) ) {
 				verb(VERB_2, "[%s]: Thread %s found (%lu), clearing", __func__, activeThreads[i].threadName, threadId);
+				pthread_mutex_lock (&g_thread_mutex);
 				activeThreads[i].threadType = THREAD_TYPE_NONE;
 				activeThreads[i].threadId = 0;
 				activeThreads[i].threadUsed = 0;
+				g_thread_count--;
 				memset(activeThreads[i].threadName, 0, sizeof(char)*MAX_THREAD_NAME);
-				thread_count--;
+				pthread_mutex_unlock (&g_thread_mutex);
 				break;
 		}
 	}
 
-	verb(VERB_2, "[%s]: Thread count now %d", __func__, thread_count);
-	return(thread_count);
+	verb(VERB_2, "[%s]: Thread count now %d", __func__, g_thread_count);
+	return(g_thread_count);
 }
 
 //
@@ -126,7 +133,7 @@ int unregister_thread(pthread_t threadId)
 
 int get_thread_count(thread_type_t threadType)
 {
-	int i, tmpThreadCount = thread_count;
+	int i, tmpThreadCount = g_thread_count;
 
 	if ( threadType < THREAD_TYPE_ALL ) {
 		for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
@@ -138,14 +145,13 @@ int get_thread_count(thread_type_t threadType)
 		}
 	}
 
-	return(thread_count);
+	return(tmpThreadCount);
 }
 
 //
-// get_thread_count
+// get_my_thread_id
 //
-// checks with the thread system and sees how many threads of a type
-// are currently in the system
+// gets the thread id of the current thread
 
 pthread_t get_my_thread_id(void)
 {
@@ -153,18 +159,17 @@ pthread_t get_my_thread_id(void)
 }
 
 //
-// get_thread_count
+// get_my_thread_id
 //
-// checks with the thread system and sees how many threads of a type
-// are currently in the system
+// prints the threads that are currently active
 
-void print_threads(void)
+void print_threads(verb_t verbosity)
 {
 	int i;
 
 	for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
 		if ( activeThreads[i].threadUsed ) {
-			verb(VERB_2, "%d: Thread ID %lu - %s", i, activeThreads[i].threadId, activeThreads[i].threadName);
+			verb(verbosity, "%d: Thread ID %lu - %s", i, activeThreads[i].threadId, activeThreads[i].threadName);
 		}
 	}
 
@@ -173,14 +178,14 @@ void print_threads(void)
 void set_thread_exit(void)
 {
 	verb(VERB_2, "[%s]: Time to wrap this up", __func__);
-	time_to_exit = 1;
+	g_time_to_exit = 1;
 
 }
 
 
 int check_for_exit(thread_type_t threadType)
 {
-	int i, should_exit = time_to_exit;
+	int i, should_exit = g_time_to_exit;
 //	verb(VERB_2, "[%s]: threadType = %d", __func__, threadType);
 
 	// type 1 needs to check if any 2s are running, if we even have to

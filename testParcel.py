@@ -270,8 +270,8 @@ def WaitForProcessesToExit(totalWaits):
 
 def CallParcel(parcelArgs, remoteStr, sourceStr):
     commandStr = "./%s %s %s %s" % ( g_appName, parcelArgs, sourceStr, remoteStr)
-    print "[CallParcel] with:"
-    print commandStr
+#    print "[CallParcel] with:"
+#    print commandStr
     os.system(commandStr)
     WaitForProcessesToExit(TOTAL_WAITS)
 

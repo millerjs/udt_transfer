@@ -95,7 +95,7 @@ class ParcelTest(unittest.TestCase):
             self.kill_remote_processes(self.passData['remoteSys'])
 
         self.passData['remoteUser'] = "ubuntu"
-        self.passData['gendata'] = True
+        self.passData['gendata'] = False
         self.passData['genloop'] = False
 #        self.passData['localUser'] = getpass.getuser()
         self.passData['localUser'] = "ubuntu"
@@ -423,7 +423,8 @@ class ParcelTest(unittest.TestCase):
         else:
             self.deleteLogFiles()
 
-        if self.passData['genloop'] == True:
+        if (self.passData['genloop'] == True) | (self.passData['gendata'] == True):
+
             self.deleteDirectoryContents(self.passData['localDir'] + "*")
             # create the data
             self.generateTestData(self.passData['localDir'], LargeTestParams['NUM_TEST_SUBFOLDERS'], LargeTestParams['MIN_NUM_TEST_FILES'], LargeTestParams['MAX_NUM_TEST_FILES'], LargeTestParams['TEST_MINFILESIZE'], LargeTestParams['TEST_MAXFILESIZE'])
@@ -452,7 +453,8 @@ class ParcelTest(unittest.TestCase):
             print "Test result = failed"
             self.errors = 1
 
-        self.cleanup_transfer_data(self.passData['localDir'])
+        if (self.passData['genloop'] == True) | (self.passData['gendata'] == True):
+            self.cleanup_transfer_data(self.passData['localDir'])
         self.deleteDirectoryContents(self.passData['newLocalDir'])
         self.deleteDirectoryContents(self.passData['remoteDir'], "%s@%s" % (self.passData['remoteUser'], self.passData['remoteSys']))
 

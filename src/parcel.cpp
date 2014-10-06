@@ -269,7 +269,7 @@ void clean_exit(int status)
 	verb(VERB_2, "[%d %s] Start", g_flags, __func__);
 	close_log_file();
 	print_xfer_stats();
-	verb(VERB_2, "[%s] cleaning up pipes", __func__);
+	verb(VERB_2, "[%d %s] cleaning up pipes", __func__);
 	cleanup_pipes();
 	set_thread_exit();
 
@@ -278,7 +278,7 @@ void clean_exit(int status)
 	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) && (status != EXIT_FAILURE) ) {
 		if ( counter == 0 ) {
 			verb(VERB_2, "[%d %s] Waiting on %d threads to exit", g_flags, __func__, get_thread_count(THREAD_TYPE_ALL));
-			print_threads();
+			print_threads(VERB_2);
 			counter = MAX_OUTPUT_COUNT;
 		} else {
 			counter--;
@@ -286,19 +286,26 @@ void clean_exit(int status)
 		usleep(100);
 	}
 
-	verb(VERB_2, "[%s] cleaning up sender/receiver", __func__);
+	verb(VERB_2, "[%d %s] cleaning up sender/receiver", g_flags, __func__);
 	cleanup_receiver();
 	cleanup_sender();
 
-	verb(VERB_2, "[%s] deleting crypto structs", __func__);
-	delete(g_opts.enc);
-	delete(g_opts.dec);
+	verb(VERB_2, "[%d %s] deleting crypto structs", g_flags, __func__);
+	if ( g_opts.enc ) {
+		delete(g_opts.enc);
+		g_opts.enc = NULL;
+	}
+	if ( g_opts.dec) {
+		delete(g_opts.dec);
+		g_opts.dec = NULL;
+	}
 
 	if ( g_ssh_file_handle ) {
-		verb(VERB_2, "[%s] pclosing file handle", __func__);
+		verb(VERB_2, "[%d %s] pclosing file handle", g_flags, __func__);
 		pclose(g_ssh_file_handle);
 	}
 
+	verb(VERB_2, "[%d %s] exiting", g_flags, __func__);
 	exit(status);
 }
 
@@ -310,22 +317,21 @@ void clean_exit(int status)
  */
 void sig_handler(int signal)
 {
+	if (signal == SIGINT){
+		verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
+	}
 
-    if (signal == SIGINT){
-        verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
-    }
-
-    if (signal == SIGSEGV){
-        verb(VERB_0, "\nERROR: [%d] received SIGSEV, caught SEGFAULT cleaning up and exiting...", getpid());
+	if (signal == SIGSEGV){
+		verb(VERB_0, "\nERROR: [%d] received SIGSEV, caught SEGFAULT cleaning up and exiting...", getpid());
 #ifdef DEBUG_BACKTRACE
-        print_backtrace();
+		print_backtrace();
 #endif
-        abort();
-    }
+		abort();
+	}
 
-    // Kill children and let user know
-    kill_children();
-    clean_exit(EXIT_FAILURE);
+	// Kill children and let user know
+	kill_children();
+	clean_exit(EXIT_FAILURE);
 }
 
 
@@ -336,35 +342,37 @@ void sig_handler(int signal)
  */
 int print_progress(char* descrip, off_t read, off_t total)
 {
-    char label[8];
-    char fmt[1024];
-    int path_width = 60;
+	char label[8];
+	char fmt[1024];
+	int path_width = 60;
 
-    // Get the width of the terminal
-    struct winsize term;
-    if (!ioctl(fileno(stdout), TIOCGWINSZ, &term)){
-        int progress_width = 35;
-        path_width = term.ws_col - progress_width;
-    }
+	// Get the width of the terminal
+	struct winsize term;
+	if (!ioctl(fileno(stdout), TIOCGWINSZ, &term)){
+		int progress_width = 35;
+		path_width = term.ws_col - progress_width;
+	}
 
-    // Scale the amount read and generate label
-    off_t ref = (total > read) ? total : read;
-    double scale = get_scale(ref, label);
+	// Scale the amount read and generate label
+	off_t ref = (total > read) ? total : read;
+	double scale = get_scale(ref, label);
 
-    // if we know the file size, print percentage of completion
-    if (total) {
-        double percent = total ? read*100./total : 0.0;
-        sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
-        verb(VERB_2, fmt, descrip, read/scale, total/scale, label, percent);
-        fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+	// if we know the file size, print percentage of completion
+	if (total) {
+		double percent = total ? read*100./total : 0.0;
+		sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
+		verb(VERB_2, fmt, descrip, read/scale, total/scale, label, percent);
+		fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
+		fprintf(stderr, "\n");
 
-    } else {
-        sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
-        verb(VERB_2, fmt, descrip, read/scale, label);
-        fprintf(stderr, fmt, descrip, read/scale, label);
-    }
+	} else {
+		sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
+		verb(VERB_2, fmt, descrip, read/scale, label);
+		fprintf(stderr, fmt, descrip, read/scale, label);
+		fprintf(stderr, "\n");
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 
@@ -792,6 +800,7 @@ int get_options(int argc, char *argv[])
 					// specify receive mode
 					g_opts.mode |= MODE_RCV;
 					g_opts.mode ^= MODE_SEND;
+//					set_file_logging(1);
 					break;
 
 				case 'i':
@@ -1025,14 +1034,14 @@ int master_transfer_setup()
 		if ( key_len >= PARCEL_MAX_TEMP_KEY_LENGTH ) {
 			ERR("[%d %s] received key of improper length", g_flags, __func__);
 		}
-		verb(VERB_3, "[%d %s] Got key back of len %d:", g_flags, __func__, key_len);
+//		verb(VERB_2, "[%d %s] Got key back of len %d:", g_flags, __func__, key_len);
 //		print_bytes(tmpBuf, PARCEL_CRYPTO_KEY_LENGTH, 16);
-//		verb(VERB_3, "%s", tmpBuf);
+//		verb(VERB_2, "%s", tmpBuf);
 
 		// copy it to our key
 		g_session_key = (char*)malloc(sizeof(char) * key_len);
 		memset(g_session_key, 0, sizeof(char) * key_len);
-		strncpy(g_session_key, tmpBuf, sizeof(char) * key_len);
+		memcpy(g_session_key, tmpBuf, sizeof(char) * key_len);
 //		verb(VERB_3, "[%d %s] g_session_key:", g_flags, __func__);
 //		verb(VERB_3, "%s", g_session_key);
 	}
@@ -1151,9 +1160,10 @@ int start_transfer(int argc, char*argv[], int optind)
 		// Listen to sender for files and data, see receiver.cpp
 		receive_files(g_base_path);
 
-//		header_t* h = nheader(XFER_COMPLETE, 0);
-//		pipe_write(g_opts.send_pipe[1], h, sizeof(header_t));
-//		free(h);
+		// fly - hang out a few seconds waiting for send to complete
+		// we should probably have a way to check that the ack has actually gone
+		// out, but this should work
+		sleep(1);
 
 	} else if (g_opts.mode & MODE_SEND) {
 

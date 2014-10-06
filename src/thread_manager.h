@@ -24,6 +24,7 @@ and limitations under the License.
 #define MAX_THREAD_NAME     256
 
 #include <pthread.h>
+#include "debug_output.h"
 
 typedef enum : unsigned char {
 	THREAD_TYPE_NONE,
@@ -47,7 +48,7 @@ int register_thread(pthread_t threadId, char* threadName, thread_type_t threadTy
 int unregister_thread(pthread_t threadId);
 int get_thread_count(thread_type_t threadType);
 pthread_t get_my_thread_id(void);
-void print_threads(void);
+void print_threads(verb_t verbosity);
 void set_thread_exit(void);
 int check_for_exit(thread_type_t threadType);
 
