@@ -75,7 +75,8 @@ void *run_server(void *_args_)
 	if (specify_ip) {
 		my_addr.sin_family = AF_INET;
 		my_addr.sin_port = htons(atoi(port));
-		my_addr.sin_addr.s_addr = inet_addr(args->listen_ip);
+//		my_addr.sin_addr.s_addr = inet_addr(args->listen_ip);
+		inet_pton(my_addr.sin_family, args->listen_ip, &(my_addr.sin_addr.s_addr));
 
 //		bzero(&(my_addr.sin_zero), 8);
 		memset(&(my_addr.sin_zero), 0, sizeof(my_addr.sin_zero));

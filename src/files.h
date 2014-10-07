@@ -65,7 +65,7 @@ struct file_LL {
 
 extern char *f_map;
 extern int flogfd;
-extern char log_path[MAX_PATH_LEN];
+extern char g_log_path[MAX_PATH_LEN];
 
 void set_socket_ready(int state);
 
@@ -131,7 +131,7 @@ int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 
 off_t fsize(int fd);
 
-int generate_base_path(char *perlim_path, char *data_path);
+int generate_base_path(char *perlim_path, char *data_path, int data_path_size);
 
 
 int map_fd(int fd, off_t size);

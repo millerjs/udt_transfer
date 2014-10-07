@@ -66,9 +66,9 @@ int init_debug_output_file(int is_master)
 	memset(g_logfilename, 0, sizeof(char) * MAX_LOG_FILE_NAME_LEN);
 
 	if ( is_master != 0 ) {
-		sprintf(g_logfilename, "%s-%s.%s", g_logfilename_prefix, "master", g_logfilename_suffix);
+		snprintf(g_logfilename, (MAX_LOG_FILE_NAME_LEN / 2) - 1, "%s-%s.%s", g_logfilename_prefix, "master", g_logfilename_suffix);
 	} else {
-		sprintf(g_logfilename, "%s-%s.%s", g_logfilename_prefix, "minion", g_logfilename_suffix);
+		snprintf(g_logfilename, (MAX_LOG_FILE_NAME_LEN / 2) - 1, "%s-%s.%s", g_logfilename_prefix, "minion", g_logfilename_suffix);
 	}
 
 	snprintf(g_full_log_filename, MAX_LOG_FILE_NAME_LEN, "%s/%s", tmpPath, g_logfilename);
@@ -158,9 +158,10 @@ void print_backtrace()
 // 32 bytes max
 //
 #define TMP_STR_SIZE 64
+#define TMP_CHAR_SIZE 8
 void print_bytes(char* data, int length, int output_line_len)
 {
-	char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
+	char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[TMP_CHAR_SIZE];
 	int i;
 
 	if ( output_line_len > (TMP_STR_SIZE - 1) / 2 ) {
@@ -177,19 +178,19 @@ void print_bytes(char* data, int length, int output_line_len)
 		for (i = 0; i < output_line_len; i++ ) {
 			if ( length > 0 ) {
 				if ( (data[i] > 31) && (data[i] != 127) ) {
-					sprintf(tmpChar, " %c", data[i]);
+					snprintf(tmpChar, TMP_CHAR_SIZE, " %c", data[i]);
 				} else {
-					sprintf(tmpChar, "  ");
+					snprintf(tmpChar, TMP_CHAR_SIZE, "  ");
 				}
-				strcat(asciiStr, tmpChar);
-				sprintf(tmpChar, "%02X ", (unsigned char)data[i]);
-				strcat(hexStr, tmpChar);
+				strncat(asciiStr, tmpChar, TMP_CHAR_SIZE);
+				snprintf(tmpChar, TMP_CHAR_SIZE, "%02X ", (unsigned char)data[i]);
+				strncat(hexStr, tmpChar, TMP_CHAR_SIZE);
 				length--;
 			} else {
-				sprintf(tmpChar, "  ");
-				strcat(asciiStr, tmpChar);
-				sprintf(tmpChar, "-- ");
-				strcat(hexStr, tmpChar);
+				snprintf(tmpChar, TMP_CHAR_SIZE, "  ");
+				strncat(asciiStr, tmpChar, TMP_CHAR_SIZE);
+				snprintf(tmpChar, TMP_CHAR_SIZE, "-- ");
+				strncat(hexStr, tmpChar, TMP_CHAR_SIZE);
 			}
 		}
 		data += output_line_len;

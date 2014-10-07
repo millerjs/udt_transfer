@@ -178,7 +178,7 @@ int kill_children()
 			verb(VERB_2, "[%d %s] Killing remote parcel process... ", g_flags, __func__);
 
 			char kill_cmd[MAX_PATH_LEN];
-			sprintf(kill_cmd, "kill -s SIGINT %d 2> /dev/null", g_remote_args.remote_pid);
+			snprintf(kill_cmd, MAX_PATH_LEN - 1, "kill -s SIGINT %d 2> /dev/null", g_remote_args.remote_pid);
 			char *args[] = {"ssh", "-A", g_remote_args.pipe_host, kill_cmd, NULL};
 
 			// Execute the pipe process
@@ -206,32 +206,34 @@ int kill_children()
  * - returns: the ratio to scale the transfer size to be human readable
  * - state  : writes the label for the scale to char*label
  */
-double get_scale(off_t size, char*label)
+#define TMP_LABEL_SIZE		8
+
+double get_scale(off_t size, char*label, int label_size)
 {
-	char    tmpLabel[8];
+	char    tmpLabel[TMP_LABEL_SIZE];
 	double  tmpSize = 1.0;
 
 	if (size < SIZE_KB){
-		sprintf(tmpLabel, "B");
+		snprintf(tmpLabel, TMP_LABEL_SIZE - 1, "B");
 		tmpSize = SIZE_B;
 	} else if (size < SIZE_MB){
-		sprintf(tmpLabel, "KB");
+		snprintf(tmpLabel, TMP_LABEL_SIZE - 1, "KB");
 		tmpSize = SIZE_KB;
 	} else if (size < SIZE_GB){
-		sprintf(tmpLabel, "MB");
+		snprintf(tmpLabel, TMP_LABEL_SIZE - 1, "MB");
 		tmpSize = SIZE_MB;
 	} else if (size < SIZE_TB){
-		sprintf(tmpLabel, "GB");
+		snprintf(tmpLabel, TMP_LABEL_SIZE - 1, "GB");
 		tmpSize = SIZE_GB;
 	} else if (size < SIZE_PB){
-		sprintf(tmpLabel, "TB");
+		snprintf(tmpLabel, TMP_LABEL_SIZE - 1, "TB");
 		tmpSize = SIZE_TB;
 	} else {
-		sprintf(tmpLabel, "PB");
+		snprintf(tmpLabel, TMP_LABEL_SIZE - 1, "PB");
 		tmpSize = SIZE_PB;
 	}
 
-	sprintf(label, "%s", tmpLabel);
+	snprintf(label, label_size - 1, "%s", tmpLabel);
 //	fprintf(stderr, "get_scale: size = %ld, label = %s, newSize = %f\n", size, label, tmpSize);
 //	label = "[?]";
 	return tmpSize;
@@ -244,12 +246,12 @@ double get_scale(off_t size, char*label)
  */
 void print_xfer_stats()
 {
-	char label[8];
+	char label[TMP_LABEL_SIZE];
 	if (g_opts.verbosity >= VERB_2 || g_opts.progress){
 		stop_timer(g_timer);
 		double elapsed = timer_elapsed(g_timer);
 
-		double scale = get_scale(G_TOTAL_XFER, label);
+		double scale = get_scale(G_TOTAL_XFER, label, TMP_LABEL_SIZE);
 
 		fprintf(stderr, "\n\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n",
 				G_TOTAL_XFER/scale, label, elapsed,
@@ -340,10 +342,12 @@ void sig_handler(int signal)
  * - prints the fraction of data transfered for the current file with a carriage return
  * - returns: RET_SUCCESS on success, RET_FAILURE on failure
  */
+#define  TMP_FMT_SIZE		1024
+
 int print_progress(char* descrip, off_t read, off_t total)
 {
-	char label[8];
-	char fmt[1024];
+	char label[TMP_LABEL_SIZE];
+	char fmt[TMP_FMT_SIZE];
 	int path_width = 60;
 
 	// Get the width of the terminal
@@ -355,18 +359,18 @@ int print_progress(char* descrip, off_t read, off_t total)
 
 	// Scale the amount read and generate label
 	off_t ref = (total > read) ? total : read;
-	double scale = get_scale(ref, label);
+	double scale = get_scale(ref, label, TMP_LABEL_SIZE);
 
 	// if we know the file size, print percentage of completion
 	if (total) {
 		double percent = total ? read*100./total : 0.0;
-		sprintf(fmt, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
+		snprintf(fmt, TMP_FMT_SIZE - 1, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
 		verb(VERB_2, fmt, descrip, read/scale, total/scale, label, percent);
 		fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
 		fprintf(stderr, "\n");
 
 	} else {
-		sprintf(fmt, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
+		snprintf(fmt, TMP_FMT_SIZE - 1, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
 		verb(VERB_2, fmt, descrip, read/scale, label);
 		fprintf(stderr, fmt, descrip, read/scale, label);
 		fprintf(stderr, "\n");
@@ -427,17 +431,17 @@ int run_ssh_command()
 		NULL
 	};
 
-	sprintf(remote_pipe_cmd, "%s ", g_remote_args.udpipe_location);
+	snprintf(remote_pipe_cmd, MAX_PATH_LEN - 1, "%s ", g_remote_args.udpipe_location);
 
 	if (g_opts.encryption) {
-		strcat(remote_pipe_cmd, " -n ");
+		strncat(remote_pipe_cmd, " -n ", (MAX_PATH_LEN - 1) - strlen(remote_pipe_cmd));
 		char n_crypto_threads[MAX_PATH_LEN];
-		sprintf(n_crypto_threads, "--crypto-threads %d ", g_opts.n_crypto_threads);
-		strcat(remote_pipe_cmd, n_crypto_threads);
+		snprintf(n_crypto_threads, MAX_PATH_LEN - 1, "--crypto-threads %d ", g_opts.n_crypto_threads);
+		strncat(remote_pipe_cmd, n_crypto_threads, (MAX_PATH_LEN - 1) - strlen(remote_pipe_cmd));
 	}
 
 	if ( get_file_logging() ) {
-		strcat(remote_pipe_cmd, " -b ");
+		strncat(remote_pipe_cmd, " -b ", MAX_PATH_LEN - 1);
 	}
 
 	if (g_opts.mode == MODE_SEND) {
@@ -445,12 +449,12 @@ int run_ssh_command()
 		ERR_IF(g_opts.remote_to_local, "Attempting to create ssh session for remote-to-local transfer in mode MODE_SEND\n");
 
 		if (g_remote_args.remote_ip){
-			sprintf(cmd_options, "--interface %s -xt -p %s %s ",
+			snprintf(cmd_options, MAX_PATH_LEN - 1, "--interface %s -xt -p %s %s ",
 					g_remote_args.remote_ip,
 					g_remote_args.pipe_port,
 					g_remote_args.remote_path);
 		} else {
-			sprintf(cmd_options, "-xt -p %s %s ",
+			snprintf(cmd_options, MAX_PATH_LEN - 1, "-xt -p %s %s ",
 					g_remote_args.pipe_port,
 					g_remote_args.remote_path);
 		}
@@ -459,15 +463,15 @@ int run_ssh_command()
 
 		ERR_IF(!g_opts.remote_to_local, "Attempting to create ssh session for local-to-remote transfer in mode MODE_RCV\n");
 
-//		sprintf(cmd_options, "-x -q %s -p %s %s ",
-		sprintf(cmd_options, "-x -q %s@%s -p %s %s ",
+//		snprintf(cmd_options, MAX_PATH_LEN - 1, "-x -q %s -p %s %s ",
+		snprintf(cmd_options, MAX_PATH_LEN - 1, "-x -q %s@%s -p %s %s ",
 //                g_remote_args.pipe_host,
 				getlogin(), get_local_ip_address(g_remote_args.pipe_host),
 				g_remote_args.pipe_port,
 				g_remote_args.remote_path);
 	}
 
-	strcat(remote_pipe_cmd, cmd_options);
+	strncat(remote_pipe_cmd, cmd_options, (MAX_PATH_LEN - 1) - strlen(remote_pipe_cmd));
 
 	verb(VERB_2, "[%d %s] ssh command: ", g_flags, __func__);
 	for (int i = 0; args[i]; i++) {
@@ -476,7 +480,7 @@ int run_ssh_command()
 
 	char temp_command[MAX_PATH_LEN];
 	memset(temp_command, 0, sizeof(char) * MAX_PATH_LEN);
-	snprintf(temp_command, MAX_PATH_LEN, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+	snprintf(temp_command, MAX_PATH_LEN - 1, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 	verb(VERB_2, "[%d %s] Calling popen with %s", g_flags, __func__, temp_command);
 	g_ssh_file_handle = popen(temp_command, "r");
 	if ( g_ssh_file_handle == NULL ) {
@@ -590,7 +594,7 @@ int get_remote_host(int argc, char** argv)
 		if (strchr(argv[i], ':')) {
 			verb(VERB_2, "[%d %s] Found remote host [%s]", g_flags, __func__, argv[i]);
 
-			sprintf(g_remote_args.xfer_cmd, "%s", argv[i]);
+			snprintf(g_remote_args.xfer_cmd, MAX_PATH_LEN - 1, "%s", argv[i]);
 			g_opts.remote = 1;
 
 			// Set this argument to NULL because it is not a file to send
@@ -613,29 +617,17 @@ int get_remote_host(int argc, char** argv)
 
 int get_base_path(int argc, char** argv, int optind)
 {
-//	verb(VERB_2, "[%d %s] enter", g_flags, __func__);
-//	int i;
-//	for ( i = 0; i < argc; i++ ) {
-//		verb(VERB_2, "[%d %s] %d - %s", g_flags, __func__, i, argv[i]);
-//	}
-
 	if (g_opts.mode & MODE_RCV) {
-//		verb(VERB_2, "[%d %s] MODE_RCV detected (%0x)", g_flags, __func__, g_opts.mode);
 		// Destination directory was passed
 		if (optind < argc) {
 			// Generate a base path for file locations
-//			verb(VERB_2, "[%d %s] argv[optind] = %s", g_flags, __func__, argv[optind]);
-			sprintf(g_base_path, "%s", argv[optind++]);
+			snprintf(g_base_path, MAX_PATH_LEN - 1, "%s", argv[optind++]);
 
 			// Are there any remaining command line args? Warn user
-//			verb(VERB_2, "[%d %s] Unused command line args:", g_flags, __func__);
 			for (; optind < argc-1; optind++) {
 				verb(VERB_2, "Unused %s", argv[optind]);
 			}
 		}
-//		verb(VERB_2, "[%d %s] g_base_path = %s", g_flags, __func__, g_base_path);
-//	} else {
-//		verb(VERB_2, "[%d %s] MODE_SND, g_base_path left empty", g_flags, __func__);
 	}
 
 	return RET_SUCCESS;
@@ -658,8 +650,8 @@ int set_defaults()
 
 	memset(g_base_path, 0, sizeof(char) * MAX_PATH_LEN);
 
-	sprintf(g_remote_args.udpipe_location, "parcel");
-	sprintf(g_remote_args.pipe_port,       "9000");
+	snprintf(g_remote_args.udpipe_location, MAX_PATH_LEN - 1, "parcel");
+	snprintf(g_remote_args.pipe_port, MAX_PATH_LEN -1, "9000");
 
 	g_opts.mode                   = MODE_SEND;
 	g_opts.verbosity              = VERB_1;
@@ -746,8 +738,8 @@ int get_options(int argc, char *argv[])
 					// restart from and log to file argument
 					g_opts.restart = 1;
 					g_opts.log = 1;
-					sprintf(log_path, "%s", optarg);
-					sprintf(g_opts.restart_path, "%s", optarg);
+					snprintf(g_log_path, MAX_PATH_LEN - 1, "%s", optarg);
+					snprintf(g_opts.restart_path, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
 				case 'n':
@@ -760,7 +752,7 @@ int get_options(int argc, char *argv[])
 					break;
 
 				case 'q':
-					sprintf(g_remote_args.pipe_host, "%s", optarg);
+					snprintf(g_remote_args.pipe_host, MAX_PATH_LEN - 1, "%s", optarg);
 					NOTE(g_opts.remote_to_local = 1);
 					g_opts.mode |= MODE_SEND;
 					break;
@@ -772,23 +764,23 @@ int get_options(int argc, char *argv[])
 				case 'r':
 					// restart but do not log to file
 					g_opts.restart = 1;
-					sprintf(g_opts.restart_path, "%s", optarg);
+					snprintf(g_opts.restart_path, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
 				case 'l':
 					// log to file but do not restart from file
 					g_opts.log = 1;
-					sprintf(log_path, "%s", optarg);
+					snprintf(g_log_path, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
 				case 'c':
 					// specify location of remote binary
-					sprintf(g_remote_args.udpipe_location, "%s", optarg);
+					snprintf(g_remote_args.udpipe_location, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
 				case 'p':
 					// specify port
-					sprintf(g_remote_args.pipe_port, "%s", optarg);
+					snprintf(g_remote_args.pipe_port, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
 				case 'x':
@@ -805,7 +797,7 @@ int get_options(int argc, char *argv[])
 
 				case 'i':
 					// specify the host, [i]p address
-					sprintf(g_remote_args.pipe_host, "%s", optarg);
+					snprintf(g_remote_args.pipe_host, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
 				case 'd':
@@ -958,18 +950,20 @@ void cleanup_pipes()
  * - starts the correct type of udpipe thread
  * - returns: pthread_t - pointer to thread started
  */
+#define TMP_HOST_SIZE	1028
+
 pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_type)
 {
 	thread_args *args = (thread_args*) malloc(sizeof(thread_args));
 	initialize_udpipe_args(args);
 	verb(VERB_3, "[%d %s] args addy = %0x", g_flags, __func__, args);
 
-	char *host = (char*)malloc(1028*sizeof(char));
+	char *host = (char*)malloc(TMP_HOST_SIZE*sizeof(char));
 	char *at_ptr = NULL;
 	if ((at_ptr = strrchr(remote_args->pipe_host, '@'))) {
-		sprintf(host, "%s", at_ptr+1);
+		snprintf(host, TMP_HOST_SIZE - 1, "%s", at_ptr+1);
 	} else {
-		sprintf(host, "%s", remote_args->pipe_host);
+		snprintf(host, TMP_HOST_SIZE - 1, "%s", remote_args->pipe_host);
 	}
 
 	args->ip               = host;

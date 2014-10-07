@@ -31,7 +31,7 @@ and limitations under the License.
 
 int flogfd = 0;
 char *f_map = NULL;
-char log_path[MAX_PATH_LEN];
+char g_log_path[MAX_PATH_LEN];
 
 int g_socket_ready = 0;
 int g_encrypt_verified = 0;
@@ -258,8 +258,8 @@ int open_log_file()
     int f_mode = O_CREAT | O_WRONLY | O_APPEND;
     int f_perm = 0666;
 
-    if((flogfd = open(log_path, f_mode, f_perm)) < 0) {
-        ERR("Unable to open log file [%s]", log_path);
+    if((flogfd = open(g_log_path, f_mode, f_perm)) < 0) {
+        ERR("Unable to open log file [%s]", g_log_path);
     }
 
     return RET_SUCCESS;
@@ -272,7 +272,7 @@ int close_log_file()
     }
 
     if(close(flogfd)) {
-        verb(VERB_3, "[%s] Unable to close log file [%s].", __func__, log_path);
+        verb(VERB_3, "[%s] Unable to close log file [%s].", __func__, g_log_path);
     }
 
     return RET_SUCCESS;
@@ -288,7 +288,7 @@ int log_completed_file(file_object_t *file)
 
     struct timespec mtime = {0, 0};
     mtime.tv_sec = file->stats.st_mtime;
-    sprintf(path, "%s %li\n", file->path, mtime.tv_sec);
+    snprintf(path, MAX_PATH_LEN - 1, "%s %li\n", file->path, mtime.tv_sec);
 
     if (!write(flogfd, path, strlen(path))) {
         perror("WARNING: [log_completed_file] unable to log file completion");
@@ -514,7 +514,7 @@ void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
             // If given, ignore the current and parent directories
             if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
                 char path[MAX_PATH_LEN];
-                sprintf(path, "%s/%s", dir, entry->d_name);
+                snprintf(path, MAX_PATH_LEN - 1, "%s/%s", dir, entry->d_name);
 //                ls_fileList = add_file_to_list(ls_fileList, path, root);
                 add_file_to_list(ls_fileList, path, root);
 
@@ -554,7 +554,7 @@ file_LL* lsdir(file_object_t *file)
         // If given, ignore the current and parent directories
         if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
             char path[MAX_PATH_LEN];
-            sprintf(path, "%s/%s", file->path, entry->d_name);
+            snprintf(path, MAX_PATH_LEN - 1, "%s/%s", file->path, entry->d_name);
             ls_fileList = add_file_to_list(ls_fileList, path, file->root);
         }
     }
@@ -617,17 +617,17 @@ off_t fsize(int fd)
     return size;
 }
 
-int generate_base_path(char* prelim, char *data_path)
+int generate_base_path(char* prelim, char *data_path, int data_path_size)
 {
     // generate a base path for all destination files
     int bl = strlen(prelim);
     if (bl == 0) {
-        sprintf(data_path, "%s/", prelim);
+        snprintf(data_path, data_path_size - 1, "%s/", prelim);
     } else {
         if (prelim[bl-1] != '/') {
             bl++;
         }
-        sprintf(data_path, "%s/", prelim);
+        snprintf(data_path, data_path_size - 1, "%s/", prelim);
     }
 
     return bl;
@@ -752,40 +752,6 @@ int get_filelist_size(file_LL *fileList)
     return total_size;
 }
 
-
-//
-// debug_print
-//
-// prints a buffer of data, [length] bytes in a line
-//
-#define TMP_STR_SIZE 33
-#define TMP_DEBUG_LINE_SIZE 16
-void debug_print(char* data, int length)
-{
-    char asciiStr[TMP_STR_SIZE], hexStr[TMP_STR_SIZE], tmpChar[8];
-    int i;
-
-    while (length > 0 ) {
-        memset(asciiStr, '\0', TMP_STR_SIZE);
-        memset(hexStr, '\0', TMP_STR_SIZE);
-        memset(tmpChar, '\0', 8);
-
-        for (i = 0; i < TMP_DEBUG_LINE_SIZE; i++ ) {
-//            sprintf(&hexStr[i*2], "%02X", data++);
-            sprintf(tmpChar, " %c", data[i]);
-            strcat(asciiStr, tmpChar);
-            sprintf(tmpChar, "%02X ", (unsigned char)data[i]);
-            strcat(hexStr, tmpChar);
-            length--;
-
-            if ( length == 0 ) {
-                break;
-            }
-        }
-        data += TMP_DEBUG_LINE_SIZE;
-        verb(VERB_3, "%s *** %s", hexStr, asciiStr);
-    }
-}
 
 //
 // pack_filelist

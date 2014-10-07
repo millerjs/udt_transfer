@@ -178,7 +178,7 @@ int send_file(file_object_t *file)
 		int root_len = strlen(file->root);
 
 		if (g_opts.full_root || !root_len || strncmp(file->path, file->root, root_len)) {
-			sprintf(destination, "%s", file->path);
+			snprintf(destination, MAX_PATH_LEN - 1, "%s", file->path);
 
 		} else {
 			memcpy(destination, file->path+root_len+1, strlen(file->path)-root_len);

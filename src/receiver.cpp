@@ -115,7 +115,7 @@ int receive_files(char*base_path)
 
 	// generate a base path for all destination files and get the
 	// length
-	global_receive_data.bl = generate_base_path(base_path, global_receive_data.data_path);
+	global_receive_data.bl = generate_base_path(base_path, global_receive_data.data_path, MAX_PATH_LEN);
 
 //	notify_system_ready();
 
@@ -442,7 +442,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 		memset(destination, 0, MAX_PATH_LEN);
 
 		if (!root_len || strncmp(cursor->curr->path, cursor->curr->root, root_len)) {
-			sprintf(destination, "%s", cursor->curr->path);
+			snprintf(destination, MAX_PATH_LEN - 1, "%s", cursor->curr->path);
 
 		} else {
 			memcpy(destination, cursor->curr->path + root_len + 1, strlen(cursor->curr->path) - root_len);
