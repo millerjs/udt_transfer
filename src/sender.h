@@ -25,6 +25,9 @@ void init_sender();
 // cleanup everything for sender
 void cleanup_sender();
 
+// check to see how full write pipe is
+int check_write_pipe();
+
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN]);
 
 // sends a file to out fd by creating an appropriate header and

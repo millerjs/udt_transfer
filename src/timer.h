@@ -5,9 +5,12 @@
 
 To use:
    init_timers();
-   int t1 = start_timer("Timer_description");
-   int t2 = start_timer("secondtimer");
-   .... 
+   int t1 = new_timer("Timer_description");
+   int t2 = new_timer("secondtimer");
+   ....
+   start_timer(t1);
+   start_timer(t2);
+   ....
    stop_timer(t1);
    stop_timer(t2);
 
@@ -38,7 +41,9 @@ int init_timers();
 
 int clock_gettime(clockid_t clk_id, struct timespec *tp);
 
-int start_timer(char* str);
+int new_timer(char* str);
+
+void start_timer(int tag);
 
 int stop_timer(int tag);
 

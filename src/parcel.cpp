@@ -248,7 +248,7 @@ void print_xfer_stats()
 {
 	char label[TMP_LABEL_SIZE];
 	if (g_opts.verbosity >= VERB_2 || g_opts.progress){
-		stop_timer(g_timer);
+//		stop_timer(g_timer);
 		double elapsed = timer_elapsed(g_timer);
 
 		double scale = get_scale(G_TOTAL_XFER, label, TMP_LABEL_SIZE);
@@ -257,6 +257,7 @@ void print_xfer_stats()
 				G_TOTAL_XFER/scale, label, elapsed,
 				G_TOTAL_XFER/(elapsed*SIZE_GB));
 	}
+	print_time_slices();
 }
 
 
@@ -271,7 +272,7 @@ void clean_exit(int status)
 	verb(VERB_2, "[%d %s] Start", g_flags, __func__);
 	close_log_file();
 	print_xfer_stats();
-	verb(VERB_2, "[%d %s] cleaning up pipes", __func__);
+	verb(VERB_2, "[%d %s] cleaning up pipes", g_flags, __func__);
 	cleanup_pipes();
 	set_thread_exit();
 
@@ -319,8 +320,14 @@ void clean_exit(int status)
  */
 void sig_handler(int signal)
 {
+	verb(VERB_0, "\nERROR: [%d] received signal %d, cleaning up and exiting...", getpid(), signal);
+
 	if (signal == SIGINT){
 		verb(VERB_0, "\nERROR: [%d] received SIGINT, cleaning up and exiting...", getpid());
+	}
+
+	if (signal == SIGTERM){
+		verb(VERB_0, "\nERROR: [%d] received SIGTERM, cleaning up and exiting...", getpid());
 	}
 
 	if (signal == SIGSEGV){
@@ -367,13 +374,13 @@ int print_progress(char* descrip, off_t read, off_t total)
 		snprintf(fmt, TMP_FMT_SIZE - 1, "\r +++ %%-%ds %%0.2f/%%0.2f %%s [ %%.2f %%%% ]", path_width);
 		verb(VERB_2, fmt, descrip, read/scale, total/scale, label, percent);
 		fprintf(stderr, fmt, descrip, read/scale, total/scale, label, percent);
-		fprintf(stderr, "\n");
+//		fprintf(stderr, "\n");
 
 	} else {
 		snprintf(fmt, TMP_FMT_SIZE - 1, "\r +++ %%-%ds %%0.2f/? %%s [ ? %%%% ]", path_width);
 		verb(VERB_2, fmt, descrip, read/scale, label);
 		fprintf(stderr, fmt, descrip, read/scale, label);
-		fprintf(stderr, "\n");
+//		fprintf(stderr, "\n");
 	}
 
 	return RET_SUCCESS;
@@ -656,7 +663,9 @@ int set_defaults()
 	g_opts.mode                   = MODE_SEND;
 	g_opts.verbosity              = VERB_1;
 	// NOTE: this is number of seconds to wait before timing out, not merely a flag
-	g_opts.timeout                = 25;
+	// fly - until we get to the bottom of the ceph read times, this has to be at LEAST 60 seconds,
+	// but it could be much, much worse
+	g_opts.timeout                = 720;
 	g_opts.recurse                = 1;
 	g_opts.regular_files          = 1;
 	g_opts.progress               = 1;
@@ -703,24 +712,25 @@ int get_options(int argc, char *argv[])
 
 		static struct option long_options[] =
 		{
-			{"verbosity"            , no_argument           , &g_opts.verbosity           , VERB_2},
-			{"quiet"                , no_argument           , &g_opts.verbosity           , VERB_0},
-			{"debug"                , no_argument           , NULL                      , 'b'},
-			{"no-mmap"              , no_argument           , &g_opts.mmap                , 1},
-			{"full-root"            , no_argument           , &g_opts.full_root           , 1},
-			{"ignore-modification"  , no_argument           , &g_opts.ignore_modification , 1},
-			{"all-files"            , no_argument           , &g_opts.regular_files       , 0},
-			{"remote-to-local"      , no_argument           , &g_opts.remote_to_local     , 1},
-			{"sender"               , no_argument           , NULL                      , 'q'},
-			{"help"                 , no_argument           , NULL                      , 'h'},
-			{"log"                  , required_argument     , NULL                      , 'l'},
-			{"timeout"              , required_argument     , NULL                      , '5'},
-			{"verbosity"            , required_argument     , NULL                      , '6'},
-			{"interface"            , required_argument     , NULL                      , '7'},
-			{"remote-interface"     , required_argument     , NULL                      , '8'},
-			{"crypto-threads"       , required_argument     , NULL                      , '2'},
-			{"restart"              , required_argument     , NULL                      , 'r'},
-			{"checkpoint"           , required_argument     , NULL                      , 'k'},
+			{"verbosity"			, no_argument			, &g_opts.verbosity				, VERB_2},
+			{"quiet"				, no_argument			, &g_opts.verbosity				, VERB_0},
+			{"debug"				, no_argument			, NULL							, 'b'},
+			{"encryption"			, no_argument			, NULL							, 'b'},
+			{"no-mmap"				, no_argument			, &g_opts.mmap					, 0},
+			{"full-root"			, no_argument			, &g_opts.full_root				, 1},
+			{"ignore-modification"	, no_argument			, &g_opts.ignore_modification	, 1},
+			{"all-files"			, no_argument			, &g_opts.regular_files			, 0},
+			{"remote-to-local"		, no_argument			, &g_opts.remote_to_local		, 1},
+			{"sender"				, no_argument			, NULL							, 'q'},
+			{"help"					, no_argument			, NULL							, 'h'},
+			{"log"					, required_argument		, NULL							, 'l'},
+			{"timeout"				, required_argument		, NULL							, '5'},
+			{"verbosity"			, required_argument		, NULL							, '6'},
+			{"interface"			, required_argument		, NULL							, '7'},
+			{"remote-interface"		, required_argument		, NULL							, '8'},
+			{"crypto-threads"		, required_argument		, NULL							, '2'},
+			{"restart"				, required_argument		, NULL							, 'r'},
+			{"checkpoint"			, required_argument		, NULL							, 'k'},
 			{0, 0, 0, 0}
 		};
 
@@ -988,12 +998,12 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 
 	pthread_t udpipe_thread;
 	if ( udpipe_server_type == UDPIPE_SERVER ) {
-		create_thread(&udpipe_thread, NULL, &run_server, args, "crypto_update_thread", THREAD_TYPE_1);
-    } else {
-		create_thread(&udpipe_thread, NULL, &run_client, args, "crypto_update_thread", THREAD_TYPE_1);
-    }
+		create_thread(&udpipe_thread, NULL, &run_server, args, "run_server", THREAD_TYPE_1);
+	} else {
+		create_thread(&udpipe_thread, NULL, &run_client, args, "run_client", THREAD_TYPE_1);
+	}
 
-    return udpipe_thread;
+	return udpipe_thread;
 }
 
 /*
@@ -1148,16 +1158,22 @@ int start_transfer(int argc, char*argv[], int optind)
 		while ( !get_encrypt_ready() );
 
 		if ( g_opts.remote_to_local ) {
-			g_timer = start_timer("receive_timer");
+			g_timer = new_timer("receive_timer");
+			start_timer(g_timer);
 		}
 
 		// Listen to sender for files and data, see receiver.cpp
 		receive_files(g_base_path);
+		stop_timer(g_timer);
 
 		// fly - hang out a few seconds waiting for send to complete
 		// we should probably have a way to check that the ack has actually gone
 		// out, but this should work
-		sleep(1);
+		while ( check_write_pipe() );
+
+		usleep(1000);
+
+		verb(VERB_2, "[%d %s] Done waiting for pipe to be empty",g_flags, __func__);
 
 	} else if (g_opts.mode & MODE_SEND) {
 
@@ -1194,11 +1210,13 @@ int start_transfer(int argc, char*argv[], int optind)
 		// send the file list, requesting version from dest
 		file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
 
-		g_timer = start_timer("send_timer");
+		g_timer = new_timer("send_timer");
+		start_timer(g_timer);
 		// Visit all directories and send all files
 		// This is where we pass the remainder of the work to the
 		// file handler in sender.cpp
 		send_files(fileList, remote_fileList);
+		stop_timer(g_timer);
 #endif
 		// signal the end of the transfer
 		send_and_wait_for_ack_of_complete();
@@ -1210,6 +1228,7 @@ int start_transfer(int argc, char*argv[], int optind)
 #endif
 	}
 
+	verb(VERB_2, "[%d %s] Exiting", g_flags, __func__);
 	return RET_SUCCESS;
 }
 
@@ -1276,6 +1295,8 @@ void init_parcel(int argc, char *argv[])
 	get_base_path(argc, argv, optind);
 
 	verb(VERB_2, "[%d %s] parcel started as id %d", g_flags, __func__, getpid());
+
+		verb(VERB_2, "[%d %s] off_t is %lu", g_flags, __func__, sizeof(off_t));
 
 	if ( !g_opts.encryption ) {
 		// fly - set this as ready so it passes all checks on non-encrypted

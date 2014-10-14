@@ -265,6 +265,7 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 
 	// Memory map attempt
 	if (g_opts.mmap) {
+		verb(VERB_2, "[%s] XFER_F_SIZE mmaping file of size %lu", __func__, global_data->f_size);
 		map_fd(global_data->fout, global_data->f_size);
 	}
 
@@ -373,6 +374,10 @@ int pst_rec_callback_data_complete(header_t header, global_data_t* global_data)
 
 	if (ftruncate64(global_data->fout, global_data->f_size)) {
 		ERR("unable to truncate file to correct size");
+	}
+
+	if (g_opts.progress) {
+		fprintf(stderr, "\n");
 	}
 
 //	global_data->read_new_header = 0;

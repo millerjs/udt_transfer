@@ -18,8 +18,8 @@ medTestParams = {
     'subfolders' : 2,
     'minNumFiles' : 8,
     'maxNumFiles' : 16,
-    'minFileSize' : 5120000,
-    'maxFileSize' : 104857600,
+    'minFileSize' : 128000000,
+    'maxFileSize' : 512857600,
 }
 
 largeTestParams = {
@@ -31,11 +31,13 @@ largeTestParams = {
 }
 
 hugeTestParams = {
-    'subfolders' : 2,
-    'minNumFiles' : 4,
-    'maxNumFiles' : 10,
-    'minFileSize' : 10737418240,
-    'maxFileSize' : 53687091200,
+    'subfolders' : 0,
+    'minNumFiles' : 1,
+    'maxNumFiles' : 1,
+    'minFileSize' : 5737418240,
+    'maxFileSize' : 5737418240,
+#    'minFileSize' : 10737418240,
+#    'maxFileSize' : 53687091200,
 }
 
 dataParams = {

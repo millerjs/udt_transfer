@@ -16,7 +16,8 @@ See the License for the specific language governing permissions
 and limitations under the License.
 *****************************************************************************/
 
-#define _FILE_OFFSET_BITS 64
+#define _FILE_OFFSET_BITS		64
+#define FILE_TIME_SLICE_SIZE	2500
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -38,9 +39,41 @@ int g_encrypt_verified = 0;
 int g_signed_auth = 0;
 int g_authed_peer = 0;
 
+copy_chunk_t g_time_slices[FILE_TIME_SLICE_SIZE];
+int g_time_slice_idx = 0;
+
 // Initialize
 
 file_LL *checkpoint = NULL;
+
+
+void init_time_array()
+{
+	memset(g_time_slices, 0, sizeof(copy_chunk_t) * FILE_TIME_SLICE_SIZE);
+	g_time_slice_idx = 0;
+}
+
+void add_time_slice(chunk_t type, double slice, long data_size)
+{
+	if ( g_time_slice_idx < FILE_TIME_SLICE_SIZE ) {
+		if ( type < NUM_CHUNK_TYPES ) {
+			g_time_slices[g_time_slice_idx].type = type;
+		}
+		g_time_slices[g_time_slice_idx].time_slice = slice;
+		g_time_slices[g_time_slice_idx++].data_size = data_size;
+	} else {
+		verb(VERB_1, "[%s] Unable to add, array full", __func__);
+	}
+}
+
+void print_time_slices()
+{
+	for ( int i = 0; i < g_time_slice_idx; i++ ) {
+		verb(VERB_1, "%d: %d %.04f %lu", i, g_time_slices[i].type, g_time_slices[i].time_slice, g_time_slices[i].data_size);
+//		fprintf(stderr, "%d: %.04f %lu\n", i, g_time_slices[i].time_slice, g_time_slices[i].data_size);
+	}
+}
+
 
 void set_socket_ready(int state)
 {
@@ -102,57 +135,57 @@ int get_encrypt_ready()
 
 int map_fd(int fd, off_t size)
 {
-    // file protections and advice
-    int prot	= PROT_READ | PROT_WRITE;
-    int advice	= POSIX_MADV_SEQUENTIAL;
+	// file protections and advice
+	int prot	= PROT_READ | PROT_WRITE;
+	int advice	= POSIX_MADV_SEQUENTIAL;
 
-    // bad file descriptor?
-    if (fd < 0) {
-        close(fd);
-        ERR("bad file descriptor");
-    }
+	// bad file descriptor?
+	if (fd < 0) {
+		close(fd);
+		ERR("bad file descriptor");
+	}
 
-    // seek to end of file
-    if (lseek(fd, size-1, SEEK_SET) < 0) {
-        close(fd);
-        ERR("Error setting file length");
-    }
+	// seek to end of file
+	if (lseek(fd, size-1, SEEK_SET) < 0) {
+		close(fd);
+		ERR("Error setting file length");
+	}
 
-     // and write bit to actually set file size
-    if (write(fd, "", 1) < 0) {
-        close(fd);
-        ERR("Error verifying file length");
-    }
+	 // and write bit to actually set file size
+	if (write(fd, "", 1) < 0) {
+		close(fd);
+		ERR("Error verifying file length");
+	}
 
-    // Map the file to memory
-    f_map = (char*) mmap64(0, size, prot, MAP_SHARED, fd, 0);
+	// Map the file to memory
+	f_map = (char*) mmap64(0, size, prot, MAP_SHARED, fd, 0);
 
-    if (f_map == MAP_FAILED) {
-        close(fd);
-        ERR("unable to map file");
-    }
+	if (f_map == MAP_FAILED) {
+		close(fd);
+		ERR("unable to map file");
+	}
 
-    // Tell the system our intent with the file, no error check, if it
-    // doesn't work, it doesn't work
-    madvise(f_map, size, advice);
+	// Tell the system our intent with the file, no error check, if it
+	// doesn't work, it doesn't work
+	madvise(f_map, size, advice);
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 
 }
 
 
 int unmap_fd(int fd, off_t size)
 {
-    if (munmap(f_map, size) < 0) {
-    // ERR("unable to un-mmap the file");
-    }
-    return RET_SUCCESS;
+	if (munmap(f_map, size) < 0) {
+	// ERR("unable to un-mmap the file");
+	}
+	return RET_SUCCESS;
 }
 
 int mwrite(char* buff, off_t pos, int len)
 {
-    memcpy(f_map+pos, buff, len);
-    return RET_SUCCESS;
+	memcpy(f_map+pos, buff, len);
+	return RET_SUCCESS;
 }
 
 // NOTE: this walks the list, which shouldn't need to be done as the list
@@ -161,263 +194,263 @@ int mwrite(char* buff, off_t pos, int len)
 
 file_object_t *get_file_LL_tail(file_LL *main_list)
 {
-    file_node_t* list = main_list->head;
+	file_node_t* list = main_list->head;
 
-    if (!list) {
-        return NULL;
-    }
+	if (!list) {
+		return NULL;
+	}
 
-    while (list->next){
-        list = list->next;
-    }
-    return list->curr;
+	while (list->next){
+		list = list->next;
+	}
+	return list->curr;
 }
 
 file_object_t *find_last_instance(file_LL *list, file_object_t *file)
 {
-    file_object_t *last = NULL;
-    file_node_t *cursor = NULL;
+	file_object_t *last = NULL;
+	file_node_t *cursor = NULL;
 
-    if ( list != NULL ) {
-        cursor = list->head;
-    }
+	if ( list != NULL ) {
+		cursor = list->head;
+	}
 
-    while (list) {
-        if (!strcmp(cursor->curr->path, file->path)) {
-            last = cursor->curr;
-        }
-        cursor = cursor->next;
-    }
-    return last;
+	while (list) {
+		if (!strcmp(cursor->curr->path, file->path)) {
+			last = cursor->curr;
+		}
+		cursor = cursor->next;
+	}
+	return last;
 }
 
 
 int is_in_checkpoint(file_object_t *file)
 {
-    if (!g_opts.restart || !file)
-        return 0;
+	if (!g_opts.restart || !file)
+		return 0;
 
-    struct timespec mtime1 = {0, 0};
-    struct timespec mtime2 = {0, 0};
+	struct timespec mtime1 = {0, 0};
+	struct timespec mtime2 = {0, 0};
 
-    file_object_t *match = find_last_instance(checkpoint, file);
+	file_object_t *match = find_last_instance(checkpoint, file);
 
-    if (match) {
+	if (match) {
 
-        if (g_opts.ignore_modification) {
-            return 1;
-        }
+		if (g_opts.ignore_modification) {
+			return 1;
+		}
 
-        mtime1.tv_sec = file->stats.st_mtime;
-        mtime2.tv_sec = match->stats.st_mtime;
+		mtime1.tv_sec = file->stats.st_mtime;
+		mtime2.tv_sec = match->stats.st_mtime;
 
-        if (mtime2.tv_sec - mtime1.tv_sec) {
-            verb(VERB_1, "[%s] Resending [%s]. File has been modified since checkpoint.", __func__, file->path);
-            return 0;
-        }
+		if (mtime2.tv_sec - mtime1.tv_sec) {
+			verb(VERB_1, "[%s] Resending [%s]. File has been modified since checkpoint.", __func__, file->path);
+			return 0;
+		}
 
-        return 1;
+		return 1;
 
-    }
+	}
 
-    return 0;
+	return 0;
 }
 
 int read_checkpoint(char *path)
 {
-//    char c;
-    FILE* restart_f;
-    char linebuf[MAX_PATH_LEN];
+//	char c;
+	FILE* restart_f;
+	char linebuf[MAX_PATH_LEN];
 
-    if(!(restart_f = fopen(path, "r"))) {
-        ERR("Unable to open restart file [%s]", path);
-    }
+	if(!(restart_f = fopen(path, "r"))) {
+		ERR("Unable to open restart file [%s]", path);
+	}
 
-    struct timespec mtime = {0, 0};
-    while (fscanf(restart_f, "%s %li", linebuf, &mtime.tv_sec) == 2) {
-        checkpoint = add_file_to_list(checkpoint, linebuf, NULL);
-//        file_object_t *last = get_file_LL_tail(checkpoint);
-        file_object_t *last = checkpoint->tail->curr;
-        if (last) {
-            last->stats.st_mtime = mtime.tv_sec;
-            verb(VERB_2, "[%s] Checkpoint completed and unmodified: %s [%li]", __func__,
-                 linebuf, mtime.tv_sec);
-        }
-    }
+	struct timespec mtime = {0, 0};
+	while (fscanf(restart_f, "%s %li", linebuf, &mtime.tv_sec) == 2) {
+		checkpoint = add_file_to_list(checkpoint, linebuf, NULL);
+//		file_object_t *last = get_file_LL_tail(checkpoint);
+		file_object_t *last = checkpoint->tail->curr;
+		if (last) {
+			last->stats.st_mtime = mtime.tv_sec;
+			verb(VERB_2, "[%s] Checkpoint completed and unmodified: %s [%li]", __func__,
+				 linebuf, mtime.tv_sec);
+		}
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 
 int open_log_file()
 {
-    if (!g_opts.log) {
-        return RET_FAILURE;
-    }
+	if (!g_opts.log) {
+		return RET_FAILURE;
+	}
 
-    int f_mode = O_CREAT | O_WRONLY | O_APPEND;
-    int f_perm = 0666;
+	int f_mode = O_CREAT | O_WRONLY | O_APPEND;
+	int f_perm = 0666;
 
-    if((flogfd = open(g_log_path, f_mode, f_perm)) < 0) {
-        ERR("Unable to open log file [%s]", g_log_path);
-    }
+	if((flogfd = open(g_log_path, f_mode, f_perm)) < 0) {
+		ERR("Unable to open log file [%s]", g_log_path);
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 int close_log_file()
 {
-    if (!g_opts.log) {
-        return RET_SUCCESS;
-    }
+	if (!g_opts.log) {
+		return RET_SUCCESS;
+	}
 
-    if(close(flogfd)) {
-        verb(VERB_3, "[%s] Unable to close log file [%s].", __func__, g_log_path);
-    }
+	if(close(flogfd)) {
+		verb(VERB_3, "[%s] Unable to close log file [%s].", __func__, g_log_path);
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 int log_completed_file(file_object_t *file)
 {
-    if (!g_opts.log) {
-        return RET_SUCCESS;
-    }
+	if (!g_opts.log) {
+		return RET_SUCCESS;
+	}
 
-    char path[MAX_PATH_LEN];
+	char path[MAX_PATH_LEN];
 
-    struct timespec mtime = {0, 0};
-    mtime.tv_sec = file->stats.st_mtime;
-    snprintf(path, MAX_PATH_LEN - 1, "%s %li\n", file->path, mtime.tv_sec);
+	struct timespec mtime = {0, 0};
+	mtime.tv_sec = file->stats.st_mtime;
+	snprintf(path, MAX_PATH_LEN - 1, "%s %li\n", file->path, mtime.tv_sec);
 
-    if (!write(flogfd, path, strlen(path))) {
-        perror("WARNING: [log_completed_file] unable to log file completion");
-    }
+	if (!write(flogfd, path, strlen(path))) {
+		perror("WARNING: [log_completed_file] unable to log file completion");
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 // step backwards up a given directory path
 int get_parent_dir(char parent_dir[MAX_PATH_LEN], char path[MAX_PATH_LEN])
 {
-    bzero(parent_dir, MAX_PATH_LEN);
-    char*cursor = path+strlen(path);
+	memset(parent_dir, 0, sizeof(char) * MAX_PATH_LEN);
+	char*cursor = path+strlen(path);
 
-    while (cursor > path && *cursor != '/') {
-        cursor--;
-    }
+	while (cursor > path && *cursor != '/') {
+		cursor--;
+	}
 
-    if (cursor <= path) {
-        parent_dir[0] = '\0';
-    } else {
-        memcpy(parent_dir, path, cursor-path);
-    }
+	if (cursor <= path) {
+		parent_dir[0] = '\0';
+	} else {
+		memcpy(parent_dir, path, cursor-path);
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 
 int print_file_LL(file_LL *list)
 {
-    file_node_t* cursor = NULL;
+	file_node_t* cursor = NULL;
 
-    if ( list != NULL ) {
-        cursor = list->head;
-    }
+	if ( list != NULL ) {
+		cursor = list->head;
+	}
 
-    while (cursor) {
-        verb(VERB_2, "%s, ", cursor->curr->path);
-        cursor = cursor->next;
-    }
+	while (cursor) {
+		verb(VERB_2, "%s, ", cursor->curr->path);
+		cursor = cursor->next;
+	}
 
-    return RET_SUCCESS;
+	return RET_SUCCESS;
 }
 
 file_object_t* new_file_object(char*path, char*root)
 {
-    file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
+	file_object_t *file = (file_object_t*) malloc(sizeof(file_object_t));
 
-    // fly - zeroing in case we ever check the wrong one, but not sure how
-    // best to handle with pointers...calloc isn't proper for that
-    memset(file, 0, sizeof(file_object_t));
-    file->filetype = (char*)NULL;
+	// fly - zeroing in case we ever check the wrong one, but not sure how
+	// best to handle with pointers...calloc isn't proper for that
+	memset(file, 0, sizeof(file_object_t));
+	file->filetype = (char*)NULL;
 
-    file->path = strdup(path);
-    file->root = strdup(root);
+	file->path = strdup(path);
+	file->root = strdup(root);
 
-    if (stat(path, &file->stats) == -1) {
-        ERR("unable to stat file [%s]", file->path);
-    }
+	if (stat(path, &file->stats) == -1) {
+		ERR("unable to stat file [%s]", file->path);
+	}
 
-    switch (file->stats.st_mode & S_IFMT) {
-        case S_IFBLK:
-            file->mode = S_IFBLK;
-            file->filetype = strdup((char*) "block device");
-            break;
-        case S_IFCHR:
-            file->mode = S_IFCHR;
-            file->filetype = strdup((char*) "character device");
-            break;
-        case S_IFDIR:
-            file->mode = S_IFDIR;
-            file->filetype = strdup((char*) "directory");
-            file->mtime_sec = file->stats.st_mtime;
-            file->mtime_nsec = file->stats.st_mtim.tv_nsec;
-            break;
-        case S_IFIFO:
-            file->mode = S_IFIFO;
-            file->filetype = strdup((char*) "named pipe");
-            break;
-        case S_IFLNK:
-            file->mode = S_IFLNK;
-            file->filetype = strdup((char*) "symlink");
-            break;
-        case S_IFREG:
-            file->mode = S_IFREG;
-            file->filetype = strdup((char*) "regular file");
-            file->length = file->stats.st_size;
-            file->mtime_sec = file->stats.st_mtime;
-            file->mtime_nsec = file->stats.st_mtim.tv_nsec;
-            break;
-        case S_IFSOCK:
-            file->mode = S_IFSOCK;
-            file->filetype = strdup((char*) "socket");
-            break;
-        default:
-            verb(VERB_2, "Filetype uknown: %s", file->path);
-            break;
-    }
+	switch (file->stats.st_mode & S_IFMT) {
+		case S_IFBLK:
+			file->mode = S_IFBLK;
+			file->filetype = strdup((char*) "block device");
+			break;
+		case S_IFCHR:
+			file->mode = S_IFCHR;
+			file->filetype = strdup((char*) "character device");
+			break;
+		case S_IFDIR:
+			file->mode = S_IFDIR;
+			file->filetype = strdup((char*) "directory");
+			file->mtime_sec = file->stats.st_mtime;
+			file->mtime_nsec = file->stats.st_mtim.tv_nsec;
+			break;
+		case S_IFIFO:
+			file->mode = S_IFIFO;
+			file->filetype = strdup((char*) "named pipe");
+			break;
+		case S_IFLNK:
+			file->mode = S_IFLNK;
+			file->filetype = strdup((char*) "symlink");
+			break;
+		case S_IFREG:
+			file->mode = S_IFREG;
+			file->filetype = strdup((char*) "regular file");
+			file->length = file->stats.st_size;
+			file->mtime_sec = file->stats.st_mtime;
+			file->mtime_nsec = file->stats.st_mtim.tv_nsec;
+			break;
+		case S_IFSOCK:
+			file->mode = S_IFSOCK;
+			file->filetype = strdup((char*) "socket");
+			break;
+		default:
+			verb(VERB_2, "Filetype uknown: %s", file->path);
+			break;
+	}
 
-    return file;
+	return file;
 }
 
 file_LL* add_file_to_list(file_LL *fileList, char*path, char*root)
 {
-    verb(VERB_3, "[%s] path = %s, root = %s", __func__, path, root);
+	verb(VERB_3, "[%s] path = %s, root = %s", __func__, path, root);
 
-    // make a file object out of the path
-    file_object_t* new_file = new_file_object(path, root);
+	// make a file object out of the path
+	file_object_t* new_file = new_file_object(path, root);
 
-    // create a new node
-    file_node_t* new_node = (file_node_t*)malloc(sizeof(file_node_t));
-    new_node->curr = new_file;
-    new_node->next = NULL;
+	// create a new node
+	file_node_t* new_node = (file_node_t*)malloc(sizeof(file_node_t));
+	new_node->curr = new_file;
+	new_node->next = NULL;
 
-    if (!fileList) {
-        // create a new list if we don't have one
-        file_LL * new_list = (file_LL*) malloc(sizeof(file_LL));
-        new_list->head = new_node;
-        new_list->tail = new_node;
-        new_list->count = 1;
-        return new_list;
-    } else {
-        // add to end of file list
-        fileList->tail->next = new_node;
-        fileList->tail = new_node;
-        fileList->count++;
-    }
+	if (!fileList) {
+		// create a new list if we don't have one
+		file_LL * new_list = (file_LL*) malloc(sizeof(file_LL));
+		new_list->head = new_node;
+		new_list->tail = new_node;
+		new_list->count = 1;
+		return new_list;
+	} else {
+		// add to end of file list
+		fileList->tail->next = new_node;
+		fileList->tail = new_node;
+		fileList->count++;
+	}
 
-    return fileList;
+	return fileList;
 }
 
 // part the first: get all elements in the top level path
@@ -426,211 +459,211 @@ file_LL* add_file_to_list(file_LL *fileList, char*path, char*root)
 
 file_LL* build_full_filelist(int n, char *paths[])
 {
-    file_LL *fileList = NULL;
-    struct stat stats;
+	file_LL *fileList = NULL;
+	struct stat stats;
 
-    verb(VERB_2, "[%s] %d paths", __func__, n);
+	verb(VERB_2, "[%s] %d paths", __func__, n);
 
-    for (int i = 0; i < n ; i++) {
+	for (int i = 0; i < n ; i++) {
 
-        if (paths[i]) {
-            verb(VERB_2, "[%s] trying %s", __func__, paths[i]);
+		if (paths[i]) {
+			verb(VERB_2, "[%s] trying %s", __func__, paths[i]);
 
-            if (stat(paths[i], &stats) == -1) {
-                ERR("unable to stat file [%s], error = %d", paths[i], errno);
-            }
+			if (stat(paths[i], &stats) == -1) {
+				ERR("unable to stat file [%s], error = %d", paths[i], errno);
+			}
 
-            if ((stats.st_mode & S_IFMT) == S_IFDIR) {
-                verb(VERB_2, "[%s] dir found, traversing %s", __func__ , paths[i]);
-                fileList = add_file_to_list(fileList, paths[i], paths[i]);
-                char parent_dir[MAX_PATH_LEN];
-                get_parent_dir(parent_dir, paths[i]);
-                lsdir_to_list(fileList, paths[i], paths[i]);
-            } else {
-                char parent_dir[MAX_PATH_LEN];
-                get_parent_dir(parent_dir, paths[i]);
+			if ((stats.st_mode & S_IFMT) == S_IFDIR) {
+				verb(VERB_2, "[%s] dir found, traversing %s", __func__ , paths[i]);
+				fileList = add_file_to_list(fileList, paths[i], paths[i]);
+				char parent_dir[MAX_PATH_LEN];
+				get_parent_dir(parent_dir, paths[i]);
+				lsdir_to_list(fileList, paths[i], paths[i]);
+			} else {
+				char parent_dir[MAX_PATH_LEN];
+				get_parent_dir(parent_dir, paths[i]);
 
-                fileList = add_file_to_list(fileList, paths[i], parent_dir);
-            }
-        }
+				fileList = add_file_to_list(fileList, paths[i], parent_dir);
+			}
+		}
 
-        // fileList = add_file_to_list(fileList, paths[i]);
-    }
+		// fileList = add_file_to_list(fileList, paths[i]);
+	}
 
-    verb(VERB_2, "[%s] complete, %d items in list", __func__, fileList->count);
-    return fileList;
+	verb(VERB_2, "[%s] complete, %d items in list", __func__, fileList->count);
+	return fileList;
 }
 
 
 file_LL* build_filelist(int n, char *paths[])
 {
-    file_LL *fileList = NULL;
-    struct stat stats;
+	file_LL *fileList = NULL;
+	struct stat stats;
 
-    verb(VERB_3, "[%s] %d paths", __func__, n);
+	verb(VERB_3, "[%s] %d paths", __func__, n);
 
-    for (int i = 0; i < n ; i++) {
+	for (int i = 0; i < n ; i++) {
 
-        if (paths[i]) {
+		if (paths[i]) {
 
-            if (stat(paths[i], &stats) == -1) {
-                ERR("unable to stat file [%s], error = %d", paths[i], errno);
-            }
+			if (stat(paths[i], &stats) == -1) {
+				ERR("unable to stat file [%s], error = %d", paths[i], errno);
+			}
 
-            if ((stats.st_mode & S_IFMT) == S_IFDIR) {
-                fileList = add_file_to_list(fileList, paths[i], paths[i]);
-            } else {
-                char parent_dir[MAX_PATH_LEN];
-                get_parent_dir(parent_dir, paths[i]);
+			if ((stats.st_mode & S_IFMT) == S_IFDIR) {
+				fileList = add_file_to_list(fileList, paths[i], paths[i]);
+			} else {
+				char parent_dir[MAX_PATH_LEN];
+				get_parent_dir(parent_dir, paths[i]);
 
-                fileList = add_file_to_list(fileList, paths[i], parent_dir);
-            }
-        }
+				fileList = add_file_to_list(fileList, paths[i], parent_dir);
+			}
+		}
 
-        // fileList = add_file_to_list(fileList, paths[i]);
-    }
+		// fileList = add_file_to_list(fileList, paths[i]);
+	}
 
-    verb(VERB_3, "[%s] complete", __func__);
-    return fileList;
+	verb(VERB_3, "[%s] complete", __func__);
+	return fileList;
 }
 
 void lsdir_to_list(file_LL* ls_fileList, char* dir, char* root)
 {
-    // Verify that we were actually passed a directory file
+	// Verify that we were actually passed a directory file
 /*    if ( !(file->mode == S_IFDIR) ){
         warn("attemped to enter a non-directory file");
         return NULL;
     } */
-    verb(VERB_3, "[%s]: %s %s", __func__, dir, root);
+	verb(VERB_3, "[%s]: %s %s", __func__, dir, root);
 
-    DIR *dirp = opendir(dir);
-    struct dirent * entry;
-    if ( dirp != NULL ) {
-        struct stat tmpStats;
+	DIR *dirp = opendir(dir);
+	struct dirent * entry;
+	if ( dirp != NULL ) {
+		struct stat tmpStats;
 
-        // Iterate through each file in the directory
-        while ((entry = readdir(dirp)) != NULL) {
+		// Iterate through each file in the directory
+		while ((entry = readdir(dirp)) != NULL) {
 
-            // If given, ignore the current and parent directories
-            if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
-                char path[MAX_PATH_LEN];
-                snprintf(path, MAX_PATH_LEN - 1, "%s/%s", dir, entry->d_name);
-//                ls_fileList = add_file_to_list(ls_fileList, path, root);
-                add_file_to_list(ls_fileList, path, root);
+			// If given, ignore the current and parent directories
+			if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
+				char path[MAX_PATH_LEN];
+				snprintf(path, MAX_PATH_LEN - 1, "%s/%s", dir, entry->d_name);
+//				ls_fileList = add_file_to_list(ls_fileList, path, root);
+				add_file_to_list(ls_fileList, path, root);
 
-                if (stat(path, &tmpStats) == -1) {
-                    ERR("unable to stat file [%s]", path);
-                }
+				if (stat(path, &tmpStats) == -1) {
+					ERR("unable to stat file [%s]", path);
+				}
 
-                // if it's a directory, recurse
-                if ( (tmpStats.st_mode & S_IFMT) == S_IFDIR ) {
-                    lsdir_to_list(ls_fileList, path, root);
-                }
-            }
-        }
-
-        closedir(dirp);
-    } else {
-        warn("attemped to enter a non-directory file");
-    }
+				// if it's a directory, recurse
+				if ( (tmpStats.st_mode & S_IFMT) == S_IFDIR ) {
+					lsdir_to_list(ls_fileList, path, root);
+				}
+			}
+		}
+		closedir(dirp);
+	} else {
+		warn("attemped to enter a non-directory file");
+	}
 }
 
 
 file_LL* lsdir(file_object_t *file)
 {
-    // Verify that we were actually passed a directory file
-    if ( !(file->mode == S_IFDIR) ){
-        warn("attemped to enter a non-directory file");
-        return NULL;
-    }
+	// Verify that we were actually passed a directory file
+	if ( !(file->mode == S_IFDIR) ){
+		warn("attemped to enter a non-directory file");
+		return NULL;
+	}
 
-    DIR *dirp = opendir(file->path);
-    struct dirent * entry;
-    file_LL* ls_fileList = NULL;
+	DIR *dirp = opendir(file->path);
+	struct dirent * entry;
+	file_LL* ls_fileList = NULL;
 
-    // Iterate through each file in the directory
-    while ((entry = readdir(dirp)) != NULL) {
+	// Iterate through each file in the directory
+	while ((entry = readdir(dirp)) != NULL) {
 
-        // If given, ignore the current and parent directories
-        if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
-            char path[MAX_PATH_LEN];
-            snprintf(path, MAX_PATH_LEN - 1, "%s/%s", file->path, entry->d_name);
-            ls_fileList = add_file_to_list(ls_fileList, path, file->root);
-        }
-    }
+		// If given, ignore the current and parent directories
+		if ( strcmp(entry->d_name, ".") && strcmp(entry->d_name,"..") ) {
+			char path[MAX_PATH_LEN];
+			snprintf(path, MAX_PATH_LEN - 1, "%s/%s", file->path, entry->d_name);
+			ls_fileList = add_file_to_list(ls_fileList, path, file->root);
+		}
+	}
 
-    closedir(dirp);
+	closedir(dirp);
 
-    return ls_fileList;
+	return ls_fileList;
 }
 
 
 // make a new directory, but recurse through dir tree until this is possible
 int mkdir_parent(char* path)
 {
-    // default permissions for creating new directories
-    int ret, err;
-    int mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
+	// default permissions for creating new directories
+	int ret, err;
+	int mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
 
-    ret = mkdir(path, mode);
+	ret = mkdir(path, mode);
 
-    if ( ret ) {
-        // Hold onto last error
-        err = errno;
+	if ( ret ) {
+		// Hold onto last error
+		err = errno;
 
-        // If the parents in the path name do not exist, then make them
-        if (err == ENOENT) {
-            verb(VERB_2, "[%s] Again find parent directory and make it", __func__);
+		// If the parents in the path name do not exist, then make them
+		if (err == ENOENT) {
+			verb(VERB_2, "[%s] Again find parent directory and make it", __func__);
 
-            char parent_dir[MAX_PATH_LEN];
-            get_parent_dir(parent_dir, path);
+			char parent_dir[MAX_PATH_LEN];
+			get_parent_dir(parent_dir, path);
 
-            verb(VERB_2, "[%s] Building directory path [%s]", __func__, parent_dir);
+			verb(VERB_2, "[%s] Building directory path [%s]", __func__, parent_dir);
 
-            mkdir_parent(parent_dir);
-            ret = mkdir_parent(path);
+			mkdir_parent(parent_dir);
+			ret = mkdir_parent(path);
 
-        // The directory already exists
-        } else if (err == EEXIST) {
+		// The directory already exists
+		} else if (err == EEXIST) {
 
-            // Continue
+			// Continue
 
-        // Otherwise, mkdir failed
-        } else {
-            fprintf(stderr, "ERROR: Unable to create directory [%s]: %s", path, strerror(err));
-            clean_exit(EXIT_FAILURE);
-        }
+		// Otherwise, mkdir failed
+		} else {
+			fprintf(stderr, "ERROR: Unable to create directory [%s]: %s", path, strerror(err));
+			clean_exit(EXIT_FAILURE);
+		}
 
-    } else {
-        verb(VERB_2, "[%s] Built directory %s", __func__, path);
-    }
+	} else {
+		verb(VERB_2, "[%s] Built directory %s", __func__, path);
+	}
 
-    return ret;
+	return ret;
 }
 
 // Get the size of a file, should handle large files as well
 off_t fsize(int fd)
 {
-    off_t size;
-    size = lseek64(fd, 0L, SEEK_END);
-    lseek64(fd, 0L, SEEK_SET);
-    return size;
+	struct stat tmp_stat;
+	fstat(fd, &tmp_stat);
+//	size = lseek64(fd, 0L, SEEK_END);
+//	lseek64(fd, 0L, SEEK_SET);
+	return tmp_stat.st_size;
 }
 
 int generate_base_path(char* prelim, char *data_path, int data_path_size)
 {
-    // generate a base path for all destination files
-    int bl = strlen(prelim);
-    if (bl == 0) {
-        snprintf(data_path, data_path_size - 1, "%s/", prelim);
-    } else {
-        if (prelim[bl-1] != '/') {
-            bl++;
-        }
-        snprintf(data_path, data_path_size - 1, "%s/", prelim);
-    }
+	// generate a base path for all destination files
+	int bl = strlen(prelim);
+	if (bl == 0) {
+		snprintf(data_path, data_path_size - 1, "%s/", prelim);
+	} else {
+		if (prelim[bl-1] != '/') {
+			bl++;
+		}
+		snprintf(data_path, data_path_size - 1, "%s/", prelim);
+	}
 
-    return bl;
+	return bl;
 }
 
 //
@@ -674,31 +707,31 @@ ssize_t pipe_read(int fd, void *buf, size_t count)
 //
 int set_mod_time(char* filename, long int mtime_nsec, int mtime)
 {
-    timespec        times[2];
-    int             retVal = 0;
+	timespec		times[2];
+	int				retVal = 0;
 
-    // fly - Ok, a bit obtuse, but utimensat (and utimes, actually) expect that times[0]
-    // refers to atime and times[1] refers to mtime.  Also, in addition to UTIME_NOW,
-    // UTIME_OMIT can be used, so we could have it not set the atime.
-    // Also, it could be problematic if the system doesn't use nanosecond resolution, and
-    // we could fall back to second or microsecond, depending on the system.
+	// fly - Ok, a bit obtuse, but utimensat (and utimes, actually) expect that times[0]
+	// refers to atime and times[1] refers to mtime.  Also, in addition to UTIME_NOW,
+	// UTIME_OMIT can be used, so we could have it not set the atime.
+	// Also, it could be problematic if the system doesn't use nanosecond resolution, and
+	// we could fall back to second or microsecond, depending on the system.
 
-    // atime set to now
-    times[0].tv_sec = UTIME_NOW;
-    times[0].tv_nsec = UTIME_NOW;
+	// atime set to now
+	times[0].tv_sec = UTIME_NOW;
+	times[0].tv_nsec = UTIME_NOW;
 
-    // mtime set as file given
-    times[1].tv_sec = mtime;
-    times[1].tv_nsec = mtime_nsec;
+	// mtime set as file given
+	times[1].tv_sec = mtime;
+	times[1].tv_nsec = mtime_nsec;
 
-    if ( utimensat(AT_FDCWD, filename, times, 0) < 0 ) {
-        retVal = errno;
-        fprintf(stderr, "ERROR: Unable to set timestamp on %s, error code %d\n", filename, retVal);
-    } else {
-        verb(VERB_3, "[%s] setting - mtime: %d, mtime_nsec: %ld", __func__, mtime, mtime_nsec);
-    }
+	if ( utimensat(AT_FDCWD, filename, times, 0) < 0 ) {
+		retVal = errno;
+		fprintf(stderr, "ERROR: Unable to set timestamp on %s, error code %d\n", filename, retVal);
+	} else {
+		verb(VERB_3, "[%s] setting - mtime: %d, mtime_nsec: %ld", __func__, mtime, mtime_nsec);
+	}
 
-    return retVal;
+	return retVal;
 
 }
 
@@ -710,24 +743,24 @@ int set_mod_time(char* filename, long int mtime_nsec, int mtime)
 //
 int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 {
-    struct stat tmpStat;
-    int         retVal = 0;
+	struct stat tmpStat;
+	int         retVal = 0;
 
-    if ( stat(filename, &tmpStat) < 0 ) {
-        retVal = errno;
-        fprintf(stderr, "ERROR: Unable to stat %s, error code %d\n", filename, retVal);
-    } else {
-        if ( (mtime != NULL) && (mtime_nsec != NULL) ) {
-            verb(VERB_3, "[%s] stat for file: %s, mtime: %d, mtime_nsec: %ld", __func__, filename, tmpStat.st_mtime, tmpStat.st_mtim.tv_nsec);
-            *mtime = tmpStat.st_mtime;
-            *mtime_nsec = tmpStat.st_mtim.tv_nsec;
-            verb(VERB_3, "[%s] file: %s, mtime: %d, mtime_nsec: %ld", __func__, filename, *mtime, *mtime_nsec);
-        } else {
-            fprintf(stderr, "ERROR: bad pointer passed to get_mod_time\n");
-        }
-    }
+	if ( stat(filename, &tmpStat) < 0 ) {
+		retVal = errno;
+		fprintf(stderr, "ERROR: Unable to stat %s, error code %d\n", filename, retVal);
+	} else {
+		if ( (mtime != NULL) && (mtime_nsec != NULL) ) {
+			verb(VERB_3, "[%s] stat for file: %s, mtime: %d, mtime_nsec: %ld", __func__, filename, tmpStat.st_mtime, tmpStat.st_mtim.tv_nsec);
+			*mtime = tmpStat.st_mtime;
+			*mtime_nsec = tmpStat.st_mtim.tv_nsec;
+			verb(VERB_3, "[%s] file: %s, mtime: %d, mtime_nsec: %ld", __func__, filename, *mtime, *mtime_nsec);
+		} else {
+			fprintf(stderr, "ERROR: bad pointer passed to get_mod_time\n");
+		}
+	}
 
-    return retVal;
+	return retVal;
 
 }
 
@@ -738,18 +771,18 @@ int get_mod_time(char* filename, long int* mtime_nsec, int* mtime)
 //
 int get_filelist_size(file_LL *fileList)
 {
-    int total_size = 0;
+	int total_size = 0;
 
-    if ( fileList != NULL ) {
-        file_node_t* cursor = fileList->head;
-        int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
+	if ( fileList != NULL ) {
+		file_node_t* cursor = fileList->head;
+		int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
 
-        while ( cursor != NULL ) {
-            total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root) + 3);  // 3 is for 3 null terminators of strings
-            cursor = cursor->next;
-        }
-    }
-    return total_size;
+		while ( cursor != NULL ) {
+			total_size += (static_file_size + strlen(cursor->curr->filetype) + strlen(cursor->curr->path) + strlen(cursor->curr->root) + 3);  // 3 is for 3 null terminators of strings
+			cursor = cursor->next;
+		}
+	}
+	return total_size;
 }
 
 
@@ -760,48 +793,48 @@ int get_filelist_size(file_LL *fileList)
 //
 char* pack_filelist(file_LL* fileList, int total_size)
 {
-    verb(VERB_3, "[%s] total_size = %d", __func__, total_size);
+	verb(VERB_3, "[%s] total_size = %d", __func__, total_size);
 
-    // malloc the space to make everything continuous
-    char* packed_data = (char*)malloc(sizeof(char) * total_size);
-    char* packed_data_ptr = packed_data;
+	// malloc the space to make everything continuous
+	char* packed_data = (char*)malloc(sizeof(char) * total_size);
+	char* packed_data_ptr = packed_data;
 
-    if ( fileList != NULL ) {
-        file_node_t* cursor = fileList->head;
-//        int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
-        while ( cursor != NULL ) {
-            // copy over the static data
-            memcpy(packed_data_ptr, &(cursor->curr->stats), sizeof(int));
-            packed_data_ptr += sizeof(struct stat);
+	if ( fileList != NULL ) {
+		file_node_t* cursor = fileList->head;
+//		int static_file_size = (sizeof(int) * 3) + sizeof(long int) + sizeof(struct stat);
+		while ( cursor != NULL ) {
+			// copy over the static data
+			memcpy(packed_data_ptr, &(cursor->curr->stats), sizeof(int));
+			packed_data_ptr += sizeof(struct stat);
 
-            memcpy(packed_data_ptr, &(cursor->curr->mode), sizeof(int));
-            packed_data_ptr += sizeof(int);
+			memcpy(packed_data_ptr, &(cursor->curr->mode), sizeof(int));
+			packed_data_ptr += sizeof(int);
 
-            memcpy(packed_data_ptr, &(cursor->curr->length), sizeof(int));
-            packed_data_ptr += sizeof(int);
+			memcpy(packed_data_ptr, &(cursor->curr->length), sizeof(int));
+			packed_data_ptr += sizeof(int);
 
-            memcpy(packed_data_ptr, &(cursor->curr->mtime_sec), sizeof(int));
-            packed_data_ptr += sizeof(int);
+			memcpy(packed_data_ptr, &(cursor->curr->mtime_sec), sizeof(int));
+			packed_data_ptr += sizeof(int);
 
-            memcpy(packed_data_ptr, &(cursor->curr->mtime_nsec), sizeof(long int));
-            packed_data_ptr += sizeof(long int);
+			memcpy(packed_data_ptr, &(cursor->curr->mtime_nsec), sizeof(long int));
+			packed_data_ptr += sizeof(long int);
 
-            // copy strings (remember that every C string func handles null terminators differently, kids!)
-            strcpy(packed_data_ptr, cursor->curr->filetype);
-            packed_data_ptr += strlen(cursor->curr->filetype) + 1;
+			// copy strings (remember that every C string func handles null terminators differently, kids!)
+			strcpy(packed_data_ptr, cursor->curr->filetype);
+			packed_data_ptr += strlen(cursor->curr->filetype) + 1;
 
-            strcpy(packed_data_ptr, cursor->curr->path);
-            packed_data_ptr += strlen(cursor->curr->path) + 1;
+			strcpy(packed_data_ptr, cursor->curr->path);
+			packed_data_ptr += strlen(cursor->curr->path) + 1;
 
-            strcpy(packed_data_ptr, cursor->curr->root);
-            packed_data_ptr += strlen(cursor->curr->root) + 1;
+			strcpy(packed_data_ptr, cursor->curr->root);
+			packed_data_ptr += strlen(cursor->curr->root) + 1;
 
-            // next!
-            cursor = cursor->next;
-        }
-    }
+			// next!
+			cursor = cursor->next;
+		}
+	}
 
-    return packed_data;
+	return packed_data;
 }
 
 
@@ -901,20 +934,20 @@ file_LL* unpack_filelist(char* fileList_data, int data_length)
 //
 void free_file_object(file_object_t* file)
 {
-    if ( file ) {
-        // free all the malloc'ed strings
-        if ( file->filetype ) {
-            free(file->filetype);
-        }
-        if ( file->path ) {
-            free(file->path);
-        }
-        if ( file->root ) {
-            free(file->root);
-        }
-        // now free the file (everything else is good)
-        free(file);
-    }
+	if ( file ) {
+		// free all the malloc'ed strings
+		if ( file->filetype ) {
+			free(file->filetype);
+		}
+		if ( file->path ) {
+			free(file->path);
+		}
+		if ( file->root ) {
+			free(file->root);
+		}
+		// now free the file (everything else is good)
+		free(file);
+	}
 }
 
 
@@ -925,21 +958,21 @@ void free_file_object(file_object_t* file)
 //
 void free_file_list(file_LL* fileList)
 {
-    if ( fileList ) {
-        file_node_t* cursor = fileList->head;
-        file_node_t* tmp_cursor = fileList->head;
-        while ( cursor != NULL ) {
-            // free what it's pointing at
-            free_file_object(cursor->curr);
-            cursor = cursor->next;
+	if ( fileList ) {
+		file_node_t* cursor = fileList->head;
+		file_node_t* tmp_cursor = fileList->head;
+		while ( cursor != NULL ) {
+			// free what it's pointing at
+			free_file_object(cursor->curr);
+			cursor = cursor->next;
 
-            // now free the node
-            free(tmp_cursor);
-            tmp_cursor = cursor;
-        }
-        // finally, free the list struct itself
-        free(fileList);
-    }
+			// now free the node
+			free(tmp_cursor);
+			tmp_cursor = cursor;
+		}
+		// finally, free the list struct itself
+		free(fileList);
+	}
 }
 
 

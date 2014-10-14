@@ -37,35 +37,56 @@ and limitations under the License.
 #define MAX_PATH_LEN 1024
 
 typedef struct file_object_t{
-    struct stat stats;
-    int         mode;
-    int         length;
-    int         mtime_sec;
-    long int    mtime_nsec;
-    char        *filetype;
-    char        *path;
-    char        *root;
+	struct stat stats;
+	int			mode;
+	int			length;
+	int			mtime_sec;
+	long int	mtime_nsec;
+	char		*filetype;
+	char		*path;
+	char		*root;
 } file_object_t;
 
 typedef struct file_LL file_LL;
 
 typedef struct file_node_t {
-    file_object_t *curr;
-    struct file_node_t* next;
+	file_object_t *curr;
+	struct file_node_t* next;
 } file_node_t;
 
 struct file_LL {
-    file_node_t*    head;
-    file_node_t*    tail;
-    unsigned int    count;
-//    file_object_t *curr;
-//    file_LL *next;
+	file_node_t*	head;
+	file_node_t*	tail;
+	unsigned int	count;
+//	file_object_t *curr;
+//	file_LL *next;
+};
+
+typedef enum : uint8_t {
+	CHUNK_UNKNOWN,
+	CHUNK_READ,
+	CHUNK_WRITE,
+	CHUNK_IDLE,
+	CHUNK_WAIT,
+	NUM_CHUNK_TYPES
+} chunk_t;
+
+struct copy_chunk_t {
+	chunk_t	type;
+	double	time_slice;
+	long	data_size;
 };
 
 
 extern char *f_map;
 extern int flogfd;
 extern char g_log_path[MAX_PATH_LEN];
+
+void init_time_array();
+
+void add_time_slice(chunk_t type, double slice, long data_size);
+
+void print_time_slices();
 
 void set_socket_ready(int state);
 

@@ -18,6 +18,7 @@ and limitations under the License.
 
 #include "parcel.h"
 #include "files.h"
+#include "timer.h"
 #include "util.h"
 #include "postmaster.h"
 #include "sender.h"
@@ -76,6 +77,14 @@ void free_block(parcel_block *block)
 int fill_data(void* data, size_t len)
 {
 	return (!!memcpy(sender_block.data, data, len));
+}
+
+int check_write_pipe()
+{
+	struct stat tmp_stat;
+	fstat(g_opts.send_pipe[1], &tmp_stat);
+
+	return tmp_stat.st_size;
 }
 
 // write header data to out fd
@@ -212,12 +221,19 @@ int send_file(file_object_t *file)
 		free(header);
 
 		// buffer and send file
-		int rs;
+		int rs = 1;
 		off_t sent = 0;
+		int read_chunk_timer = 0, write_chunk_timer = 0;
+		read_chunk_timer = new_timer("read_chunk_timer");
+		write_chunk_timer = new_timer("write_chunk_timer");
 
-		while ((rs = read(fd, sender_block.data, BUFFER_LEN))) {
-
-			verb(VERB_3, "[%s] Read in %d bytes", __func__, rs);
+		while (rs ) {
+//		while ((rs = read(fd, sender_block.data, BUFFER_LEN))) {
+			start_timer(read_chunk_timer);
+			rs = read(fd, sender_block.data, BUFFER_LEN);
+			stop_timer(read_chunk_timer);
+//			verb(VERB_3, "[%s] Read in %d bytes", __func__, rs);
+			double read_elapsed = timer_elapsed(read_chunk_timer);
 
 			// Check for file read error
 			if (rs < 0) {
@@ -226,8 +242,17 @@ int send_file(file_object_t *file)
 
 			// create header to specify that we are also sending file data
 			header = nheader(XFER_DATA, rs);
+			start_timer(write_chunk_timer);
 			sent += write_block(header, rs);
+			stop_timer(write_chunk_timer);
 			free(header);
+			double write_elapsed = timer_elapsed(write_chunk_timer);
+
+			// fly - update the times
+//			stop_timer(chunk_timer);
+//			double elapsed = timer_elapsed(chunk_timer);
+			add_time_slice(CHUNK_READ, read_elapsed, rs);
+			add_time_slice(CHUNK_WRITE, write_elapsed, rs);
 
 			// Print progress
 			if (g_opts.progress) {
@@ -238,6 +263,7 @@ int send_file(file_object_t *file)
 		// Carriage return for  progress printing
 		if (g_opts.progress) {
 			verb(VERB_2, "");
+			fprintf(stderr, "\n");
 		}
 
 		// Done with fd
