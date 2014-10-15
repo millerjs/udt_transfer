@@ -278,7 +278,8 @@ void clean_exit(int status)
 
 	int counter = 0;
 	verb(VERB_2, "\n");
-	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) && (status != EXIT_FAILURE) ) {
+	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) ) {
+//	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) && (status != EXIT_FAILURE) ) {
 		if ( counter == 0 ) {
 			verb(VERB_2, "[%d %s] Waiting on %d threads to exit", g_flags, __func__, get_thread_count(THREAD_TYPE_ALL));
 			print_threads(VERB_2);
@@ -898,6 +899,8 @@ int initialize_pipes()
 	g_opts.send_pipe = (int*) malloc(2*sizeof(int));
 	g_opts.recv_pipe = (int*) malloc(2*sizeof(int));
 
+//	ERR_IF(pipe(g_opts.send_pipe, O_NONBLOCK), "unable to create server's send pipe");
+//	ERR_IF(pipe(g_opts.recv_pipe, O_NONBLOCK), "unable to create server's receiver pipe");
 	ERR_IF(pipe(g_opts.send_pipe), "unable to create server's send pipe");
 	ERR_IF(pipe(g_opts.recv_pipe), "unable to create server's receiver pipe");
 

@@ -121,9 +121,10 @@ int receive_files(char*base_path)
 
 	// Read in headers and data until signalled completion
 	while ( !global_receive_data.complete ) {
+		verb(VERB_2, "[%s] reading header", __func__);
 		if (global_receive_data.read_new_header) {
-			if ((global_receive_data.rs = read_header(&header)) <= 0) {
-				ERR("[%s] Bad header read, errno: %d", __func__, errno);
+			if ((global_receive_data.rs = read_header(&header)) < 0) {
+				ERR("[%s] Bad header read %lu bytes, errno: %d", __func__, global_receive_data.rs, errno);
 				break;
 			}
 		}
@@ -138,6 +139,11 @@ int receive_files(char*base_path)
 				break;
 			}
 		}
+		if ( check_for_exit(THREAD_TYPE_2) ) {
+			verb(VERB_2, "[%s] Got exit signal, exiting", __func__);
+			global_receive_data.complete = 1;
+		}
+
 		usleep(100);
 	}
 

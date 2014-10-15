@@ -204,7 +204,10 @@ int send_file(file_object_t *file)
 		}
 
 		// Attempt to advise system of our intentions
-		if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE) < 0) {
+//		if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE) < 0) {
+		if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_DONTNEED) < 0) {
+//		if (posix_fadvise64(fd, 0, 0, POSIX_FADV_RANDOM | POSIX_FADV_DONTNEED) < 0) {
+//		if (posix_fadvise64(fd, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED) < 0) {
 			verb(VERB_3, "[%s] Unable to advise file read", __func__);
 		}
 
@@ -227,12 +230,32 @@ int send_file(file_object_t *file)
 		read_chunk_timer = new_timer("read_chunk_timer");
 		write_chunk_timer = new_timer("write_chunk_timer");
 
-		while (rs ) {
+		# define READ_CHUNK_SIZE	8388608
+		while (rs) {
 //		while ((rs = read(fd, sender_block.data, BUFFER_LEN))) {
 			start_timer(read_chunk_timer);
-			rs = read(fd, sender_block.data, BUFFER_LEN);
+#define CHUNKED_READ	1
+#ifdef	CHUNKED_READ
+			int temp_total = 0;
+			int bytes_remaining = BUFFER_LEN;
+			int byte_count_to_read;
+			while ( bytes_remaining && rs ) {
+				if ( bytes_remaining < READ_CHUNK_SIZE ) {
+					byte_count_to_read = bytes_remaining;
+				} else {
+					byte_count_to_read = READ_CHUNK_SIZE;
+				}
+				verb(VERB_2, "[%s] Requesting %d bytes", __func__, byte_count_to_read);
+				rs = read(fd, sender_block.data + temp_total, byte_count_to_read);
+				temp_total += rs;
+				bytes_remaining -= rs;
+				verb(VERB_2, "[%s] Read in %d bytes, %lu total, %lu remaining", __func__, rs, temp_total, bytes_remaining);
+			}
+			verb(VERB_2, "[%s] Read in %d bytes total", __func__, temp_total);
+#else
+			rs = read(fd, sender_block.data + temp_total, BUFFER_LEN);
+#endif
 			stop_timer(read_chunk_timer);
-//			verb(VERB_3, "[%s] Read in %d bytes", __func__, rs);
 			double read_elapsed = timer_elapsed(read_chunk_timer);
 
 			// Check for file read error
@@ -241,9 +264,9 @@ int send_file(file_object_t *file)
 			}
 
 			// create header to specify that we are also sending file data
-			header = nheader(XFER_DATA, rs);
+			header = nheader(XFER_DATA, temp_total);
 			start_timer(write_chunk_timer);
-			sent += write_block(header, rs);
+			sent += write_block(header, temp_total);
 			stop_timer(write_chunk_timer);
 			free(header);
 			double write_elapsed = timer_elapsed(write_chunk_timer);
@@ -251,8 +274,8 @@ int send_file(file_object_t *file)
 			// fly - update the times
 //			stop_timer(chunk_timer);
 //			double elapsed = timer_elapsed(chunk_timer);
-			add_time_slice(CHUNK_READ, read_elapsed, rs);
-			add_time_slice(CHUNK_WRITE, write_elapsed, rs);
+			add_time_slice(CHUNK_READ, read_elapsed, temp_total);
+			add_time_slice(CHUNK_WRITE, write_elapsed, temp_total);
 
 			// Print progress
 			if (g_opts.progress) {
@@ -371,7 +394,7 @@ void send_and_wait_for_ack_of_complete()
 	global_send_data.complete = 0;
 	while ( !global_send_data.complete ) {
 		if (global_send_data.read_new_header) {
-			if ((global_send_data.rs = read_header(&header)) <= 0) {
+			if ((global_send_data.rs = read_header(&header)) < 0) {
 				ERR("Bad header read");
 			}
 		}

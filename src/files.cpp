@@ -26,6 +26,7 @@ and limitations under the License.
 #include <time.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 
 #include "util.h"
 #include "parcel.h"
@@ -69,7 +70,7 @@ void add_time_slice(chunk_t type, double slice, long data_size)
 void print_time_slices()
 {
 	for ( int i = 0; i < g_time_slice_idx; i++ ) {
-		verb(VERB_1, "%d: %d %.04f %lu", i, g_time_slices[i].type, g_time_slices[i].time_slice, g_time_slices[i].data_size);
+		verb(VERB_2, "%d: %d %.04f %lu", i, g_time_slices[i].type, g_time_slices[i].time_slice, g_time_slices[i].data_size);
 //		fprintf(stderr, "%d: %.04f %lu\n", i, g_time_slices[i].time_slice, g_time_slices[i].data_size);
 	}
 }
@@ -666,6 +667,7 @@ int generate_base_path(char* prelim, char *data_path, int data_path_size)
 	return bl;
 }
 
+#define PIPE_WRITE_TIMEOUT_MS		100
 //
 // pipe_write
 //
@@ -674,14 +676,29 @@ int generate_base_path(char* prelim, char *data_path, int data_path_size)
 //
 ssize_t pipe_write(int fd, const void *buf, size_t count)
 {
-	ssize_t written_bytes;
+	ssize_t written_bytes = 0;
+	pollfd		poll_data;
 
-	written_bytes = write(fd, buf, count);
+	poll_data.fd = fd;
+	poll_data.events = POLLOUT | POLLRDHUP | POLLERR | POLLHUP | POLLNVAL;
+	poll_data.revents = 0;
+
+	if ( poll(&poll_data, (nfds_t)1, PIPE_WRITE_TIMEOUT_MS) > -1 ) {
+		if ( poll_data.revents & POLLOUT ) {
+			written_bytes = write(fd, buf, count);
+		} else {
+//			verb(VERB_2, "[%s] revents: %0X", __func__, poll_data.revents);
+		}
+	} else {
+		verb(VERB_2, "[%s] errno: %0X", __func__, errno);
+	}
+
 //	verb(VERB_2, "[%s] Written %lu bytes (%d requested) to fd %d", __func__, written_bytes, count, fd);
 
 	return written_bytes;
 }
 
+#define PIPE_READ_TIMEOUT_MS		100
 //
 // pipe_read
 //
@@ -690,9 +707,26 @@ ssize_t pipe_write(int fd, const void *buf, size_t count)
 //
 ssize_t pipe_read(int fd, void *buf, size_t count)
 {
-	ssize_t read_bytes;
+	ssize_t		read_bytes = 0;
+	pollfd		poll_data;
 
-	read_bytes =  read(fd, buf, count);
+	poll_data.fd = fd;
+	poll_data.events = POLLIN | POLLPRI | POLLRDHUP | POLLERR | POLLHUP;
+	poll_data.revents = 0;
+
+	verb(VERB_2, "[%s] polling data", __func__);
+	if ( poll(&poll_data, (nfds_t)1, PIPE_READ_TIMEOUT_MS) > -1 ) {
+		if ( poll_data.revents & POLLIN ) {
+			verb(VERB_2, "[%s] requesting %d bytes", __func__, count);
+			read_bytes = read(fd, buf, count);
+			verb(VERB_2, "[%s] read %d bytes", __func__, read_bytes);
+		} else {
+//			verb(VERB_2, "[%s] revents: %0X", __func__, poll_data.revents);
+		}
+	} else {
+		verb(VERB_2, "[%s] errno: %0X", __func__, errno);
+	}
+
 //	verb(VERB_2, "[%s] Read %lu bytes (%d requested) from fd %d", __func__, read_bytes, count, fd);
 
 	return read_bytes;
