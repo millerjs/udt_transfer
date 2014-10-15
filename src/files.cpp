@@ -69,7 +69,7 @@ void add_time_slice(chunk_t type, double slice, long data_size)
 void print_time_slices()
 {
 	for ( int i = 0; i < g_time_slice_idx; i++ ) {
-		verb(VERB_1, "%d: %d %.04f %lu", i, g_time_slices[i].type, g_time_slices[i].time_slice, g_time_slices[i].data_size);
+		verb(VERB_2, "%d: %d %.04f %lu", i, g_time_slices[i].type, g_time_slices[i].time_slice, g_time_slices[i].data_size);
 //		fprintf(stderr, "%d: %.04f %lu\n", i, g_time_slices[i].time_slice, g_time_slices[i].data_size);
 	}
 }

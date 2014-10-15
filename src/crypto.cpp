@@ -43,6 +43,7 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
 		__func__, direc, len, encryption_type, n_threads);
 
 	N_CRYPTO_THREADS = n_threads;
+	id_lock = PTHREAD_MUTEX_INITIALIZER;
 
 	// malloc the public data
 /*	ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX) * N_CRYPTO_THREADS);
