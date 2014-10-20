@@ -88,6 +88,7 @@ void cleanup_pipes();
  */
 header_t* nheader(xfer_t type, off_t size)
 {
+	verb(VERB_2, "[%s] new header of type %d", __func__, type);
 	header_t* header;
 	header = (header_t*)malloc(sizeof(header_t));
 	memset(header, 0, sizeof(header_t));
@@ -273,7 +274,6 @@ void clean_exit(int status)
 	close_log_file();
 	print_xfer_stats();
 	verb(VERB_2, "[%d %s] cleaning up pipes", g_flags, __func__);
-	cleanup_pipes();
 	set_thread_exit();
 
 	int counter = 0;
@@ -289,6 +289,8 @@ void clean_exit(int status)
 		}
 		usleep(100);
 	}
+
+	cleanup_pipes();
 
 	verb(VERB_2, "[%d %s] cleaning up sender/receiver", g_flags, __func__);
 	cleanup_receiver();
@@ -920,6 +922,9 @@ int initialize_pipes()
 	verb(VERB_2, "[%d %s] send_pipe[0] = %d, send_pipe[1] = %d", g_flags, __func__, g_opts.send_pipe[0], g_opts.send_pipe[1]);
 	verb(VERB_2, "[%d %s] recv_pipe[0] = %d, recv_pipe[1] = %d", g_flags, __func__, g_opts.recv_pipe[0], g_opts.recv_pipe[1]);
 
+	init_pipe_mutex();
+	init_pipe_fifo();
+
 	return RET_SUCCESS;
 }
 
@@ -1001,9 +1006,9 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 
 	pthread_t udpipe_thread;
 	if ( udpipe_server_type == UDPIPE_SERVER ) {
-		create_thread(&udpipe_thread, NULL, &run_server, args, "run_server", THREAD_TYPE_1);
+		create_thread(&udpipe_thread, NULL, &run_server, args, "run_server", THREAD_TYPE_2);
 	} else {
-		create_thread(&udpipe_thread, NULL, &run_client, args, "run_client", THREAD_TYPE_1);
+		create_thread(&udpipe_thread, NULL, &run_client, args, "run_client", THREAD_TYPE_2);
 	}
 
 	return udpipe_thread;
@@ -1172,7 +1177,8 @@ int start_transfer(int argc, char*argv[], int optind)
 		// fly - hang out a few seconds waiting for send to complete
 		// we should probably have a way to check that the ack has actually gone
 		// out, but this should work
-		while ( check_write_pipe() );
+		verb(VERB_2, "[%d %s] Waiting for write pipe to be empty",g_flags, __func__);
+		while ( get_fifo_size(FIFO_WRITE) );
 
 		usleep(1000);
 

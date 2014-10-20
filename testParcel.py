@@ -44,13 +44,13 @@ def PrintHelp():
     print ""
     print "usage: %s [options]" % scriptName
     print "Options:"
-    print "  --source=[DIRECTORY] folder to copy data from (mandatory to run)"
-    print "  --target=[DIRECTORY] folder to copy data to (mandatory to run)"
-    print "  --remotehost=[REMOTE_SYS] host to use as other end (defaults to localhost)"
-    print "  --parceldir=[PATH] path to parcel exe on remote system (defaults to assuming installed in path, finds locally)"
-    print "  --user=[username] user to use at other end (defaults to [whoami] on this system)"
-    print "  --trips=[num] how many round trips to test (default 1)"
-    print "  --crypto=[true/false] whether to use encryption (default false)"
+    print "  --source [DIRECTORY] - folder to copy data from (mandatory to run)"
+    print "  --target [DIRECTORY] - folder to copy data to (mandatory to run)"
+    print "  --remotehost [REMOTE_SYS] - host to use as other end (defaults to localhost)"
+    print "  --parceldir [PATH] - path to parcel exe on remote system (defaults to assuming installed in path, finds locally)"
+    print "  --user [username] - user to use at other end (defaults to [whoami] on this system)"
+    print "  --trips [num] - how many round trips to test (default 1)"
+    print "  --crypto - enables encryption"
     print "  --logging - use logging (logs files as debug_master.log and debug_minion.log)"
     print "  --gendata - generate the data files (just once)"
     print "  --genloop - generate the data files every trip"
@@ -73,6 +73,14 @@ def ParseCommandLineArgs():
     commandLineArgs['trips'] = 1
     commandLineArgs['gendata'] = False
     commandLineArgs['genloop'] = False
+    commandLineArgs['crypto'] = False
+
+    sourceFlag = False
+    targetFlag = False
+    tripsFlag = False
+    remoteFlag = False
+    userFlag = False
+    parcelDirFlag = False
 
     if len(sys.argv) >= 2:
         for arg in sys.argv:
@@ -87,36 +95,42 @@ def ParseCommandLineArgs():
                     commandLineArgs['gendata'] = True
                 elif arg.find("genloop") > 0:
                     commandLineArgs['genloop'] = True
-                elif arg.find("source") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['source'] = fileparts[1].strip()
-                elif arg.find("target") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['target'] = fileparts[1].strip()
-                elif arg.find("trips") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['trips'] = int(fileparts[1].strip())
                 elif arg.find("crypto") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['crypto'] = fileparts[1].strip().lower() == 'true'
+                    commandLineArgs['crypto'] = True
+                elif arg.find("source") > 0:
+                    sourceFlag = True
+                elif arg.find("target") > 0:
+                    targetFlag = True
+                elif arg.find("trips") > 0:
+                    tripsFlag = True
                 elif arg.find("remotehost") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['remotehost'] = fileparts[1].strip()
+                    remoteFlag = True
                 elif arg.find("user") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['user'] = fileparts[1].strip()
+                    userFlag = True
                 elif arg.find("parceldir") > 0:
-                    fileparts = arg.split("=")
-                    if len(fileparts) > 1:
-                        commandLineArgs['parceldir'] = fileparts[1].strip()
+                    parcelDirFlag = True
                 elif arg.find("Belgium") > 0:
                     print "** Watch your language! **"
+
+            else:
+                if sourceFlag:
+                    commandLineArgs['source'] = arg.strip()
+                    sourceFlag = False
+                if targetFlag:
+                    commandLineArgs['target'] = arg.strip()
+                    targetFlag = False
+                if tripsFlag:
+                    commandLineArgs['trips'] = int(arg.strip())
+                    tripsFlag = False
+                if remoteFlag:
+                    commandLineArgs['remotehost'] = arg.strip()
+                    remoteFlag = False
+                if userFlag:
+                    commandLineArgs['user'] = arg.strip()
+                    userFlag = False
+                if parcelDirFlag:
+                    commandLineArgs['parceldir'] = arg.strip()
+                    parcelDirFlag = False
 
 #    print commandLineArgs
     return commandLineArgs
@@ -332,7 +346,9 @@ def SetupParcelArgs(cmdArgs):
         parcelArgs += "-b "
 
     # use encryption if requested
-    if 'crypto' in cmdArgs:
+#    if 'crypto' in cmdArgs:
+    if cmdArgs['crypto'] == True:
+#            parcelArgs += "-n "
         parcelArgs += "-n "
 
     # set remote path to parcel app if given

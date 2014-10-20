@@ -135,6 +135,8 @@ Crypto::~Crypto()
 
 	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
 		EVP_CIPHER_CTX_cleanup(&ctx[i]);
+		pthread_mutex_destroy(&c_lock[i]);
+		pthread_mutex_destroy(&thread_ready[i]);
 	}
 
 }
@@ -343,9 +345,6 @@ void *crypto_update_thread(void* _args)
 //		verb(VERB_2,  "[%s %lu] Heading into main loop", __func__, pthread_self());
 
 		while (1) {
-			if ( check_for_exit(THREAD_TYPE_1) ) {
-				break;
-			}
 			if ( args->thread_id > MAX_CRYPTO_THREADS ) {
 				verb(VERB_2, "*** [%s %lu] Whoops, thread_id %d out of range before wait!", __func__, pthread_self(), args->thread_id);
 				break;
@@ -400,6 +399,9 @@ void *crypto_update_thread(void* _args)
 					break;
 				}
 				c->unlock_data(args->thread_id);
+			}
+			if ( check_for_exit(THREAD_TYPE_1) ) {
+				break;
 			}
 
 		}

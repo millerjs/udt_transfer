@@ -44,7 +44,7 @@ int validate_header(header_t header)
 int read_header(header_t *header)
 {
 	// return read(fileno(stdin), header, sizeof(header_t));
-//	verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, sizeof(header_t));
+	verb(VERB_2, "[%s] Requesting %d bytes from stream %d", __func__, sizeof(header_t), g_opts.recv_pipe[0]);
 	return pipe_read(g_opts.recv_pipe[0], header, sizeof(header_t));
 }
 
@@ -57,13 +57,14 @@ off_t read_data(void* b, int len)
 
 	while (total < len) {
 		// rs = read(fileno(stdin), buffer+total, len - total);
-//		verb(VERB_2, "[%s] Requesting %d bytes from stream", __func__, len - total);
+		verb(VERB_2, "[%s] Requesting %d bytes from stream %d", __func__, len - total, g_opts.recv_pipe[0]);
 		rs = pipe_read(g_opts.recv_pipe[0], buffer+total, len - total);
+		verb(VERB_2, "[%s] %d bytes read from stream %d", __func__, rs, g_opts.recv_pipe[0]);
 		total += rs;
 		G_TOTAL_XFER += rs;
 	}
 
-//	verb(VERB_4, "[%s] Read %d bytes from stream", __func__, total);
+	verb(VERB_3, "[%s] Read %d bytes from stream", __func__, total);
 
 	return total;
 
@@ -97,8 +98,10 @@ int acknowlege_complete_xfer()
 	write_header(header);
 	free(header);
 
-	return RET_SUCCESS;
+	// fly - hackety hack hack...wait for acknowledge to go out
+	sleep(1);
 
+	return RET_SUCCESS;
 }
 
 int receive_files(char*base_path)
@@ -121,16 +124,20 @@ int receive_files(char*base_path)
 
 	// Read in headers and data until signalled completion
 	while ( !global_receive_data.complete ) {
-		verb(VERB_2, "[%s] reading header", __func__);
 		if (global_receive_data.read_new_header) {
+			verb(VERB_2, "[%s] reading header", __func__);
 			if ((global_receive_data.rs = read_header(&header)) < 0) {
 				ERR("[%s] Bad header read %lu bytes, errno: %d", __func__, global_receive_data.rs, errno);
 				break;
+			} else {
+				verb(VERB_2, "[%s] %d bytes received", __func__, global_receive_data.rs);
 			}
+		} else {
+			verb(VERB_2, "[%s] not reading header", __func__);
 		}
 
 		if (global_receive_data.rs) {
-//			verb(VERB_2, "[%s] Dispatching message: %d", __func__, header.type);
+			verb(VERB_2, "[%s] Dispatching message: %d", __func__, header.type);
 			int postMasterStatus = dispatch_message(receive_postmaster, header, &global_receive_data);
 			if ( postMasterStatus != POSTMASTER_OK ) {
 				verb(VERB_1, "[%s] bad message dispatch call: %d", __func__, postMasterStatus);
@@ -170,6 +177,7 @@ int pst_rec_callback_dirname(header_t header, global_data_t* global_data)
 //	verb(VERB_2, "[%s] Received directory header", __func__);
 
 	// Read directory name from stream
+	verb(VERB_2, "[%s] reading data of size %d", __func__, header.data_len);
 	read_data(global_data->data_path + global_data->bl, header.data_len);
 
 	verb(VERB_2, "[%s] Making directory: %s", __func__, global_data->data_path);
@@ -205,6 +213,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 	verb(VERB_3, "[%s] Header mtime: %d, mtime_nsec: %ld", __func__, global_data->mtime_sec, global_data->mtime_nsec);
 
 	// Read filename from stream
+	verb(VERB_3, "[%s] requesting %d bytes", __func__, header.data_len);
 	read_data(global_data->data_path + global_data->bl, header.data_len);
 
 	verb(VERB_3, "[%s] Initializing file receive: %s", __func__, global_data->data_path + global_data->bl);
@@ -249,8 +258,6 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 	}
 
 	global_data->read_new_header = 1;
-	global_data->expecting_data = 1;
-	global_data->total = 0;
 
 	return 0;
 
@@ -267,13 +274,19 @@ int pst_rec_callback_f_size(header_t header, global_data_t* global_data)
 //	verb(VERB_2, "[%s] Received file header", __func__);
 
 	// read in the size of the file
+	verb(VERB_2, "[%s] requesting %d bytes", __func__, header.data_len);
 	read_data(&(global_data->f_size), header.data_len);
+	verb(VERB_2, "[%s] filesize is %d bytes", __func__, global_data->f_size);
 
 	// Memory map attempt
 	if (g_opts.mmap) {
 		verb(VERB_2, "[%s] XFER_F_SIZE mmaping file of size %lu", __func__, global_data->f_size);
 		map_fd(global_data->fout, global_data->f_size);
 	}
+
+	global_data->read_new_header = 1;
+	global_data->expecting_data = 1;
+	global_data->total = 0;
 
 	return 0;
 
@@ -321,11 +334,13 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 	// read data buffer from stdin
 	// use the memory map
 	if (g_opts.mmap) {
+		verb(VERB_3, "[%s] reading data block of size %d", __func__, len);
 		if ((rs = read_data(global_data->f_map + global_data->total, len)) < 0) {
 			ERR("Unable to read stdin");
 		}
 
 	} else {
+		verb(VERB_3, "[%s] reading data block of size %d", __func__, len);
 		if ((rs = read_data(global_data->data, len)) < 0) {
 			ERR("Unable to read stdin");
 		}
@@ -427,6 +442,7 @@ int pst_rec_callback_filelist(header_t header, global_data_t* global_data)
 
 	char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
 
+	verb(VERB_3, "[%s] reading filelist data of size %d", __func__, header.data_len);
 	read_data(tmp_file_list, header.data_len);
 	fileList = unpack_filelist(tmp_file_list, header.data_len);
 	free(tmp_file_list);

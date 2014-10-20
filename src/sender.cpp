@@ -79,20 +79,13 @@ int fill_data(void* data, size_t len)
 	return (!!memcpy(sender_block.data, data, len));
 }
 
-int check_write_pipe()
-{
-	struct stat tmp_stat;
-	fstat(g_opts.send_pipe[1], &tmp_stat);
-
-	return tmp_stat.st_size;
-}
-
 // write header data to out fd
 int write_header(header_t* header)
 {
 
 	// should you be using write block?
 	int ret = pipe_write(g_opts.send_pipe[1], header, sizeof(header_t));
+	verb(VERB_3, "[%s] %d bytes written to pipe %d", __func__, ret, g_opts.send_pipe[1]);
 
 	return ret;
 
@@ -109,7 +102,7 @@ off_t write_block(header_t* header, int len)
 
 	int send_len = len + sizeof(header_t);
 
-//	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
+	verb(VERB_2, "[%s] Writing to pipe %d of length %d", __func__, g_opts.send_pipe[1], send_len);
 	int ret = pipe_write(g_opts.send_pipe[1], sender_block.buffer, send_len);
 
 	if (ret < 0) {
@@ -219,6 +212,7 @@ int send_file(file_object_t *file)
 		// Send length of file
 		header = nheader(XFER_F_SIZE, sizeof(off_t));
 		fill_data(&f_size, header->data_len);
+		verb(VERB_3, "[%s] Writing XFER_F_SIZE of size %d with block of size %d", __func__, f_size, header->data_len);
 		write_block(header, header->data_len);
 
 		free(header);
@@ -231,12 +225,13 @@ int send_file(file_object_t *file)
 		write_chunk_timer = new_timer("write_chunk_timer");
 
 		# define READ_CHUNK_SIZE	8388608
+		verb(VERB_2, "[%s] Reading %s into send buffer", __func__, file->path);
 		while (rs) {
 //		while ((rs = read(fd, sender_block.data, BUFFER_LEN))) {
 			start_timer(read_chunk_timer);
-#define CHUNKED_READ	1
-#ifdef	CHUNKED_READ
+#define CHUNKED_READ	0
 			int temp_total = 0;
+#if		CHUNKED_READ
 			int bytes_remaining = BUFFER_LEN;
 			int byte_count_to_read;
 			while ( bytes_remaining && rs ) {
@@ -253,7 +248,11 @@ int send_file(file_object_t *file)
 			}
 			verb(VERB_2, "[%s] Read in %d bytes total", __func__, temp_total);
 #else
-			rs = read(fd, sender_block.data + temp_total, BUFFER_LEN);
+			rs = read(fd, sender_block.data, BUFFER_LEN);
+			temp_total = rs;
+			if ( rs ) {
+				verb(VERB_2, "[%s] Read in %d bytes total", __func__, rs);
+			}
 #endif
 			stop_timer(read_chunk_timer);
 			double read_elapsed = timer_elapsed(read_chunk_timer);
@@ -265,6 +264,7 @@ int send_file(file_object_t *file)
 
 			// create header to specify that we are also sending file data
 			header = nheader(XFER_DATA, temp_total);
+			verb(VERB_3, "[%s] Writing XFER_DATA with block of size %d", __func__, temp_total);
 			start_timer(write_chunk_timer);
 			sent += write_block(header, temp_total);
 			stop_timer(write_chunk_timer);

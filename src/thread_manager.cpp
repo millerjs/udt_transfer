@@ -188,13 +188,14 @@ int check_for_exit(thread_type_t threadType)
 	int i, should_exit = g_time_to_exit;
 //	verb(VERB_2, "[%s]: threadType = %d", __func__, threadType);
 
-	// type 1 needs to check if any 2s are running, if we even have to
+	// type 2 needs to check if any 1s are running, if we even have to
 	// worry about exiting
-	if ( (threadType == THREAD_TYPE_1) && should_exit) {
+	if ( (threadType == THREAD_TYPE_2) && should_exit) {
+		verb(VERB_3, "[%s] Exit set, checking for 1s running", __func__);
 		for ( i = 0; i < THREAD_POOL_SIZE; i++ ) {
 			// bail from loop & don't exit if any 2s are still running
-			if ( (activeThreads[i].threadType == THREAD_TYPE_2) && activeThreads[i].threadUsed ) {
-//				verb(VERB_2, "[%s] %d: still active - thread ID %lu - %s", __func__, i, activeThreads[i].threadId, activeThreads[i].threadName);
+			if ( (activeThreads[i].threadType == THREAD_TYPE_1) && activeThreads[i].threadUsed ) {
+				verb(VERB_3, "[%s] %d: still active - thread ID %lu - %s", __func__, i, activeThreads[i].threadId, activeThreads[i].threadName);
 				should_exit = 0;
 				break;
 			}

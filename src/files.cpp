@@ -18,6 +18,8 @@ and limitations under the License.
 
 #define _FILE_OFFSET_BITS		64
 #define FILE_TIME_SLICE_SIZE	2500
+#define MAX_PIPE_FIFO_SIZE		64
+#define MAX_PIPE_FIFO_LOOKUP	4
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -40,13 +42,95 @@ int g_encrypt_verified = 0;
 int g_signed_auth = 0;
 int g_authed_peer = 0;
 
+off_t g_pipe_fifo[NUM_FIFOS][MAX_PIPE_FIFO_SIZE];
+int g_pipe_fifo_idx[NUM_FIFOS];
+int g_pipe_fifo_high_water[NUM_FIFOS];
+
 copy_chunk_t g_time_slices[FILE_TIME_SLICE_SIZE];
 int g_time_slice_idx = 0;
+
+pthread_mutex_t g_pipe_mutex;
 
 // Initialize
 
 file_LL *checkpoint = NULL;
 
+void init_pipe_fifo()
+{
+	memset(g_pipe_fifo, 0, (sizeof(off_t) * MAX_PIPE_FIFO_SIZE) * NUM_FIFOS);
+	memset(g_pipe_fifo_idx, 0, sizeof(int) * NUM_FIFOS);
+	memset(g_pipe_fifo_high_water, 0, sizeof(int) * NUM_FIFOS);
+}
+
+void print_pipe_fifo(fifo_t fifo_pipe)
+{
+	if ( fifo_pipe < NUM_FIFOS ) {
+		if ( g_pipe_fifo_idx[fifo_pipe] ) {
+			if ( fifo_pipe ) {
+				verb(VERB_2, "[%s] WRITE pipe", __func__);
+			} else {
+				verb(VERB_2, "[%s] READ pipe", __func__);
+			}
+			for ( int i = 0; i < g_pipe_fifo_idx[fifo_pipe]; i++ ) {
+				verb(VERB_2, "[%s] %d - %lu", __func__, i, g_pipe_fifo[fifo_pipe][i]);
+			}
+		}
+	}
+}
+
+int push_pipe_fifo(fifo_t fifo_pipe, off_t write_size)
+{
+	if ( (fifo_pipe < NUM_FIFOS) && write_size ) {
+		if ( g_pipe_fifo_idx[fifo_pipe] < MAX_PIPE_FIFO_SIZE ) {
+			g_pipe_fifo[fifo_pipe][g_pipe_fifo_idx[fifo_pipe]++] = write_size;
+			if ( g_pipe_fifo_idx[fifo_pipe] > g_pipe_fifo_high_water[fifo_pipe] ) {
+				g_pipe_fifo_high_water[fifo_pipe] = g_pipe_fifo_idx[fifo_pipe];
+			}
+		}
+		if ( fifo_pipe ) {
+			verb(VERB_2, "[%s] %d pushed, WRITE pipe now %d", __func__, write_size, g_pipe_fifo_idx[fifo_pipe]);
+		} else {
+			verb(VERB_2, "[%s] %d pushed, READ pipe now %d", __func__, write_size, g_pipe_fifo_idx[fifo_pipe]);
+		}
+		print_pipe_fifo(fifo_pipe);
+	}
+	return g_pipe_fifo_idx[fifo_pipe];
+}
+
+int pop_pipe_fifo(fifo_t fifo_pipe, off_t read_size)
+{
+	if ( (fifo_pipe < NUM_FIFOS) && read_size ) {
+		if ( g_pipe_fifo_idx[fifo_pipe] > 0 ) {
+			if ( g_pipe_fifo[fifo_pipe][g_pipe_fifo_idx[fifo_pipe] - 1] != read_size ) {
+				verb(VERB_2, "[%s] fifo pop not equal to size (%lu != %lu)", __func__, read_size, g_pipe_fifo[fifo_pipe][g_pipe_fifo_idx[fifo_pipe]]);
+			}
+			g_pipe_fifo[fifo_pipe][--g_pipe_fifo_idx[fifo_pipe]] = 0;
+		}
+		if ( fifo_pipe ) {
+			verb(VERB_2, "[%s] %d popped, WRITE pipe now %d", __func__, read_size, g_pipe_fifo_idx[fifo_pipe]);
+		} else {
+			verb(VERB_2, "[%s] %d popped, READ pipe now %d", __func__, read_size, g_pipe_fifo_idx[fifo_pipe]);
+		}
+		print_pipe_fifo(fifo_pipe);
+	}
+	return g_pipe_fifo_idx[fifo_pipe];
+}
+
+int get_fifo_size(fifo_t fifo_pipe) {
+	int ret_val = -1;
+	if ( fifo_pipe < NUM_FIFOS ) {
+		ret_val = g_pipe_fifo_idx[fifo_pipe];
+	}
+	return ret_val;
+}
+
+int get_fifo_high_water_mark(fifo_t fifo_pipe) {
+	int ret_val = -1;
+	if ( fifo_pipe < NUM_FIFOS ) {
+		ret_val = g_pipe_fifo_high_water[fifo_pipe];
+	}
+	return ret_val;
+}
 
 void init_time_array()
 {
@@ -667,6 +751,14 @@ int generate_base_path(char* prelim, char *data_path, int data_path_size)
 	return bl;
 }
 
+
+
+void init_pipe_mutex(void)
+{
+	pthread_mutex_init(&g_pipe_mutex, NULL);
+}
+
+
 #define PIPE_WRITE_TIMEOUT_MS		100
 //
 // pipe_write
@@ -686,6 +778,11 @@ ssize_t pipe_write(int fd, const void *buf, size_t count)
 	if ( poll(&poll_data, (nfds_t)1, PIPE_WRITE_TIMEOUT_MS) > -1 ) {
 		if ( poll_data.revents & POLLOUT ) {
 			written_bytes = write(fd, buf, count);
+/*			if ( fd == g_opts.send_pipe[1] ) {
+				push_pipe_fifo(FIFO_WRITE, written_bytes);
+			} else {
+				push_pipe_fifo(FIFO_READ, written_bytes);
+			} */
 		} else {
 //			verb(VERB_2, "[%s] revents: %0X", __func__, poll_data.revents);
 		}
@@ -714,12 +811,17 @@ ssize_t pipe_read(int fd, void *buf, size_t count)
 	poll_data.events = POLLIN | POLLPRI | POLLRDHUP | POLLERR | POLLHUP;
 	poll_data.revents = 0;
 
-	verb(VERB_2, "[%s] polling data", __func__);
+//	verb(VERB_2, "[%s] polling data from pipe %d", __func__, fd);
 	if ( poll(&poll_data, (nfds_t)1, PIPE_READ_TIMEOUT_MS) > -1 ) {
 		if ( poll_data.revents & POLLIN ) {
-			verb(VERB_2, "[%s] requesting %d bytes", __func__, count);
+//			verb(VERB_2, "[%s] requesting %d bytes", __func__, count);
 			read_bytes = read(fd, buf, count);
-			verb(VERB_2, "[%s] read %d bytes", __func__, read_bytes);
+/*			if ( fd == g_opts.send_pipe[0] ) {
+				pop_pipe_fifo(FIFO_WRITE, read_bytes);
+			} else {
+				pop_pipe_fifo(FIFO_READ, read_bytes);
+			} */
+//			verb(VERB_2, "[%s] read %d bytes", __func__, read_bytes);
 		} else {
 //			verb(VERB_2, "[%s] revents: %0X", __func__, poll_data.revents);
 		}
@@ -727,7 +829,7 @@ ssize_t pipe_read(int fd, void *buf, size_t count)
 		verb(VERB_2, "[%s] errno: %0X", __func__, errno);
 	}
 
-//	verb(VERB_2, "[%s] Read %lu bytes (%d requested) from fd %d", __func__, read_bytes, count, fd);
+	verb(VERB_2, "[%s] Read %lu bytes (%d requested) from fd %d", __func__, read_bytes, count, fd);
 
 	return read_bytes;
 }

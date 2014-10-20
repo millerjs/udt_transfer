@@ -77,32 +77,52 @@ struct copy_chunk_t {
 	long	data_size;
 };
 
+typedef enum : uint8_t {
+	FIFO_READ,
+	FIFO_WRITE,
+	NUM_FIFOS
+} fifo_t;
 
 extern char *f_map;
 extern int flogfd;
 extern char g_log_path[MAX_PATH_LEN];
 
+// write fifo routines
+// used to tell if there's any data waiting in the pipe for UDT
+
+void init_pipe_fifo();
+int push_pipe_fifo(fifo_t fifo_pipe, off_t write_size);
+int pop_pipe_fifo(fifo_t fifo_pipe, off_t read_size);
+int get_fifo_size(fifo_t fifo_pipe);
+int get_fifo_high_water_mark(fifo_t fifo_pipe);
+
+// time slice routines
+// used to track how long a read/write takes
+
 void init_time_array();
-
 void add_time_slice(chunk_t type, double slice, long data_size);
-
 void print_time_slices();
 
-void set_socket_ready(int state);
+// socket routines
+// used to get/set if the sockets are set up yet
 
+void set_socket_ready(int state);
 int get_socket_ready();
 
-void set_encrypt_ready(int state);
+// encrypt routines
+// used to set/get if the system is ready for encryption
 
+void set_encrypt_ready(int state);
 int get_encrypt_ready();
 
+// auth/peer routines
+// used to get/set if the encryption system has verified
+
 void set_auth_signed();
-
 void set_peer_authed();
-
 int get_auth_signed();
-
 int get_peer_authed();
+
 
 int print_file_LL(file_LL *list);
 
@@ -160,6 +180,9 @@ int map_fd(int fd, off_t size);
 int unmap_fd(int fd, off_t size);
 
 int mwrite(char* buff, off_t pos, int len);
+
+// init mutex for pipe_read/write
+void init_pipe_mutex(void);
 
 // wrapper around read to control & check
 ssize_t pipe_read(int fd, void *buf, size_t count);
