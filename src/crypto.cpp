@@ -37,17 +37,17 @@ static MUTEX_TYPE *mutex_buf = NULL;
 static void locking_function(int mode, int n, const char*file, int line);
 
 
-Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
+Crypto::Crypto()
 {
-	verb(VERB_2, "[%s] New crypto object, direc = %d, key len = %d, type = %s, threads = %d",
+/*	verb(VERB_2, "[%s] New crypto object, direc = %d, key len = %d, type = %s, threads = %d",
 		__func__, direc, len, encryption_type, n_threads);
 
 	N_CRYPTO_THREADS = n_threads;
 
 	// malloc the public data
-/*	ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX) * N_CRYPTO_THREADS);
-	e_args = (e_thread_args*)malloc(sizeof(e_thread_args) * N_CRYPTO_THREADS);
-	threads = (pthread_t*)malloc(sizeof(pthread_t) * N_CRYPTO_THREADS); */
+//	ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX) * N_CRYPTO_THREADS);
+//	e_args = (e_thread_args*)malloc(sizeof(e_thread_args) * N_CRYPTO_THREADS);
+//	threads = (pthread_t*)malloc(sizeof(pthread_t) * N_CRYPTO_THREADS);
 
 	THREAD_setup();
 	//free_key( password ); can't free here because is reused by threads
@@ -111,16 +111,12 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
 		e_args[i].c = this;
 
 //		verb(VERB_2, "[%s] Creating thread, c = %0x id = %d", __func__, e_args[i].c, e_args[i].thread_id);
-/*		int ret = pthread_create(&threads[i],
-				 &attr, &crypto_update_thread,
-				 &e_args[i]);
-		RegisterThread(threads[i], "crypto_update_thread", THREAD_TYPE_1); */
 
 		if ( create_thread(&threads[i], &attr, &crypto_update_thread, &e_args[i], "crypto_update_thread", THREAD_TYPE_1) ) {
 			verb(VERB_2, "Unable to create crypto thread" );
 		}
 	}
-	usleep(1000);
+	usleep(1000); */
 }
 
 Crypto::~Crypto()
@@ -139,6 +135,79 @@ Crypto::~Crypto()
 		pthread_mutex_destroy(&thread_ready[i]);
 	}
 
+}
+
+int Crypto::init_encryption(int direc, int len, unsigned char* password, char *encryption_type, int n_threads)
+{
+	verb(VERB_2, "[%s] New crypto object, direc = %d, key len = %d, type = %s, threads = %d",
+		__func__, direc, len, encryption_type, n_threads);
+
+	N_CRYPTO_THREADS = n_threads;
+
+	THREAD_setup();
+	const EVP_CIPHER *cipher = figure_encryption_type(encryption_type);
+
+	if ( !cipher ) {
+		verb(VERB_2, "[%s] Unable to identify encryption '%s', exiting", __func__, encryption_type);
+		exit(EXIT_FAILURE);
+	}
+
+	//aes-128|aes-256|bf|des-ede3
+	//log_set_maximum_verbosity(LOG_DEBUG);
+	//log_print(LOG_DEBUG, "encryption type %s\n", encryption_type);
+
+	// EVP stuff
+	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+
+		memset(ivec, 0, 1024);
+
+		EVP_CIPHER_CTX_init(&ctx[i]);
+		if ( (len > EVP_MAX_KEY_LENGTH) || (len > EVP_MAX_KEY_LENGTH) ) {
+			verb(VERB_2, "[%s] Key too long, defaulting to crappy one", __func__);
+			if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, (const unsigned char*)"password", ivec, direc)) {
+				verb(VERB_2, "[%s] Error setting encryption scheme", __func__);
+				exit(EXIT_FAILURE);
+			}
+
+		} else {
+			if (!EVP_CipherInit_ex(&ctx[i], cipher, NULL, password, ivec, direc)) {
+				verb(VERB_2, "[%s] Error setting encryption scheme", __func__);
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+
+//	verb(VERB_2, "[%s] id_lock before: %0x", __func__, &id_lock);
+	if ( pthread_mutex_init(&id_lock, NULL) ) {
+		verb(VERB_2, "[%s] unable to init mutex id_lock", __func__);
+	}
+//	verb(VERB_2, "[%s] id_lock after: %0x", __func__, &id_lock);
+
+	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+		pthread_mutex_init(&c_lock[i], NULL);
+		pthread_mutex_init(&thread_ready[i], NULL);
+		pthread_mutex_lock(&thread_ready[i]);
+	}
+
+	// ----------- [ Initialize and set thread detached attribute
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	thread_id = 0;
+
+	for (int i = 0; i < N_CRYPTO_THREADS; i++) {
+
+		e_args[i].thread_id = i;
+		e_args[i].ctx = &ctx[i];
+		e_args[i].c = this;
+
+		if ( create_thread(&threads[i], &attr, &crypto_update_thread, &e_args[i], "crypto_update_thread", THREAD_TYPE_1) ) {
+			verb(VERB_2, "Unable to create crypto thread" );
+		}
+	}
+	usleep(1000);
+	return 0;
 }
 
 int Crypto::get_num_crypto_threads()
@@ -191,13 +260,12 @@ int Crypto::unlock_data(int thread_id)
 	return pthread_mutex_unlock(&c_lock[thread_id]);
 }
 
+int Crypto::create_key_pair()
+{
+	key_pair = RSA_generate_key(2048, 65537, NULL, NULL);
 
-//    Crypto::~Crypto()
-//    {
-//        // i guess thread issues break this but it needs to be done
-//        //TODO: find out why this is bad and breaks things
-//        EVP_CIPHER_CTX_cleanup(&ctx);
-//    }
+}
+
 
 
 // Returns how much has been encrypted and will call encrypt final when
@@ -290,7 +358,7 @@ int THREAD_cleanup(void)
 }
 
 
-int crypto_update(char* in, char* out, int len, Crypto *c)
+/*int crypto_update(char* in, char* out, int len, Crypto *c)
 {
 
 	int evp_outlen = 0;
@@ -328,7 +396,7 @@ int crypto_update(char* in, char* out, int len, Crypto *c)
 
 	return evp_outlen;
 
-}
+} */
 
 
 void *crypto_update_thread(void* _args)
@@ -623,6 +691,7 @@ char* generate_session_key(void)
 
     return(pem_key);
 }
+
 
 void init_crypto_system()
 {

@@ -236,6 +236,202 @@ void sign_auth(rs_args* args)
 
 }
 
+void* recvdata_crypto_switchable(void * _args)
+{
+	// initialize
+	int running = 1;
+	pthread_t   tid;
+	tid = pthread_self();
+
+	rs_args * args = (rs_args*)_args;
+
+	verb(VERB_2, "[%s %lu] Initializing receive thread, args->c = %0x", __func__, tid, args->c);
+
+	if (args->use_crypto) {
+		verb(VERB_2, "[%s %lu] Receive encryption is on.", __func__, tid);
+		if ( args->c == NULL ) {
+			fprintf(stderr, "[%s %lu] crypto is NULL on enter, exiting!", __func__, tid);
+			exit(0);
+		}
+	}
+
+	UDTSOCKET recver = *args->usocket;
+
+	int crypto_buff_len = BUFF_SIZE / args->n_crypto_threads;
+	int buffer_cursor;
+
+	char* indata = (char*) malloc(BUFF_SIZE*sizeof(char));
+	if (!indata) {
+		fprintf(stderr, "Unable to allocate decryption buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	if ( (args->use_crypto) ) {
+		if ( args->master ) {
+			verb(VERB_2, "[%s %lu] Authorizing peer with key (%x)", __func__, tid, args->master);
+			auth_peer(args);
+		} else {
+			verb(VERB_2, "[%s %lu] Waiting for authed to be signed (%x)...", __func__, tid, args->master);
+			while (!get_auth_signed());
+			verb(VERB_2, "[%s %lu] Authorizing peer with key (%x)", __func__, tid, args->master);
+			auth_peer(args);
+		}
+
+	}
+
+	// wait until we're actually done signing
+	while ( !get_encrypt_ready() );
+
+//	g_timeout_sem = 2;
+
+	// Create a monitor thread to watch for timeouts
+	if (args->timeout > 0) {
+		pthread_t monitor_thread;
+		init_monitor(args->timeout);
+		create_thread(&monitor_thread, NULL, &monitor_timeout, &args->timeout, "monitor_timeout", THREAD_TYPE_2);
+	}
+
+	READ_IN = 1;
+
+	int new_block = 1;
+	int block_size = 0;
+	int offset = sizeof(int)/sizeof(char);
+	int crypto_cursor;
+	pthread_mutex_t recv_thread_mutex;
+
+	pthread_mutex_init(&recv_thread_mutex, NULL);
+
+	verb(VERB_2, "[%s %lu] Listening on receive thread, args->c = %0x", __func__, tid, args->c);
+
+	// Set monitor thread to expect a timeout
+	kick_monitor();
+
+	if(args->use_crypto) {
+		verb(VERB_2, "[%s %lu] Entering crypto loop...", __func__, tid);
+		if ( args->c != NULL ) {
+			while(running) {
+				pthread_mutex_lock(&recv_thread_mutex);
+				int rs;
+				if (new_block) {
+					block_size = 0;
+					rs = UDT::recv(recver, (char*)&block_size, offset, 0);
+					if (UDT::ERROR == rs) {
+						if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
+							cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
+						}
+						running = 0;
+					}
+					if ( rs && block_size ) {
+						verb(VERB_2, "[%s %lu] new block, expecting size = %d", __func__, tid, block_size);
+						new_block = 0;
+						buffer_cursor = 0;
+						crypto_cursor = 0;
+					}
+				}
+
+				rs = UDT::recv(recver, indata+buffer_cursor,
+						block_size-buffer_cursor, 0);
+				if ( rs )
+					verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
+
+				if (UDT::ERROR == rs) {
+					if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
+						cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
+					}
+					running = 0;
+				}
+
+				// Cancel timeout for another args->timeout seconds
+				kick_monitor();
+				buffer_cursor += rs;
+
+				// Decrypt any full encryption buffer sectors
+				while (crypto_cursor + crypto_buff_len < buffer_cursor) {
+					verb(VERB_2, "[%s %lu] decrypting full encryption buffer sectors", __func__, tid);
+					pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor,
+							   crypto_buff_len, args->c);
+					crypto_cursor += crypto_buff_len;
+				}
+
+				// If we received the whole block
+				if (buffer_cursor == block_size) {
+					if ( block_size ) {
+						int size = buffer_cursor - crypto_cursor;
+						if ( args->c != NULL ) {
+							verb(VERB_2, "[%s %lu] block complete, decrypting size %d", __func__, tid, size);
+							pass_to_enc_thread(indata+crypto_cursor, indata+crypto_cursor,
+									   size, args->c);
+							crypto_cursor += size;
+							join_all_encryption_threads(args->c);
+							verb(VERB_2, "[%s %lu] writing %d bytes to pipe %d", __func__, tid, block_size, args->recv_pipe[1]);
+							pipe_write(args->recv_pipe[1], indata, block_size);
+							buffer_cursor = 0;
+							crypto_cursor = 0;
+							new_block = 1;
+							verb(VERB_2, "[%s %lu] setting new block flag and looping", __func__, tid);
+						} else {
+							fprintf(stderr, "[%s %lu] crypto class is NULL before thread, exiting!\n", __func__, tid);
+							running = 0;
+						}
+					} else {
+							buffer_cursor = 0;
+							crypto_cursor = 0;
+							new_block = 1;
+					}
+				}
+				// fly - checking new_block to make sure last block is finished before we exit
+				if ( check_for_exit(THREAD_TYPE_2) && new_block ) {
+					verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
+					running = 0;
+				}
+				pthread_mutex_unlock(&recv_thread_mutex);
+			}
+		}  else {
+			fprintf(stderr, "crypto class is NULL, exiting!\n");
+		}
+	} else {
+		tid = pthread_self();
+		verb(VERB_2, "[%s %lu] Entering non-crypto loop...", __func__, tid);
+		int rs;
+		while (running) {
+			pthread_mutex_lock(&recv_thread_mutex);
+			rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
+			if ( rs )
+				verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
+			if (UDT::ERROR == rs) {
+				if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
+					cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
+					verb(VERB_2, "[%s %lu] Exiting on error 1...", __func__, tid);
+					running = 0;
+				}
+				verb(VERB_2, "[%s %lu] Connection lost, exiting", __func__, tid);
+				running = 0;
+			}
+
+			if ( check_for_exit(THREAD_TYPE_2) ) {
+				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
+				running = 0;
+			}
+
+			kick_monitor();
+			verb(VERB_2, "[%s %lu] Writing %d bytes to pipe %d", __func__, tid, rs, args->recv_pipe[1]);
+			pipe_write(args->recv_pipe[1], indata, rs);
+			pthread_mutex_unlock(&recv_thread_mutex);
+		}
+	}
+
+	verb(VERB_2, "[%s %lu] Closing up and heading out...", __func__, tid);
+//	UDT::close(recver);
+
+	free(indata);
+	unregister_thread(get_my_thread_id());
+	set_thread_exit();
+	pthread_mutex_destroy(&recv_thread_mutex);
+	return NULL;
+
+}
+
+
 
 void* recvdata(void * _args)
 {

@@ -171,16 +171,17 @@ void *run_server(void *_args_)
 
 	rs_args recv_args;
 	recv_args.usocket = new UDTSOCKET(recver);
-	recv_args.use_crypto = args->use_crypto;
 	recv_args.verbose = args->verbose;
-	recv_args.n_crypto_threads = args->n_crypto_threads;
 	recv_args.master = args->master;
+	recv_args.timeout = args->timeout;
+
+	recv_args.use_crypto = args->use_crypto;
+	recv_args.n_crypto_threads = args->n_crypto_threads;
 	if ( (args->dec == NULL) && (args->use_crypto) ) {
 		fprintf(stderr, "[%s] crypto class 'dec' uninitialized\n", __func__ );
 		exit(1);
 	}
 	recv_args.c = args->dec;
-	recv_args.timeout = args->timeout;
 
 	// Set sender file descriptors
 	if (args->send_pipe && args->recv_pipe){

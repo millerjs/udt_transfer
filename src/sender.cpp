@@ -676,6 +676,29 @@ int pst_snd_callback_filelist(header_t header, global_data_t* global_data)
 
 
 //
+// pst_snd_callback_key
+//
+// routine to handle XFER_KEY message
+//
+int pst_snd_callback_key(header_t header, global_data_t* global_data)
+{
+
+	verb(VERB_2, "[%s] Receiving key", __func__, header.data_len);
+	// all we need to do is unpack data and stuff into global_data
+	char* tmp_file_list = (char*)malloc(sizeof(char) * header.data_len);
+
+	read_data(tmp_file_list, header.data_len);
+	file_LL* fileList = unpack_filelist(tmp_file_list, header.data_len);
+	free(tmp_file_list);
+
+	global_data->user_data = (void*)fileList;
+	global_data->complete = 1;
+
+	return 0;
+}
+
+
+//
 // pst_snd_callback_control_msg
 //
 // routine to handle XFER_CONTROL message

@@ -89,7 +89,11 @@ typedef enum : uint8_t {
 	XFER_WAIT,				// 6
 	XFER_DATA_COMPLETE,		// 7
 	XFER_FILELIST,			// 8
-	XFER_CONTROL,			// 9
+	XFER_PUB_KEY,			// 9
+	XFER_SYM_KEY,			// 10
+	XFER_AUTH_KEY,			// 11
+	XFER_SIGN_KEY,			// 12
+	XFER_CONTROL,			// 13
 	NUM_XFER_CMDS
 } xfer_t;
 

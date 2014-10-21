@@ -57,14 +57,14 @@ off_t read_data(void* b, int len)
 
 	while (total < len) {
 		// rs = read(fileno(stdin), buffer+total, len - total);
-		verb(VERB_2, "[%s] Requesting %d bytes from stream %d", __func__, len - total, g_opts.recv_pipe[0]);
+//		verb(VERB_2, "[%s] Requesting %d bytes from stream %d", __func__, len - total, g_opts.recv_pipe[0]);
 		rs = pipe_read(g_opts.recv_pipe[0], buffer+total, len - total);
-		verb(VERB_2, "[%s] %d bytes read from stream %d", __func__, rs, g_opts.recv_pipe[0]);
+//		verb(VERB_2, "[%s] %d bytes read from stream %d", __func__, rs, g_opts.recv_pipe[0]);
 		total += rs;
 		G_TOTAL_XFER += rs;
 	}
 
-	verb(VERB_3, "[%s] Read %d bytes from stream", __func__, total);
+//	verb(VERB_3, "[%s] Read %d bytes from stream", __func__, total);
 
 	return total;
 

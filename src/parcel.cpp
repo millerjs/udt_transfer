@@ -1089,8 +1089,12 @@ int master_transfer_setup()
 			verb(VERB_3, "%s", g_session_key);
 			key_len = strlen("password");
 		}
-		g_opts.enc = new Crypto(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-		g_opts.dec = new Crypto(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+//		g_opts.enc = new Crypto(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+//		g_opts.dec = new Crypto(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+		g_opts.enc = new Crypto();
+		g_opts.dec = new Crypto();
+		g_opts.enc->init_encryption(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+		g_opts.dec->init_encryption(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
 //		verb(VERB_3, "[%d %s] enc thread_id = %d", g_flags, __func__, enc.get_thread_id());
 //		verb(VERB_3, "[%d %s] dec thread_id = %d", g_flags, __func__, enc.get_thread_id());
 	}
@@ -1121,9 +1125,92 @@ int minion_transfer_setup()
 			verb(VERB_3, "%s", g_session_key);
 			key_len = strlen("password");
 		}
-		g_opts.enc = new Crypto(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
-		g_opts.dec = new Crypto(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+//		g_opts.enc = new Crypto(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+//		g_opts.dec = new Crypto(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+		g_opts.enc = new Crypto();
+		g_opts.dec = new Crypto();
+		g_opts.enc->init_encryption(EVP_ENCRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
+		g_opts.dec->init_encryption(EVP_DECRYPT, key_len, (unsigned char*)g_session_key, cipher, g_opts.n_crypto_threads);
 	}
+	return RET_SUCCESS;
+}
+
+
+int transfer_files(int argc, char*argv[], int optind)
+{
+	file_LL *fileList = NULL;
+
+	if (g_opts.mode & MODE_RCV) {
+
+		verb(VERB_2, "[%d %s] Running with file destination mode",g_flags, __func__);
+		start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
+
+		g_timer = new_timer("receive_timer");
+		start_timer(g_timer);
+		// Listen to sender for files and data, see receiver.cpp
+		receive_files(g_base_path);
+		stop_timer(g_timer);
+
+		// fly - hang out a few seconds waiting for send to complete
+		// we should probably have a way to check that the ack has actually gone
+		// out, but this should work
+		verb(VERB_2, "[%d %s] Waiting for write pipe to be empty",g_flags, __func__);
+		while ( get_fifo_size(FIFO_WRITE) );
+
+		usleep(1000);
+
+		verb(VERB_2, "[%d %s] Done waiting for pipe to be empty",g_flags, __func__);
+
+	} else if (g_opts.mode & MODE_SEND) {
+
+		// delay proceeding for slow ssh connection
+		if (g_opts.delay) {
+			verb(VERB_1, "[%d %s] Delaying %ds for slow connection", g_flags, __func__, g_opts.delay);
+			sleep(g_opts.delay);
+		}
+
+		verb(VERB_2, "[%d %s] Running with file source mode", g_flags, __func__);
+		// connect to receiving server
+		start_udpipe_thread(&g_remote_args, UDPIPE_CLIENT);
+
+		ERR_IF(optind >= argc, "Please specify files to send");
+
+
+		int n_files = argc-optind;
+		char **path_list = argv+optind;
+
+		verb(VERB_2, "[%d %s] building filelist of %d items from %s", g_flags, __func__, n_files, path_list[0]);
+		// Generate a linked list of file objects from path list
+		ERR_IF(!(fileList = build_full_filelist(n_files, path_list)), "Filelist empty. Please specify files to send.\n");
+
+		verb(VERB_2, "[%d %s] Waiting for encryption to be ready", g_flags, __func__);
+		while ( !get_encrypt_ready() );
+		verb(VERB_2, "[%d %s] Encryption verified, proceeding", g_flags, __func__);
+
+#ifdef DONT_CHECK_FILELIST
+		send_files(fileList, fileList);
+#else
+		// send the file list, requesting version from dest
+		file_LL* remote_fileList = send_and_wait_for_filelist(fileList);
+
+		g_timer = new_timer("send_timer");
+		start_timer(g_timer);
+		// Visit all directories and send all files
+		// This is where we pass the remainder of the work to the
+		// file handler in sender.cpp
+		send_files(fileList, remote_fileList);
+		stop_timer(g_timer);
+#endif
+		// signal the end of the transfer
+		send_and_wait_for_ack_of_complete();
+
+#ifndef DONT_CHECK_FILELIST
+		// free the remote list
+		free_file_list(remote_fileList);
+		free_file_list(fileList);
+#endif
+	}
+
 	return RET_SUCCESS;
 }
 
@@ -1135,7 +1222,6 @@ int minion_transfer_setup()
  */
 int start_transfer(int argc, char*argv[], int optind)
 {
-	file_LL *fileList = NULL;
 
 	// if logging is enabled, open the log/checkpoint file
 	open_log_file();
@@ -1165,20 +1251,20 @@ int start_transfer(int argc, char*argv[], int optind)
 	} else {
 		minion_transfer_setup();
 	}
+
 	verb(VERB_2, "[%d %s] g_opts->enc = %0x", g_flags, __func__, g_opts.enc);
 	verb(VERB_2, "[%d %s] g_opts->dec = %0x", g_flags, __func__, g_opts.dec);
 
-	if (g_opts.mode & MODE_RCV) {
+	transfer_files(argc, argv, optind);
+
+/*	if (g_opts.mode & MODE_RCV) {
 
 		// sending pid if other side needs to kill?
-/*        pid_t pid = getpid();
-        pipe_write(g_opts.send_pipe[1], &pid, sizeof(pid_t)); */
+//		pid_t pid = getpid();
+//		pipe_write(g_opts.send_pipe[1], &pid, sizeof(pid_t));
 
 		verb(VERB_2, "[%d %s] Running with file destination mode",g_flags, __func__);
 		start_udpipe_thread(&g_remote_args, UDPIPE_SERVER);
-
-//        verb(VERB_3, "[%d %s RECV] enc thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
-//        verb(VERB_3, "[%d %s RECV] dec thread_id = %d", g_flags, __func__, g_opts.enc->get_thread_id());
 
 //		g_opts.socket_ready = 1;
 		while ( !get_encrypt_ready() );
@@ -1253,10 +1339,21 @@ int start_transfer(int argc, char*argv[], int optind)
 		free_file_list(remote_fileList);
 		free_file_list(fileList);
 #endif
-	}
+	} */
 
 	verb(VERB_2, "[%d %s] Exiting", g_flags, __func__);
 	return RET_SUCCESS;
+}
+
+void parcel_setup_state()
+{
+	// if we're supposed to use encryption, see what state we are
+	// if server, wait for pub key from client
+	// if client, generate pub key pair
+
+
+
+
 }
 
 

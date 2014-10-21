@@ -42,7 +42,7 @@ and limitations under the License.
 
 #define MUTEX_TYPE          pthread_mutex_t
 #define MUTEX_SETUP(x)      pthread_mutex_init(&(x), NULL)
-#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x) 
+#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x)
 #define MUTEX_LOCK(x)       pthread_mutex_lock(&x)
 #define MUTEX_UNLOCK(x)	    pthread_mutex_unlock(&x)
 #define THREAD_ID           pthread_self()
@@ -72,41 +72,45 @@ const EVP_CIPHER* figure_encryption_type(char* encrypt_str);
 class Crypto
 {
  private:
-    //BF_KEY key;
-    unsigned char ivec[ 1024 ];
-    int direction;
-    pthread_mutex_t c_lock[MAX_CRYPTO_THREADS];
-    pthread_mutex_t thread_ready[MAX_CRYPTO_THREADS];
+	//BF_KEY key;
+	unsigned char ivec[ 1024 ];
+	int direction;
+	pthread_mutex_t c_lock[MAX_CRYPTO_THREADS];
+	pthread_mutex_t thread_ready[MAX_CRYPTO_THREADS];
 
-    pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
+	pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
 
-    int passphrase_size;
-    int hex_passphrase_size;
+	int passphrase_size;
+	int hex_passphrase_size;
 
-    int N_CRYPTO_THREADS;
+	RSA* key_pair;
 
-    int thread_id;
+	int N_CRYPTO_THREADS;
+
+	int thread_id;
 
  public:
-    // EVP stuff
-    EVP_CIPHER_CTX  ctx[MAX_CRYPTO_THREADS];
-    e_thread_args   e_args[MAX_CRYPTO_THREADS];
-    pthread_t       threads[MAX_CRYPTO_THREADS];
-//    EVP_CIPHER_CTX*  ctx;
-//    e_thread_args*   e_args;
-//    pthread_t*       threads;
+	// EVP stuff
+	EVP_CIPHER_CTX  ctx[MAX_CRYPTO_THREADS];
+	e_thread_args   e_args[MAX_CRYPTO_THREADS];
+	pthread_t       threads[MAX_CRYPTO_THREADS];
+//	EVP_CIPHER_CTX*  ctx;
+//	e_thread_args*   e_args;
+//	pthread_t*       threads;
 
-    // member function declarations
-    Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads);
-    int get_num_crypto_threads();
-    int get_thread_id();
-    int increment_thread_id();
-    int set_thread_ready(int thread_id);
-    int wait_thread_ready(int thread_id);
-    int lock_data(int thread_id);
-    int unlock_data(int thread_id);
-    ~Crypto();
-    int encrypt(char *in, char *out, int len);
+	// member function declarations
+//    Crypto(int direc, int len, unsigned char* password, char *encryption_type, int n_threads);
+	Crypto();
+	int init_encryption(int direc, int len, unsigned char* password, char *encryption_type, int n_threads);
+	int get_num_crypto_threads();
+	int get_thread_id();
+	int increment_thread_id();
+	int set_thread_ready(int thread_id);
+	int wait_thread_ready(int thread_id);
+	int lock_data(int thread_id);
+	int unlock_data(int thread_id);
+	~Crypto();
+	int encrypt(char *in, char *out, int len);
 
 };
 
