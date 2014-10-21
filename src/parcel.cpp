@@ -663,36 +663,38 @@ int set_defaults()
 	snprintf(g_remote_args.udpipe_location, MAX_PATH_LEN - 1, "parcel");
 	snprintf(g_remote_args.pipe_port, MAX_PATH_LEN -1, "9000");
 
-	g_opts.mode                   = MODE_SEND;
-	g_opts.verbosity              = VERB_1;
+	g_opts.mode					= MODE_SEND;
+	g_opts.verbosity			= VERB_1;
 	// NOTE: this is number of seconds to wait before timing out, not merely a flag
-	// fly - until we get to the bottom of the ceph read times, this has to be at LEAST 60 seconds,
-	// but it could be much, much worse
-	g_opts.timeout                = 720;
-	g_opts.recurse                = 1;
-	g_opts.regular_files          = 1;
-	g_opts.progress               = 1;
-	g_opts.default_udpipe         = 0;
-	g_opts.remote                 = 0;
-	g_opts.delay                  = 0;
-	g_opts.log                    = 0;
-	g_opts.restart                = 0;
-	g_opts.mmap                   = 0;
-	g_opts.full_root              = 0;
+	// fly - until we get to the bottom of the ceph read times, this has to be at LEAST 60 seconds
+	g_opts.timeout				= 75;
+	g_opts.recurse				= 1;
+	g_opts.regular_files		= 1;
+	g_opts.progress				= 1;
+	g_opts.default_udpipe		= 0;
+	g_opts.remote				= 0;
+	g_opts.delay				= 0;
+	g_opts.log					= 0;
+	g_opts.restart				= 0;
+	g_opts.mmap					= 0;
+	g_opts.full_root			= 0;
 
-	g_opts.remote_to_local        = 0;
-	g_opts.ignore_modification    = 0;
+	g_opts.fifo_test			= 0;
+	g_opts.fifo_test_size		= SIZE_GB * 2;
 
-	g_opts.socket_ready           = 0;
-	g_opts.encryption             = 0;
-	g_opts.n_crypto_threads       = 1;
+	g_opts.remote_to_local		= 0;
+	g_opts.ignore_modification	= 0;
+
+	g_opts.socket_ready			= 0;
+	g_opts.encryption			= 0;
+	g_opts.n_crypto_threads		= 1;
 	g_opts.enc = NULL;
 	g_opts.dec = NULL;
 
-	g_opts.send_pipe              = NULL;
-	g_opts.recv_pipe              = NULL;
-	g_remote_args.local_ip        = NULL;
-	g_remote_args.remote_ip       = NULL;
+	g_opts.send_pipe			= NULL;
+	g_opts.recv_pipe			= NULL;
+	g_remote_args.local_ip		= NULL;
+	g_remote_args.remote_ip		= NULL;
 
 	set_socket_ready(0);
 
@@ -719,7 +721,9 @@ int get_options(int argc, char *argv[])
 			{"quiet"				, no_argument			, &g_opts.verbosity				, VERB_0},
 			{"debug"				, no_argument			, NULL							, 'b'},
 			{"encryption"			, no_argument			, NULL							, 'b'},
-			{"no-mmap"				, no_argument			, &g_opts.mmap					, 0},
+//			{"no-mmap"				, no_argument			, &g_opts.mmap					, 0},
+			{"mmap"					, no_argument			, &g_opts.mmap					, 1},
+			{"fifo-test"			, no_argument			, &g_opts.fifo_test				, 1},
 			{"full-root"			, no_argument			, &g_opts.full_root				, 1},
 			{"ignore-modification"	, no_argument			, &g_opts.ignore_modification	, 1},
 			{"all-files"			, no_argument			, &g_opts.regular_files			, 0},
@@ -743,7 +747,7 @@ int get_options(int argc, char *argv[])
 			fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
 		} */
 
-		while ((opt = getopt_long(argc, argv, "i:xl:thvc:k:r:nd:5:p:q:b7:8:2:6:",
+		while ((opt = getopt_long(argc, argv, "i:xl:thfvc:k:r:nd:5:p:q:b7:8:2:6:",
 								  long_options, &option_index)) != -1) {
 	//		fprintf(stderr, "opt = %c\n", opt);
 			switch (opt) {
@@ -799,6 +803,11 @@ int get_options(int argc, char *argv[])
 				case 'x':
 					// disable printing progress
 					g_opts.progress = 0;
+					break;
+
+				case 'f':
+					// enable fifo test
+					g_opts.fifo_test = 1;
 					break;
 
 				case 't':

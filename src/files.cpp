@@ -17,7 +17,7 @@ and limitations under the License.
 *****************************************************************************/
 
 #define _FILE_OFFSET_BITS		64
-#define FILE_TIME_SLICE_SIZE	2500
+#define FILE_TIME_SLICE_SIZE	20000
 #define MAX_PIPE_FIFO_SIZE		64
 #define MAX_PIPE_FIFO_LOOKUP	4
 
@@ -140,14 +140,16 @@ void init_time_array()
 
 void add_time_slice(chunk_t type, double slice, long data_size)
 {
-	if ( g_time_slice_idx < FILE_TIME_SLICE_SIZE ) {
-		if ( type < NUM_CHUNK_TYPES ) {
-			g_time_slices[g_time_slice_idx].type = type;
+	if ( get_file_logging() ) {
+		if ( g_time_slice_idx < FILE_TIME_SLICE_SIZE ) {
+			if ( type < NUM_CHUNK_TYPES ) {
+				g_time_slices[g_time_slice_idx].type = type;
+			}
+			g_time_slices[g_time_slice_idx].time_slice = slice;
+			g_time_slices[g_time_slice_idx++].data_size = data_size;
+		} else {
+			verb(VERB_1, "[%s] Unable to add, array full", __func__);
 		}
-		g_time_slices[g_time_slice_idx].time_slice = slice;
-		g_time_slices[g_time_slice_idx++].data_size = data_size;
-	} else {
-		verb(VERB_1, "[%s] Unable to add, array full", __func__);
 	}
 }
 

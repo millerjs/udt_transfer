@@ -263,6 +263,67 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 
 }
 
+
+//
+// pst_callback_fifo
+//
+// routine to handle XFER_FIFO message
+
+int pst_callback_fifo(header_t header, global_data_t* global_data)
+{
+	#define FIFO_OUT "/dev/zero"
+	int f_mode = O_CREAT| O_RDWR;
+	int f_perm = 0666;
+
+	// Read filename from stream
+	verb(VERB_3, "[%s] requesting %d bytes", __func__, header.data_len);
+	read_data(global_data->data_path + global_data->bl, header.data_len);
+
+	verb(VERB_3, "[%s] Opening file: %s", __func__, FIFO_OUT);
+	global_data->fout = open(FIFO_OUT, f_mode, f_perm);
+
+	if (global_data->fout < 0) {
+
+		// If we can't open the file, try building a
+		// directory tree to it
+
+		// Try and get a parent directory from file
+		char parent_dir[MAX_PATH_LEN];
+		get_parent_dir(parent_dir, global_data->data_path);
+
+		verb(VERB_3, "[%s] Using %s as parent directory.", __func__, parent_dir);
+
+		// Build parent directory recursively
+		if (mkdir_parent(parent_dir) < 0) {
+			perror("ERROR: recursive directory build failed");
+		}
+
+	}
+
+	// If we had to build the directory path then retry file open
+	if (global_data->fout < 0) {
+		global_data->fout = open(global_data->data_path, f_mode, 0666);
+	}
+
+	if (global_data->fout < 0) {
+		fprintf(stderr, "ERROR: %s ", global_data->data_path);
+		perror("file open");
+		clean_exit(EXIT_FAILURE);
+	}
+
+	// Attempt to optimize simple sequential write
+	if (posix_fadvise64(global_data->fout, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE)) {
+		if (g_opts.verbosity > VERB_3) {
+			perror("WARNING: Unable to advise file write");
+		}
+	}
+
+	global_data->read_new_header = 1;
+
+	return 0;
+}
+
+
 //
 // pst_callback_f_size
 //
@@ -532,6 +593,7 @@ void init_receiver()
 	// register the callbacks
 	register_callback(receive_postmaster, XFER_DIRNAME, pst_rec_callback_dirname);
 	register_callback(receive_postmaster, XFER_FILENAME, pst_rec_callback_filename);
+	register_callback(receive_postmaster, XFER_FIFO, pst_callback_fifo);
 	register_callback(receive_postmaster, XFER_F_SIZE, pst_rec_callback_f_size);
 	register_callback(receive_postmaster, XFER_COMPLETE, pst_rec_callback_complete);
 	register_callback(receive_postmaster, XFER_DATA, pst_rec_callback_data);

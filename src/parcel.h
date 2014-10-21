@@ -82,13 +82,14 @@ extern int g_opt_verbosity;
 typedef enum : uint8_t {
 	XFER_DATA,				// 0
 	XFER_FILENAME,			// 1
-	XFER_DIRNAME,			// 2
-	XFER_F_SIZE,			// 3
-	XFER_COMPLETE,			// 4
-	XFER_WAIT,				// 5
-	XFER_DATA_COMPLETE,		// 6
-	XFER_FILELIST,			// 7
-	XFER_CONTROL,			// 8
+	XFER_FIFO,				// 2
+	XFER_DIRNAME,			// 3
+	XFER_F_SIZE,			// 4
+	XFER_COMPLETE,			// 5
+	XFER_WAIT,				// 6
+	XFER_DATA_COMPLETE,		// 7
+	XFER_FILELIST,			// 8
+	XFER_CONTROL,			// 9
 	NUM_XFER_CMDS
 } xfer_t;
 
@@ -111,67 +112,69 @@ typedef enum : uint8_t {
 #define HEADER_TYPE_MTIME_NSEC  4
 
 typedef struct header{
-    ctrl_t      ctrl_msg;
-    uint64_t    data_len;
-    uint32_t    mtime_sec;
-    uint64_t    mtime_nsec;
-    xfer_t      type;
+	ctrl_t      ctrl_msg;
+	uint64_t    data_len;
+	uint32_t    mtime_sec;
+	uint64_t    mtime_nsec;
+	xfer_t      type;
 } header_t;
 
 typedef struct parcel_block{
-    char *buffer;
-    char *data;
-    uint64_t dlen;
+	char *buffer;
+	char *data;
+	uint64_t dlen;
 } parcel_block;
 
 typedef struct parcel_opt_t{
-    int timeout;
+	int timeout;
 
-    int verbosity;
-    int recurse;
-    int mode;
-    int progress;
-    int regular_files;
-    int default_udpipe;
-    int remote;
-    int delay;
-    int log;
-    int restart;
-    int mmap;
-    int full_root;
-    int socket_ready;
-    int ignore_modification;
+	int verbosity;
+	int recurse;
+	int mode;
+	int progress;
+	int regular_files;
+	int default_udpipe;
+	int remote;
+	int delay;
+	int log;
+	int restart;
+	int mmap;
+	int fifo_test;
+	off_t fifo_test_size;
+	int full_root;
+	int socket_ready;
+	int ignore_modification;
 
-    int *send_pipe;
-    int *recv_pipe;
+	int *send_pipe;
+	int *recv_pipe;
 
-    int remote_to_local;
-    int encryption;
-    int n_crypto_threads;
+	int remote_to_local;
+	int encryption;
+	int n_crypto_threads;
 
-    Crypto *enc;
-    Crypto *dec;
+	Crypto *enc;
+	Crypto *dec;
 
-    char restart_path[MAX_PATH_LEN];
+	char restart_path[MAX_PATH_LEN];
 
 } parcel_opts_t;
 
 typedef struct remote_arg_t{
 
-    int pipe_pid;
-    int ssh_pid;
-    int remote_pid;
+	int pipe_pid;
+	int ssh_pid;
+	int remote_pid;
 
-    char *local_ip;
-    char *remote_ip;
+	char *local_ip;
+	char *remote_ip;
 
-    char remote_path[MAX_PATH_LEN];
-    char pipe_port[MAX_PATH_LEN];
-    char pipe_host[MAX_PATH_LEN];
-    char udpipe_location[MAX_PATH_LEN];
+	char remote_path[MAX_PATH_LEN];
+	char pipe_port[MAX_PATH_LEN];
+	char pipe_host[MAX_PATH_LEN];
+	char udpipe_location[MAX_PATH_LEN];
 
-    char pipe_cmd[MAX_PATH_LEN];
-    char xfer_cmd[MAX_PATH_LEN];
+	char pipe_cmd[MAX_PATH_LEN];
+	char xfer_cmd[MAX_PATH_LEN];
 
 } remote_arg_t;
 
