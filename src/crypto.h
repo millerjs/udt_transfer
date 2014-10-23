@@ -42,7 +42,7 @@ and limitations under the License.
 
 #define MUTEX_TYPE          pthread_mutex_t
 #define MUTEX_SETUP(x)      pthread_mutex_init(&(x), NULL)
-#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x) 
+#define MUTEX_CLEANUP(x)    pthread_mutex_destroy(&x)
 #define MUTEX_LOCK(x)       pthread_mutex_lock(&x)
 #define MUTEX_UNLOCK(x)	    pthread_mutex_unlock(&x)
 #define THREAD_ID           pthread_self()
@@ -78,7 +78,7 @@ class Crypto
     pthread_mutex_t c_lock[MAX_CRYPTO_THREADS];
     pthread_mutex_t thread_ready[MAX_CRYPTO_THREADS];
 
-    pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t id_lock;
 
     int passphrase_size;
     int hex_passphrase_size;

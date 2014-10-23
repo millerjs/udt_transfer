@@ -42,6 +42,7 @@ Crypto::Crypto(int direc, int len, unsigned char* password, char *encryption_typ
 	verb(VERB_2, "[%s] New crypto object, direc = %d, key len = %d, type = %s, threads = %d",
 		__func__, direc, len, encryption_type, n_threads);
 
+	id_lock = PTHREAD_MUTEX_INITIALIZER;
 	N_CRYPTO_THREADS = n_threads;
 
 	// malloc the public data
