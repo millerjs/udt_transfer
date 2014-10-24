@@ -818,12 +818,15 @@ ssize_t pipe_read(int fd, void *buf, size_t count)
 		if ( poll_data.revents & POLLIN ) {
 //			verb(VERB_2, "[%s] requesting %d bytes", __func__, count);
 			read_bytes = read(fd, buf, count);
+			if ( read_bytes < 0 ) {
+				fprintf(stderr, "[%s] ERROR - %s\n", __func__, strerror(errno));
+				verb(VERB_2, "[%s] ERROR - %s", __func__, strerror(errno));
+			}
 /*			if ( fd == g_opts.send_pipe[0] ) {
 				pop_pipe_fifo(FIFO_WRITE, read_bytes);
 			} else {
 				pop_pipe_fifo(FIFO_READ, read_bytes);
 			} */
-//			verb(VERB_2, "[%s] read %d bytes", __func__, read_bytes);
 		} else {
 //			verb(VERB_2, "[%s] revents: %0X", __func__, poll_data.revents);
 		}

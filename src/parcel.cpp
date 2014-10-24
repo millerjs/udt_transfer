@@ -168,6 +168,7 @@ void usage(int EXIT_STAT)
 int kill_children()
 {
 
+	verb(VERB_2, "[%d %s] Killing children", g_flags, __func__);
 	// Clean up the ssh process
 	if (g_remote_args.ssh_pid && g_remote_args.remote_pid){
 

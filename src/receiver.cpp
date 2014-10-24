@@ -245,6 +245,7 @@ int pst_rec_callback_filename(header_t header, global_data_t* global_data)
 	}
 
 	if (global_data->fout < 0) {
+		verb(VERB_3, "[%s] Initializing file receive: %s", __func__, global_data->data_path + global_data->bl);
 		fprintf(stderr, "ERROR: %s ", global_data->data_path);
 		perror("file open");
 		clean_exit(EXIT_FAILURE);

@@ -515,7 +515,7 @@ file_LL* send_and_wait_for_filelist(file_LL* fileList)
 		global_send_data.user_data = (void*)fileList;
 		if (global_send_data.read_new_header) {
 			if ((global_send_data.rs = read_header(&header)) <= 0) {
-				ERR("Bad header read, errno: %d", errno);
+				ERR("Bad header read, errno: %s (%d)", strerror(errno), errno);
 			}
 		}
 
