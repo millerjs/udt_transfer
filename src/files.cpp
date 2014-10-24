@@ -17,7 +17,7 @@ and limitations under the License.
 *****************************************************************************/
 
 #define _FILE_OFFSET_BITS		64
-#define FILE_TIME_SLICE_SIZE	20000
+#define FILE_TIME_SLICE_SIZE	50000
 #define MAX_PIPE_FIFO_SIZE		64
 #define MAX_PIPE_FIFO_LOOKUP	4
 
