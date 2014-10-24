@@ -408,6 +408,7 @@ int pst_rec_callback_data(header_t header, global_data_t* global_data)
 
 		// Write to file
 		if ((write(global_data->fout, global_data->data, rs) < 0)) {
+			verb(VERB_3, "[%s] ERROR - unable to write to file", __func__);
 			perror("ERROR: unable to write to file");
 			clean_exit(EXIT_FAILURE);
 		}

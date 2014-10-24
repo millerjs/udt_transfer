@@ -194,6 +194,7 @@ int send_file(file_object_t *file)
 
 		// open file to send data blocks
 		if (!( fd = open(file->path, o_mode))) {
+			verb(VERB_3, "[%s] unable to open file", __func__);
 			perror("ERROR: unable to open file");
 			clean_exit(EXIT_FAILURE);
 		}
@@ -337,6 +338,7 @@ int send_file(file_object_t *file)
 
 		// open file to send data blocks
 		if (!( fd = open(file->path, o_mode))) {
+			verb(VERB_3, "[%s] ERROR - Unable to open file", __func__);
 			perror("ERROR: unable to open file");
 			clean_exit(EXIT_FAILURE);
 		}
