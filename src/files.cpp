@@ -148,7 +148,7 @@ void add_time_slice(chunk_t type, double slice, long data_size)
 			g_time_slices[g_time_slice_idx].time_slice = slice;
 			g_time_slices[g_time_slice_idx++].data_size = data_size;
 		} else {
-			verb(VERB_1, "[%s] Unable to add, array full", __func__);
+//			verb(VERB_1, "[%s] Unable to add, array full", __func__);
 		}
 	}
 }

@@ -132,6 +132,7 @@ void usage(int EXIT_STAT)
 		"-f enables fifo test",
 		"\tThis option will read from a named pipe as a fifo and automatically write",
 		"\tto /dev/zero on the destination end. However, a path is still required for dest.",
+		"-s size for fifo test (in GB)",
 		"",
 
 		"Remote transfers: --remote (-r) host:dest",
@@ -742,7 +743,7 @@ int get_options(int argc, char *argv[])
 			{"help"					, no_argument			, NULL							, 'h'},
 			{"log"					, required_argument		, NULL							, 'l'},
 			{"timeout"				, required_argument		, NULL							, '5'},
-			{"verbosity"			, required_argument		, NULL							, '6'},
+//			{"verbosity"			, required_argument		, NULL							, '6'},
 			{"interface"			, required_argument		, NULL							, '7'},
 			{"remote-interface"		, required_argument		, NULL							, '8'},
 			{"crypto-threads"		, required_argument		, NULL							, '2'},
@@ -757,7 +758,7 @@ int get_options(int argc, char *argv[])
 			fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
 		} */
 
-		while ((opt = getopt_long(argc, argv, "i:xl:thfvc:k:r:nd:5:p:q:b7:8:2:6:",
+		while ((opt = getopt_long(argc, argv, "i:xl:thfvc:k:r:nd:5:p:q:b7:8:2:6:s:",
 								  long_options, &option_index)) != -1) {
 	//		fprintf(stderr, "opt = %c\n", opt);
 			switch (opt) {
@@ -808,6 +809,13 @@ int get_options(int argc, char *argv[])
 				case 'p':
 					// specify port
 					snprintf(g_remote_args.pipe_port, MAX_PATH_LEN - 1, "%s", optarg);
+					break;
+
+				case 's':
+					// specify fifo copy size (in GB)
+					int temp_size;
+					ERR_IF(sscanf(optarg, "%d", &temp_size) != 1, "unable to parse fifo test size");
+					g_opts.fifo_test_size = temp_size * SIZE_GB;
 					break;
 
 				case 'x':
