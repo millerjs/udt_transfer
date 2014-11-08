@@ -390,7 +390,14 @@ void* recvdata(void * _args)
 		tid = pthread_self();
 		verb(VERB_2, "[%s %lu] Entering non-crypto loop...", __func__, tid);
 		int rs;
+		int temp = 0;
 		while (1) {
+			if ( temp > 10000 ) {
+				verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
+				temp = 0;
+			} else {
+				temp++;
+			}
 
 			rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
 			if ( rs )
@@ -573,7 +580,14 @@ void* senddata(void* _args)
 
 	} else {
 		verb(VERB_2, "[%s %lu] Entering non-crypto loop", __func__, tid);
+		int temp = 0;
 		while (1) {
+			if ( temp > 10000 ) {
+				verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
+				temp = 0;
+			} else {
+				temp++;
+			}
 			if ( check_for_exit(THREAD_TYPE_2) ) {
 				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
 				break;
