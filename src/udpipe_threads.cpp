@@ -393,8 +393,8 @@ void* recvdata(void * _args)
 		while (1) {
 
 			rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
-//			if ( rs )
-//				verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
+			if ( rs )
+				verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
 			if (UDT::ERROR == rs) {
 				if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
 					cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -594,6 +594,7 @@ void* senddata(void* _args)
 			}
 
 			while(ssize < bytes_read) {
+				verb(VERB_2, "[%s %lu] Sending %d bytes", __func__, tid, bytes_read - ssize);
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
 //					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
