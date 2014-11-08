@@ -50,6 +50,7 @@ int g_timeout_len;
 
 void kick_monitor(void)
 {
+	verb(VERB_2, "[%s] Monitor kicked", __func__);
 	g_timeout_sem = time(NULL) + g_timeout_len;
 }
 

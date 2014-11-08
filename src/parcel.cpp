@@ -665,7 +665,7 @@ int set_defaults()
 	// NOTE: this is number of seconds to wait before timing out, not merely a flag
 	// fly - until we get to the bottom of the ceph read times, this has to be at LEAST 60 seconds,
 	// but it could be much, much worse
-	g_opts.timeout                = 720;
+	g_opts.timeout                = 75;
 	g_opts.recurse                = 1;
 	g_opts.regular_files          = 1;
 	g_opts.progress               = 1;
