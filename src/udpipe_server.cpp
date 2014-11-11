@@ -120,6 +120,12 @@ void *run_server(void *_args_)
 	UDT::setsockopt(serv, 0, UDT_RCVBUF, &udt_buff, sizeof(int));
 	UDT::setsockopt(serv, 0, UDP_RCVBUF, &udp_buff, sizeof(int));
 
+	int send_timeout = 20;
+	int recv_timeout = 20;
+	
+	UDT::setsockopt(serv, 0, UDT_SNDTIMEO, &send_timeout, sizeof(int));
+	UDT::setsockopt(serv, 0, UDT_RCVTIMEO, &recv_timeout, sizeof(int));	
+	
 	// printf("Binding to %s\n", inet_ntoa(sin.sin_addr));
 
 	verb(VERB_2, "[%s] Binding socket...", __func__);

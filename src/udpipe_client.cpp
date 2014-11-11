@@ -105,6 +105,12 @@ void *run_client(void *_args_)
 		UDT::setsockopt(client, 0, UDT_SNDBUF, &udt_buff, sizeof(int));
 		UDT::setsockopt(client, 0, UDP_SNDBUF, &udp_buff, sizeof(int));
 
+		int send_timeout = 20;
+		int recv_timeout = 20;
+		
+		UDT::setsockopt(client, 0, UDT_SNDTIMEO, &send_timeout, sizeof(int));
+		UDT::setsockopt(client, 0, UDT_RCVTIMEO, &recv_timeout, sizeof(int));
+
 		// freeaddrinfo(local);
 
 		if (0 != getaddrinfo(ip, port, &hints, &peer)) {

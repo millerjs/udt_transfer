@@ -556,9 +556,8 @@ void* senddata(void* _args)
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
 
-//					verb(VERB_1, "[%s %lu] Error on send: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
-					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
 //					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
+					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
 					error = 1;
 					break;
 				}
@@ -615,12 +614,10 @@ void* senddata(void* _args)
 				verb(VERB_2, "[%s %lu] Sending %d bytes (%lu total)", __func__, tid, bytes_read - ssize, total_send);
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
-//					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-//					verb(VERB_1, "[%s %lu] Error on send: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
 					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
-//					verb(VERB_2, "[%s %lu] Leaving on error", __func__, tid);
 					error = 1;
 					break;
+//					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
 				}
 				// fly - kind of a crappy way to exit the outer while here, but
 				// I'm trying to centralize things on exit
