@@ -393,12 +393,12 @@ void* recvdata(void * _args)
 		int rs;
 		int temp = 0;
 		while (1) {
-			if ( temp > 10000 ) {
-				verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
+			verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
+/*			if ( temp > 1000 ) {
 				temp = 0;
 			} else {
 				temp++;
-			}
+			} */
 
 			rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
 			if ( rs )
@@ -583,12 +583,12 @@ void* senddata(void* _args)
 		verb(VERB_2, "[%s %lu] Entering non-crypto loop", __func__, tid);
 		int temp = 0;
 		while (1) {
-			if ( temp > 10000 ) {
-				verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
+			verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
+/*			if ( temp > 10000 ) {
 				temp = 0;
 			} else {
 				temp++;
-			}
+			} */
 			if ( check_for_exit(THREAD_TYPE_2) ) {
 				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
 				break;
