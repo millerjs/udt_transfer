@@ -116,6 +116,14 @@ void *run_client(void *_args_)
 
 		if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen)) {
 			verb(VERB_1, "[%s] UDTError %s", __func__, UDT::getlasterror().getErrorMessage());
+			// fly - from the docs:
+			// When connect fails, the UDT socket can still be used to connect again. 
+			// However, if the socket was not bound before, it may be bound implicitly, 
+			// as mentioned above, even if the connect fails. In addition, in the situation 
+			// when the connect call fails, the UDT socket will not be automatically released, 
+			// it is the applications' responsibility to close the socket, if the socket is 
+			// not needed anymore (e.g., to re-connect).
+			UDT::close(client);
 
 			// cerr << "connect: " << UDT::getlasterror().getErrorCode() << endl;
 			if (args->verbose) {
