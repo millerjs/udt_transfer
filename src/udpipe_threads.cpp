@@ -239,6 +239,7 @@ void* recvdata(void * _args)
 {
 	pthread_t   tid;
 	tid = pthread_self();
+	long int total_recv = 0;
 
 	rs_args * args = (rs_args*)_args;
 
@@ -391,7 +392,7 @@ void* recvdata(void * _args)
 		tid = pthread_self();
 		verb(VERB_2, "[%s %lu] Entering non-crypto loop...", __func__, tid);
 		int rs;
-		int temp = 0;
+//		int temp = 0;
 		while (1) {
 			verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
 /*			if ( temp > 1000 ) {
@@ -402,7 +403,8 @@ void* recvdata(void * _args)
 
 			rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
 			if ( rs )
-				verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
+				total_recv += rs;
+				verb(VERB_2, "[%s %lu] received %d bytes (%lu total)", __func__, tid, rs, total_recv);
 			if (UDT::ERROR == rs) {
 				if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
 					cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -447,6 +449,7 @@ void* senddata(void* _args)
 	rs_args * args = (rs_args*) _args;
 	pthread_t   tid;
 	int error = 0;
+	long int total_send = 0;
 
 	pthread_cleanup_push(senddata_cleanup_handler, NULL);
 
@@ -581,7 +584,7 @@ void* senddata(void* _args)
 
 	} else {
 		verb(VERB_2, "[%s %lu] Entering non-crypto loop", __func__, tid);
-		int temp = 0;
+//		int temp = 0;
 		while (1) {
 			verb(VERB_2, "[%s %lu] non-crypto loop", __func__, tid);
 /*			if ( temp > 10000 ) {
@@ -609,7 +612,7 @@ void* senddata(void* _args)
 			}
 
 			while(ssize < bytes_read) {
-				verb(VERB_2, "[%s %lu] Sending %d bytes", __func__, tid, bytes_read - ssize);
+				verb(VERB_2, "[%s %lu] Sending %d bytes (%lu total)", __func__, tid, bytes_read - ssize, total_send);
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
 //					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -625,6 +628,7 @@ void* senddata(void* _args)
 					break;
 				}
 				ssize += ss;
+				total_send += ss;
 			}
 		}
 	}
