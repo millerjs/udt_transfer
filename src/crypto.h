@@ -78,8 +78,7 @@ class Crypto
     pthread_mutex_t c_lock[MAX_CRYPTO_THREADS];
     pthread_mutex_t thread_ready[MAX_CRYPTO_THREADS];
 
-//    pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
-	pthread_mutex_t id_lock;
+    pthread_mutex_t id_lock;
 
     int passphrase_size;
     int hex_passphrase_size;

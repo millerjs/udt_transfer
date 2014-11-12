@@ -9,3 +9,5 @@ udt/src/libudt.so
 *.o
 src/*.o
 *.d
+*.map
+*.yml

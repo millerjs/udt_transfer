@@ -110,18 +110,28 @@ void usage(int EXIT_STAT)
 		"--remote (-r) host:dest \t immitate scp with parcel and udpipe",
 		"--checkpoint (-k) log_file \t log transfer to file log_file.  If log_file exists",
 		"\t\t\t\t from previous transfer, resume transfer at last completed file.",
-		"--verbose \t\t\t verbose, notify of files being sent. Same as -v2",
-		"--quiet \t\t\t silence all warnings. Same as -v0",
-		"--no-mmap \t\t\t do not memory map the file (involves extra memory copy)",
+		"--verbose (-v) \t\t\t verbose, mostly debug output",
+		"--quiet \t\t\t silence all warnings",
+		"--encryption (-n) \t\t\t enables encryption",
+		"--mmap \t\t\t memory map the file (involves extra memory copy)",
 		"--full-root \t\t\t do not trim file path but reconstruct full source path",
-		"--pipe pipe_cmd \t\t attempt to connect to specified pipe executable",
+		"--fifo-test (-f) \t\t will allow use of transferring from a fifo pipe to /dev/zero",
 		"--log (-g) log_file \t\t log transfer to file log_file but do not restart",
 		"--restart log_file \t\t restart transfer from file log_file but do not log",
 		"",
 
 		"-l [dest_dir] \t\t listen for file transfer and write to dest_dir [default ./]",
-//		"-v verbosity level \t\t set the level of verbosity",
+		"-n enables encryption",
 		"-v enables verbose output",
+		"-b enables file logging",
+		"\tThis option will write log data to two files: debug-master.log and",
+		"\tdebug-minion.log. These will be written to the directory executed from",
+		"\and the home directory on the remote end, respectively. They are appended",
+		"\to each subsequent run, so be sure to delete them if not necessary.",
+		"-f enables fifo test",
+		"\tThis option will read from a named pipe as a fifo and automatically write",
+		"\tto /dev/zero on the destination end. However, a path is still required for dest.",
+		"-s size for fifo test (in GB)",
 		"",
 
 		"Remote transfers: --remote (-r) host:dest",
@@ -130,12 +140,12 @@ void usage(int EXIT_STAT)
 		"\tssh.  If successful, it will transfer file list to",
 		"\tdirectory dest.",
 
-		"\nLevels of Verbosity:",
-		"\t0: Withhold WARNING messages",
-		"\t1: Update user on file transfers [DEFAULT]",
-		"\t2: Update user on underlying processes, i.e. directory creation ",
-		"\t3: Print information on optimizations ",
-		"\t4: Print any information generated",
+//		"\nLevels of Verbosity:",
+//		"\t0: Withhold WARNING messages",
+//		"\t1: Update user on file transfers [DEFAULT]",
+//		"\t2: Update user on underlying processes, i.e. directory creation ",
+//		"\t3: Print information on optimizations ",
+//		"\t4: Print any information generated",
 		NULL
 	};
 
@@ -158,6 +168,7 @@ void usage(int EXIT_STAT)
 int kill_children()
 {
 
+	verb(VERB_2, "[%d %s] Killing children", g_flags, __func__);
 	// Clean up the ssh process
 	if (g_remote_args.ssh_pid && g_remote_args.remote_pid){
 
@@ -273,12 +284,12 @@ void clean_exit(int status)
 	close_log_file();
 	print_xfer_stats();
 	verb(VERB_2, "[%d %s] cleaning up pipes", g_flags, __func__);
-	cleanup_pipes();
 	set_thread_exit();
 
 	int counter = 0;
 	verb(VERB_2, "\n");
-	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) && (status != EXIT_FAILURE) ) {
+	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) ) {
+//	while ( (get_thread_count(THREAD_TYPE_ALL) > 0) && (status != EXIT_FAILURE) ) {
 		if ( counter == 0 ) {
 			verb(VERB_2, "[%d %s] Waiting on %d threads to exit", g_flags, __func__, get_thread_count(THREAD_TYPE_ALL));
 			print_threads(VERB_2);
@@ -288,6 +299,8 @@ void clean_exit(int status)
 		}
 		usleep(100);
 	}
+
+	cleanup_pipes();
 
 	verb(VERB_2, "[%d %s] cleaning up sender/receiver", g_flags, __func__);
 	cleanup_receiver();
@@ -549,7 +562,7 @@ void initialize_udpipe_args(thread_args *args)
 
 	args->blast				= 0;
 	args->blast_rate		= 1000;
-	args->mss				= 8400;
+	args->mss				= 1500;		// fly - overridden by g_opts default anyway
 	args->n_crypto_threads	= 1;
 	args->print_speed		= 0;
 	args->timeout			= 0;
@@ -660,36 +673,41 @@ int set_defaults()
 	snprintf(g_remote_args.udpipe_location, MAX_PATH_LEN - 1, "parcel");
 	snprintf(g_remote_args.pipe_port, MAX_PATH_LEN -1, "9000");
 
-	g_opts.mode                   = MODE_SEND;
-	g_opts.verbosity              = VERB_1;
+	g_opts.mode					= MODE_SEND;
+	g_opts.verbosity			= VERB_1;
 	// NOTE: this is number of seconds to wait before timing out, not merely a flag
-	// fly - until we get to the bottom of the ceph read times, this has to be at LEAST 60 seconds,
-	// but it could be much, much worse
-	g_opts.timeout                = 75;
-	g_opts.recurse                = 1;
-	g_opts.regular_files          = 1;
-	g_opts.progress               = 1;
-	g_opts.default_udpipe         = 0;
-	g_opts.remote                 = 0;
-	g_opts.delay                  = 0;
-	g_opts.log                    = 0;
-	g_opts.restart                = 0;
-	g_opts.mmap                   = 0;
-	g_opts.full_root              = 0;
+	// fly - until we get to the bottom of the ceph read times, this has to be at LEAST 60 seconds
+	g_opts.timeout				= 75;
+	g_opts.recurse				= 1;
+	g_opts.regular_files		= 1;
+	g_opts.progress				= 1;
+	g_opts.default_udpipe		= 0;
+	g_opts.remote				= 0;
+	g_opts.delay				= 0;
+	g_opts.log					= 0;
+	g_opts.restart				= 0;
+	g_opts.mmap					= 0;
+	// fly - 8400 was josh's default, but it caused problems in certain situations, so we reduced to default
+	// however, that may be slower
+	g_opts.mss					= 1500;
+	g_opts.full_root			= 0;
 
-	g_opts.remote_to_local        = 0;
-	g_opts.ignore_modification    = 0;
+	g_opts.fifo_test			= 0;
+	g_opts.fifo_test_size		= SIZE_GB * 2;
 
-	g_opts.socket_ready           = 0;
-	g_opts.encryption             = 0;
-	g_opts.n_crypto_threads       = 1;
+	g_opts.remote_to_local		= 0;
+	g_opts.ignore_modification	= 0;
+
+	g_opts.socket_ready			= 0;
+	g_opts.encryption			= 0;
+	g_opts.n_crypto_threads		= 1;
 	g_opts.enc = NULL;
 	g_opts.dec = NULL;
 
-	g_opts.send_pipe              = NULL;
-	g_opts.recv_pipe              = NULL;
-	g_remote_args.local_ip        = NULL;
-	g_remote_args.remote_ip       = NULL;
+	g_opts.send_pipe			= NULL;
+	g_opts.recv_pipe			= NULL;
+	g_remote_args.local_ip		= NULL;
+	g_remote_args.remote_ip		= NULL;
 
 	set_socket_ready(0);
 
@@ -716,16 +734,19 @@ int get_options(int argc, char *argv[])
 			{"quiet"				, no_argument			, &g_opts.verbosity				, VERB_0},
 			{"debug"				, no_argument			, NULL							, 'b'},
 			{"encryption"			, no_argument			, NULL							, 'b'},
-			{"no-mmap"				, no_argument			, &g_opts.mmap					, 0},
+//			{"no-mmap"				, no_argument			, &g_opts.mmap					, 0},
+			{"mmap"					, no_argument			, &g_opts.mmap					, 1},
+			{"fifo-test"			, no_argument			, &g_opts.fifo_test				, 1},
 			{"full-root"			, no_argument			, &g_opts.full_root				, 1},
 			{"ignore-modification"	, no_argument			, &g_opts.ignore_modification	, 1},
 			{"all-files"			, no_argument			, &g_opts.regular_files			, 0},
 			{"remote-to-local"		, no_argument			, &g_opts.remote_to_local		, 1},
 			{"sender"				, no_argument			, NULL							, 'q'},
 			{"help"					, no_argument			, NULL							, 'h'},
+			{"max-packet-size"		, required_argument		, NULL							, 'm'},
 			{"log"					, required_argument		, NULL							, 'l'},
 			{"timeout"				, required_argument		, NULL							, '5'},
-			{"verbosity"			, required_argument		, NULL							, '6'},
+//			{"verbosity"			, required_argument		, NULL							, '6'},
 			{"interface"			, required_argument		, NULL							, '7'},
 			{"remote-interface"		, required_argument		, NULL							, '8'},
 			{"crypto-threads"		, required_argument		, NULL							, '2'},
@@ -740,7 +761,7 @@ int get_options(int argc, char *argv[])
 			fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
 		} */
 
-		while ((opt = getopt_long(argc, argv, "i:xl:thvc:k:r:nd:5:p:q:b7:8:2:6:",
+		while ((opt = getopt_long(argc, argv, "i:xl:thfvc:k:r:nd:5:p:m:q:b7:8:2:6:s:",
 								  long_options, &option_index)) != -1) {
 	//		fprintf(stderr, "opt = %c\n", opt);
 			switch (opt) {
@@ -793,9 +814,26 @@ int get_options(int argc, char *argv[])
 					snprintf(g_remote_args.pipe_port, MAX_PATH_LEN - 1, "%s", optarg);
 					break;
 
+				case 'm':
+					// specify max packet size
+					g_opts.mss = atoi(optarg);
+					break;
+
+				case 's':
+					// specify fifo copy size (in GB)
+					int temp_size;
+					ERR_IF(sscanf(optarg, "%d", &temp_size) != 1, "unable to parse fifo test size");
+					g_opts.fifo_test_size = temp_size * SIZE_GB;
+					break;
+
 				case 'x':
 					// disable printing progress
 					g_opts.progress = 0;
+					break;
+
+				case 'f':
+					// enable fifo test
+					g_opts.fifo_test = 1;
 					break;
 
 				case 't':
@@ -898,6 +936,8 @@ int initialize_pipes()
 	g_opts.send_pipe = (int*) malloc(2*sizeof(int));
 	g_opts.recv_pipe = (int*) malloc(2*sizeof(int));
 
+//	ERR_IF(pipe(g_opts.send_pipe, O_NONBLOCK), "unable to create server's send pipe");
+//	ERR_IF(pipe(g_opts.recv_pipe, O_NONBLOCK), "unable to create server's receiver pipe");
 	ERR_IF(pipe(g_opts.send_pipe), "unable to create server's send pipe");
 	ERR_IF(pipe(g_opts.recv_pipe), "unable to create server's receiver pipe");
 
@@ -916,6 +956,9 @@ int initialize_pipes()
 
 	verb(VERB_2, "[%d %s] send_pipe[0] = %d, send_pipe[1] = %d", g_flags, __func__, g_opts.send_pipe[0], g_opts.send_pipe[1]);
 	verb(VERB_2, "[%d %s] recv_pipe[0] = %d, recv_pipe[1] = %d", g_flags, __func__, g_opts.recv_pipe[0], g_opts.recv_pipe[1]);
+
+	init_pipe_mutex();
+	init_pipe_fifo();
 
 	return RET_SUCCESS;
 }
@@ -985,6 +1028,8 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 	args->verbose          = (g_opts.verbosity > VERB_1);
 	args->listen_ip        = remote_args->local_ip;
 
+	args->mss              = g_opts.mss;
+	verb(VERB_2, "[%d %s] g_opts->mss = %0x", g_flags, __func__, g_opts.mss);
 	args->use_crypto       = g_opts.encryption;
 	args->n_crypto_threads = g_opts.n_crypto_threads;
 	args->enc              = g_opts.enc;
@@ -998,9 +1043,9 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 
 	pthread_t udpipe_thread;
 	if ( udpipe_server_type == UDPIPE_SERVER ) {
-		create_thread(&udpipe_thread, NULL, &run_server, args, "run_server", THREAD_TYPE_1);
+		create_thread(&udpipe_thread, NULL, &run_server, args, "run_server", THREAD_TYPE_2);
 	} else {
-		create_thread(&udpipe_thread, NULL, &run_client, args, "run_client", THREAD_TYPE_1);
+		create_thread(&udpipe_thread, NULL, &run_client, args, "run_client", THREAD_TYPE_2);
 	}
 
 	return udpipe_thread;
@@ -1169,7 +1214,8 @@ int start_transfer(int argc, char*argv[], int optind)
 		// fly - hang out a few seconds waiting for send to complete
 		// we should probably have a way to check that the ack has actually gone
 		// out, but this should work
-		while ( check_write_pipe() );
+		verb(VERB_2, "[%d %s] Waiting for write pipe to be empty",g_flags, __func__);
+		while ( get_fifo_size(FIFO_WRITE) );
 
 		usleep(1000);
 
