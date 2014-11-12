@@ -321,7 +321,7 @@ void* recvdata(void * _args)
 						}
 						running = 0;
 					}
-					if ( rs && block_size ) {
+					if ( (rs > 0) && block_size ) {
 						verb(VERB_2, "[%s %lu] new block, expecting size = %d", __func__, tid, block_size);
 						new_block = 0;
 						buffer_cursor = 0;
@@ -331,8 +331,9 @@ void* recvdata(void * _args)
 
 				rs = UDT::recv(recver, indata+buffer_cursor,
 						block_size-buffer_cursor, 0);
-				if ( rs )
+				if ( rs > 0 ) {
 					verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
+				}
 
 				if (UDT::ERROR == rs) {
 					if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
@@ -343,8 +344,10 @@ void* recvdata(void * _args)
 
 				// Cancel timeout for another args->timeout seconds
 				kick_monitor();
-				buffer_cursor += rs;
-
+				if ( rs > 0 ) {
+					buffer_cursor += rs;
+				}
+				
 				// Decrypt any full encryption buffer sectors
 				while (crypto_cursor + crypto_buff_len < buffer_cursor) {
 					verb(VERB_2, "[%s %lu] decrypting full encryption buffer sectors", __func__, tid);
@@ -396,8 +399,9 @@ void* recvdata(void * _args)
 		while (running) {
 			pthread_mutex_lock(&recv_thread_mutex);
 			rs = UDT::recv(recver, indata, BUFF_SIZE, 0);
-			if ( rs )
+			if ( rs > 0 ) {
 				verb(VERB_2, "[%s %lu] received %d bytes", __func__, tid, rs);
+			}
 			if (UDT::ERROR == rs) {
 				if (UDT::getlasterror().getErrorCode() != ECONNLOST) {
 					cerr << "recv:" << UDT::getlasterror().getErrorMessage() << endl;
@@ -414,8 +418,10 @@ void* recvdata(void * _args)
 			}
 
 			kick_monitor();
-			verb(VERB_2, "[%s %lu] Writing %d bytes to pipe %d", __func__, tid, rs, args->recv_pipe[1]);
-			pipe_write(args->recv_pipe[1], indata, rs);
+			if ( rs > 0 ) {
+				verb(VERB_2, "[%s %lu] Writing %d bytes to pipe %d", __func__, tid, rs, args->recv_pipe[1]);
+				pipe_write(args->recv_pipe[1], indata, rs);
+			}
 			pthread_mutex_unlock(&recv_thread_mutex);
 		}
 	}
@@ -443,7 +449,6 @@ void* senddata(void* _args)
 	rs_args * args = (rs_args*) _args;
 	pthread_t   tid;
 //	int error = 0;
-//	int loop_count = 0;
 	int running = 1;
 	pthread_mutex_t send_thread_mutex;
 
@@ -512,8 +517,6 @@ void* senddata(void* _args)
 			}
 
 			if(bytes_read < 0) {
-//				cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-//				verb(VERB_1, "[%s %lu] Error on read: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
 				if ( errno != EBADF ) {
 					verb(VERB_1, "[%s %lu] Error on read: %d",  __func__, tid, errno);
 				}
@@ -521,17 +524,10 @@ void* senddata(void* _args)
 			}
 
 			if(bytes_read == 0) {
-//				verb(VERB_2, "[%s %lu] No bytes read, looping", __func__, tid);
 				if ( check_for_exit(THREAD_TYPE_2) ) {
 					verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
 					running = 0;
 				} else {
-/*					if ( loop_count > 100 ) {
-						verb(VERB_2, "[%s %lu] All good, waiting", __func__, tid);
-						loop_count = 0;
-					} else {
-						loop_count++;
-					} */
 				}
 				usleep(100);
 				pthread_mutex_unlock(&send_thread_mutex);
@@ -551,7 +547,6 @@ void* senddata(void* _args)
 				crypto_cursor += size;
 			}
 
-//			verb(VERB_2, "[%s %lu] Joining encryption threads", __func__, tid);
 			join_all_encryption_threads(args->c);
 			bytes_read += offset;
 
@@ -560,15 +555,9 @@ void* senddata(void* _args)
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
 
-//					verb(VERB_1, "[%s %lu] Error on send: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
 					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", __func__, tid, errno, strerror(errno));
-//					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
 					running = 0;
 					break;
-				} else {
-//					if ( ss ) {
-//						verb(VERB_3, "[%s %lu] Sent %d bytes", __func__, tid, ss);
-//					}
 				}
 				ssize += ss;
 			}
@@ -578,16 +567,8 @@ void* senddata(void* _args)
 			if ( check_for_exit(THREAD_TYPE_2) ) {
 				verb(VERB_2, "[%s %lu] Got exit signal, exiting", __func__, tid);
 				running = 0;
-			} else {
-/*				if ( loop_count > 10000 ) {
-					verb(VERB_2, "[%s %lu] All good, waiting", __func__, tid);
-					loop_count = 0;
-				} else {
-					loop_count++;
-				} */
 			}
 			pthread_mutex_unlock(&send_thread_mutex);
-//			verb(VERB_2, "[%s %lu] Loop...", __func__, tid);
 		}
 
 	} else {
@@ -604,10 +585,7 @@ void* senddata(void* _args)
 			while(ssize < bytes_read) {
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
-//					cerr << "send:" << UDT::getlasterror().getErrorMessage() << endl;
-//					verb(VERB_1, "[%s %lu] Error on send: (%d) %s and (%d) %s", errno, strerror(errno), UDT::getlasterror().getErrorCode(), UDT::getlasterror().getErrorMessage());
 					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
-//					verb(VERB_2, "[%s %lu] Leaving on error", __func__, tid);
 					running = 0;
 					break;
 				}

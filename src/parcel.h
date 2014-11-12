@@ -139,6 +139,7 @@ typedef struct parcel_opt_t{
 	int log;
 	int restart;
 	int mmap;
+	int mss;
 	int fifo_test;
 	off_t fifo_test_size;
 	int full_root;

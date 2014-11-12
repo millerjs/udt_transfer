@@ -563,7 +563,7 @@ void initialize_udpipe_args(thread_args *args)
 
 	args->blast				= 0;
 	args->blast_rate		= 1000;
-	args->mss				= 1500;		// 8400;
+	args->mss				= 1500;		// fly - overridden by g_opts default anyway
 	args->n_crypto_threads	= 1;
 	args->print_speed		= 0;
 	args->timeout			= 0;
@@ -688,6 +688,9 @@ int set_defaults()
 	g_opts.log					= 0;
 	g_opts.restart				= 0;
 	g_opts.mmap					= 0;
+	// fly - 8400 was josh's default, but it caused problems in certain situations, so we reduced to default
+	// however, that may be slower
+	g_opts.mss					= 1500;
 	g_opts.full_root			= 0;
 
 	g_opts.fifo_test			= 0;
@@ -741,6 +744,7 @@ int get_options(int argc, char *argv[])
 			{"remote-to-local"		, no_argument			, &g_opts.remote_to_local		, 1},
 			{"sender"				, no_argument			, NULL							, 'q'},
 			{"help"					, no_argument			, NULL							, 'h'},
+			{"max-packet-size"		, required_argument		, NULL							, 'm'},
 			{"log"					, required_argument		, NULL							, 'l'},
 			{"timeout"				, required_argument		, NULL							, '5'},
 //			{"verbosity"			, required_argument		, NULL							, '6'},
@@ -758,7 +762,7 @@ int get_options(int argc, char *argv[])
 			fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
 		} */
 
-		while ((opt = getopt_long(argc, argv, "i:xl:thfvc:k:r:nd:5:p:q:b7:8:2:6:s:",
+		while ((opt = getopt_long(argc, argv, "i:xl:thfvc:k:r:nd:5:p:m:q:b7:8:2:6:s:",
 								  long_options, &option_index)) != -1) {
 	//		fprintf(stderr, "opt = %c\n", opt);
 			switch (opt) {
@@ -809,6 +813,11 @@ int get_options(int argc, char *argv[])
 				case 'p':
 					// specify port
 					snprintf(g_remote_args.pipe_port, MAX_PATH_LEN - 1, "%s", optarg);
+					break;
+
+				case 'm':
+					// specify max packet size
+					g_opts.mss = atoi(optarg);
 					break;
 
 				case 's':
@@ -1020,6 +1029,8 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 	args->verbose          = (g_opts.verbosity > VERB_1);
 	args->listen_ip        = remote_args->local_ip;
 
+	args->mss              = g_opts.mss;
+	verb(VERB_2, "[%d %s] g_opts->mss = %0x", g_flags, __func__, g_opts.mss);
 	args->use_crypto       = g_opts.encryption;
 	args->n_crypto_threads = g_opts.n_crypto_threads;
 	args->enc              = g_opts.enc;
