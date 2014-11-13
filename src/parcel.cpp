@@ -549,7 +549,7 @@ void initialize_udpipe_args(thread_args *args)
 
 	args->blast				= 0;
 	args->blast_rate		= 1000;
-	args->mss				= 8400;
+	args->mss				= 8400;		// this can cause issues
 	args->n_crypto_threads	= 1;
 	args->print_speed		= 0;
 	args->timeout			= 0;
