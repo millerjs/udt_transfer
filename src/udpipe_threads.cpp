@@ -577,7 +577,7 @@ void* senddata(void* _args)
 			while(ssize < bytes_read) {
 				if (UDT::ERROR == (ss = UDT::send(client, outdata + ssize,
 								  bytes_read - ssize, 0))) {
-					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", errno, strerror(errno));
+					verb(VERB_1, "[%s %lu] Error on send: (%d) %s", __func__, tid, errno, strerror(errno));
 					running = 0;
 					break;
 				}

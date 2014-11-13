@@ -1029,7 +1029,7 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 	args->listen_ip        = remote_args->local_ip;
 
 	args->mss              = g_opts.mss;
-	verb(VERB_2, "[%d %s] g_opts->mss = %0x", g_flags, __func__, g_opts.mss);
+	verb(VERB_2, "[%d %s] g_opts->mss = %d", g_flags, __func__, g_opts.mss);
 	args->use_crypto       = g_opts.encryption;
 	args->n_crypto_threads = g_opts.n_crypto_threads;
 	args->enc              = g_opts.enc;
@@ -1038,9 +1038,10 @@ pthread_t start_udpipe_thread(remote_arg_t *remote_args, udpipe_t udpipe_server_
 	if ( g_flags & PARCEL_FLAG_MASTER ) {
 		args->master	= 1;
 	}
-	verb(VERB_2, "[%d %s] g_opts->enc = %0x", g_flags, __func__, g_opts.enc);
-	verb(VERB_2, "[%d %s] g_opts->dec = %0x", g_flags, __func__, g_opts.dec);
-
+	if ( args->use_crypto ) {
+		verb(VERB_2, "[%d %s] g_opts->enc = %0x", g_flags, __func__, g_opts.enc);
+		verb(VERB_2, "[%d %s] g_opts->dec = %0x", g_flags, __func__, g_opts.dec);
+	}
 	pthread_t udpipe_thread;
 	if ( udpipe_server_type == UDPIPE_SERVER ) {
 		create_thread(&udpipe_thread, NULL, &run_server, args, "run_server", THREAD_TYPE_2);
