@@ -562,7 +562,7 @@ void initialize_udpipe_args(thread_args *args)
 
 	args->blast				= 0;
 	args->blast_rate		= 1000;
-	args->mss				= 1500;		// fly - overridden by g_opts default anyway
+	args->mss				= 8400;		// fly - overridden by g_opts default anyway
 	args->n_crypto_threads	= 1;
 	args->print_speed		= 0;
 	args->timeout			= 0;
@@ -687,9 +687,9 @@ int set_defaults()
 	g_opts.log					= 0;
 	g_opts.restart				= 0;
 	g_opts.mmap					= 0;
-	// fly - 8400 was josh's default, but it caused problems in certain situations, so we reduced to default
-	// however, that may be slower
-	g_opts.mss					= 1500;
+	// fly - since 1500 is noticeably slower, but causes problems, the ability to change the size is there,
+	// but we'll default to the faster speed
+	g_opts.mss					= 8400;
 	g_opts.full_root			= 0;
 
 	g_opts.fifo_test			= 0;
