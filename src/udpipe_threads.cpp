@@ -598,6 +598,7 @@ void* senddata(void* _args)
 	unregister_thread(get_my_thread_id());
 	pthread_cleanup_pop(0);
 	pthread_mutex_destroy(&send_thread_mutex);
+	verb(VERB_2, "[%s %lu] Exit", __func__, tid);
 	return NULL;
 }
 

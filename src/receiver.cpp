@@ -156,6 +156,7 @@ int receive_files(char*base_path)
 
 	// free up the memory on the way out
 	free(global_receive_data.data);
+	verb(VERB_2, "[%s] exiting", __func__);
 
 	return 0;
 }

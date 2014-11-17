@@ -250,6 +250,7 @@ void *run_server(void *_args_)
 	free(args->port);
 	free(args);
 	unregister_thread(get_my_thread_id());
+	verb(VERB_2, "[%s] Exit", __func__);
 	return NULL;
 }
 

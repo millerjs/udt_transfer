@@ -116,6 +116,7 @@ void usage(int EXIT_STAT)
 		"--mmap \t\t\t memory map the file (involves extra memory copy)",
 		"--full-root \t\t\t do not trim file path but reconstruct full source path",
 		"--fifo-test (-f) \t\t will allow use of transferring from a fifo pipe to /dev/zero",
+		"--max-packet-size (-m) \t\t set the max packet size in transfers (default 8400)",
 		"--log (-g) log_file \t\t log transfer to file log_file but do not restart",
 		"--restart log_file \t\t restart transfer from file log_file but do not log",
 		"",
@@ -266,7 +267,7 @@ void print_xfer_stats()
 
 		fprintf(stderr, "\n\tSTAT: %.2f %s transfered in %.2fs [ %.2f Gbps ] \n",
 				G_TOTAL_XFER/scale, label, elapsed,
-				G_TOTAL_XFER/(elapsed*SIZE_GB));
+				(G_TOTAL_XFER/(elapsed*SIZE_GB) * 8));
 	}
 	print_time_slices();
 }
